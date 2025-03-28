@@ -1,6 +1,6 @@
 package ru.entity;
 
-import org.example.abstr.AbstractDiscipline;
+import ru.abstracts.AbstractDiscipline;
 
 public class Discipline extends AbstractDiscipline {
     public Discipline(String name) {

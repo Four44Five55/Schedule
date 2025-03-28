@@ -1,32 +1,75 @@
 package ru.abstracts;
 
-import org.example.entity.CellForLesson;
-import org.example.entity.Discipline;
-import org.example.entity.Educator;
+import ru.entity.CellForLesson;
+import ru.entity.Discipline;
+import ru.entity.Educator;
+import ru.entity.Group;
+import ru.enums.KindOfStudy;
 
-abstract public class AbstractLesson {
+import java.util.ArrayList;
+import java.util.List;
+
+abstract public class AbstractLesson extends AEntityWithScheduleGrid {
     protected CellForLesson cellForLesson;
-    protected Educator educator;
+    protected KindOfStudy kindOfStudy;
     protected Discipline discipline;
+    protected AbstractAuditorium auditorium;
+    protected List<Educator> educators = new ArrayList<>();
+    protected List<Group> groups = new ArrayList<>();
 
-    public AbstractLesson(Educator educator, Discipline discipline) {
-        this.educator = educator;
+    public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator) {
+        super();
         this.discipline = discipline;
+        this.kindOfStudy = kindOfStudy;
+        this.educators.add(educator);
+    }
+
+    public List<Group> getGroups() {
+        return groups;
+    }
+    public void addGroup(Group group) {
+        this.groups.add(group);
+    }
+    public void setGroups(List<Group> groups) {
+        this.groups = groups;
     }
 
     public void setCellForLesson(CellForLesson cellForLesson) {
         this.cellForLesson = cellForLesson;
     }
 
+    public void addEducator(Educator educator) {
+        this.educators.add(educator);
+    }
+
     public CellForLesson getCellForLesson() {
         return cellForLesson;
     }
 
-    public Educator getEducator() {
-        return educator;
-    }
-
     public Discipline getDiscipline() {
         return discipline;
+    }
+
+    public KindOfStudy getKindOfStudy() {
+        return kindOfStudy;
+    }
+
+    public List<Educator> getEducators() {
+        return educators;
+    }
+
+    public AbstractAuditorium getAuditorium() {
+        return auditorium;
+    }
+
+    public void setAuditorium(AbstractAuditorium auditorium) {
+        this.auditorium = auditorium;
+    }
+
+    @Override
+    public String toString() {
+        return "kind: " + kindOfStudy +
+                ", dis: " + discipline +
+                ", educ: " + educators;
     }
 }

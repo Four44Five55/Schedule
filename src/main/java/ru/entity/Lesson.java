@@ -1,9 +1,10 @@
 package ru.entity;
 
-import org.example.abstr.AbstractLesson;
+import ru.abstracts.AbstractLesson;
+import ru.enums.KindOfStudy;
 
 public class Lesson extends AbstractLesson {
-    public Lesson(CellForLesson cellForLesson, Educator educator, Discipline discipline) {
-        super(educator, discipline);
+    public Lesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator) {
+        super(discipline, kindOfStudy, educator);
     }
 }
