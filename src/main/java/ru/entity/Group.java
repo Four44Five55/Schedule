@@ -26,7 +26,7 @@ public class Group extends AEntityWithScheduleGrid {
     @Override
     public void addLessonScheduleGridMap(CellForLesson cellForLesson, AbstractLesson lesson) {
         this.getScheduleGridMap().put(cellForLesson, lesson);
-        lesson.addGroup(this);
+        //lesson.addGroup(this);
     }
 
     public String getName() {
