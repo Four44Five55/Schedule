@@ -2,7 +2,6 @@ package ru.services;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import ru.abstracts.AEntityWithScheduleGrid;
 import ru.abstracts.AbstractLesson;
 import ru.entity.*;
 import ru.enums.TimeSlotPair;
@@ -12,9 +11,7 @@ import java.io.IOException;
 import java.nio.file.Paths;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class ScheduleExporter {

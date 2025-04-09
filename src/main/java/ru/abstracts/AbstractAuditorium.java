@@ -2,24 +2,16 @@ package ru.abstracts;
 
 import java.util.Objects;
 
-public class AbstractAuditorium extends AEntityWithScheduleGrid{
-    private String name;
-    private int capacity;
+public class AbstractAuditorium extends AbstractMaterialEntity{
+      private int capacity;
 
-    public AbstractAuditorium() {
-    }
-
-    public AbstractAuditorium(String name, int capacity) {
-        this.name = name;
+    public AbstractAuditorium(int capacity) {
         this.capacity = capacity;
     }
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
+    public AbstractAuditorium(int id, String name, int capacity) {
+        super(id, name);
+        this.capacity = capacity;
     }
 
     public int getCapacity() {

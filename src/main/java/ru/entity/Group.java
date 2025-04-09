@@ -1,40 +1,25 @@
 package ru.entity;
 
-import ru.abstracts.AEntityWithScheduleGrid;
 import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractLesson;
+import ru.abstracts.AbstractMaterialEntity;
 
 import java.util.Objects;
 
-public class Group extends AEntityWithScheduleGrid {
+public class Group extends AbstractMaterialEntity {
 
-    private String name;
     private int size;
     private AbstractAuditorium auditorium;
 
-    public Group() {
-    }
-
-    public Group(String name, int size, AbstractAuditorium auditorium) {
-        super();
-        this.name = name;
+    public Group(int size, AbstractAuditorium auditorium) {
         this.size = size;
         this.auditorium = auditorium;
-
     }
 
-    @Override
-    public void addLessonScheduleGridMap(CellForLesson cellForLesson, AbstractLesson lesson) {
-        this.getScheduleGridMap().put(cellForLesson, lesson);
-        //lesson.addGroup(this);
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
+    public Group(int id, String name, int size, AbstractAuditorium auditorium) {
+        super(id, name);
+        this.size = size;
+        this.auditorium = auditorium;
     }
 
     public int getSize() {

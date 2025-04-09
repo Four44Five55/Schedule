@@ -4,24 +4,13 @@ import ru.inter.Person;
 
 import java.util.Objects;
 
-abstract public class AbstractPerson extends AEntityWithScheduleGrid implements Person {
+abstract public class AbstractPerson extends AbstractMaterialEntity  implements Person {
 
-    private int id;
-    private String name;
+    public AbstractPerson() {
+    }
 
     public AbstractPerson(int id, String name) {
-        this.id = id;
-        this.name = name;
-    }
-
-    @Override
-    public int getId() {
-        return id;
-    }
-
-    @Override
-    public String getName() {
-        return name;
+        super(id, name);
     }
 
     @Override

@@ -9,7 +9,7 @@ import ru.enums.KindOfStudy;
 import java.util.ArrayList;
 import java.util.List;
 
-abstract public class AbstractLesson extends AEntityWithScheduleGrid {
+abstract public class AbstractLesson  {
     protected CellForLesson cellForLesson;
     protected KindOfStudy kindOfStudy;
     protected Discipline discipline;
