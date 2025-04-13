@@ -42,4 +42,9 @@ public class Group extends AbstractMaterialEntity {
     public int hashCode() {
         return Objects.hash(name, size);
     }
+
+    @Override
+    public String toString() {
+        return name ;
+    }
 }

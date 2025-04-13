@@ -1,5 +1,7 @@
+/*
 package ru.services;
 
+import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractLesson;
 import ru.entity.*;
 import ru.entity.factories.CellForLessonFactory;
@@ -12,16 +14,14 @@ import java.util.List;
 import java.util.Map;
 
 public class ScheduleService {
+    private ScheduleGrid scheduleGrid;
     private final List<Lesson> logicSchemaStudyDiscipline;
-    private final List<GroupCombination> groupCombinations;
-    private final Educator educator;
     private Iterator<CellForLesson> cellIterator;//чтобы избежать повторного прохода по уже проверенным ячейкам
     private double maxPercentage; // Допустимый процент 4 пар
 
-    public ScheduleService(List<Lesson> logicSchemaStudyDiscipline, List<GroupCombination> groupCombinations, Educator educator, double maxPercentage) {
+    public ScheduleService(ScheduleGrid scheduleGrid, List<Lesson> logicSchemaStudyDiscipline, List<GroupCombination> groupCombinations, Educator educator, double maxPercentage) {
+        this.scheduleGrid = scheduleGrid;
         this.logicSchemaStudyDiscipline = logicSchemaStudyDiscipline;
-        this.groupCombinations = groupCombinations;
-        this.educator = educator;
         this.maxPercentage = maxPercentage; // Инициализируем maxPercentage
     }
 
@@ -49,12 +49,14 @@ public class ScheduleService {
         return hours;
     }
 
-    /**
+    */
+/**
      * Распределяет занятия между группами и преподавателем.
      *
      * @param startDate начальная дата расписания
      * @param endDate   конечная дата расписания
-     */
+     *//*
+
     public void distributeLessons(LocalDate startDate, LocalDate endDate) {
         int lessonIndex = 0; // Индекс для занятий
         // Сбрасываем итератор перед началом нового распределения
@@ -71,10 +73,12 @@ public class ScheduleService {
             Lesson currentLesson = logicSchemaStudyDiscipline.get(lessonIndex);
             CellForLesson currentCell = cellForLessons.get(indexCurrentCell);
 
+*/
 /*            // Проверяем, есть ли уже занятие у преподавателя в этот день
             if (hasEducatorLessonOnDate(currentCell.getDate())) {
                 continue; // Пропускаем день, если у преподавателя уже есть занятие
-            }*/
+            }*//*
+
 
 
             if (currentLesson.getKindOfStudy() == KindOfStudy.LECTURE) {
@@ -87,27 +91,29 @@ public class ScheduleService {
                 }
             }
         }
-        int i=1;
+        int i = 1;
     }
 
-    /**
+    */
+/**
      * Распределяет лекцию для всех групп и преподавателя.
      *
      * @param lectureCell   ячейка для лекции
      * @param currentLesson текущее занятие (лекция)
      * @return true, если лекция успешно распределена
-     */
+     *//*
+
     private boolean distributeLecture(CellForLesson lectureCell, Lesson currentLesson) {
         // Исключения распределения лекции 4ой парой
         if (lectureCell.getTimeSlotPair() == TimeSlotPair.FOURTH) {
             return false;
         }
         // Проверка, свободен ли слот у преподавателя
-        if (isSlotFree(educator.getScheduleGridMap(), lectureCell)) {
+        if (isBusyEntityInCell(educator, lectureCell)) {
             // Проверка, свободен ли слот у всех групп
             boolean allGroupsFree = groupCombinations.stream()
                     .flatMap(combination -> combination.getGroups().stream())
-                    .allMatch(group -> isSlotFree(group.getScheduleGridMap(), lectureCell));
+                    .allMatch(group -> isBusyEntityInCell(group, lectureCell));
 
             if (allGroupsFree) {
 
@@ -164,14 +170,16 @@ public class ScheduleService {
     }
 
 
-    /**
+    */
+/**
      * Проверяет, можно ли назначить занятие на 4 пару для преподавателя и всех групп в комбинации.
      *
      * @param freeCell     ячейка для занятия
      * @param totalLessons общее количество занятий
      * @param combination  комбинация групп
      * @return true, если можно назначить занятие на 4 пару
-     */
+     *//*
+
     private boolean canAssignFourthPair(CellForLesson freeCell, int totalLessons, GroupCombination combination) {
         if (freeCell.getTimeSlotPair() != TimeSlotPair.FOURTH) {
             return true; // Если это не 4 пара, то проверка не требуется
@@ -183,29 +191,35 @@ public class ScheduleService {
         return canAssignToEducator && canAssignToGroup;
     }
 
-    /**
+    */
+/**
      * Проверяет, можно ли назначить занятие на 4 пару для объекта (преподаватель или группа).
      *
      * @param scheduleGrid расписание объекта (преподаватель или группа)
      * @param totalLessons общее количество занятий
      * @return true, если можно назначить занятие на 4 пару
-     */
+     *//*
+
     private boolean canAssignFourthPairLesson(Map<CellForLesson, AbstractLesson> scheduleGrid, int totalLessons) {
         int fourthPairLessons = countFourthPairLessons(scheduleGrid);
         double fourthPairPercentage = (double) fourthPairLessons / totalLessons * 100;
 
+*/
 /*        System.out.println("Текущий процент занятий на 4 пару: " + fourthPairPercentage + "%");
-        System.out.println("Максимальный допустимый процент: " + maxPercentage + "%");*/
+        System.out.println("Максимальный допустимый процент: " + maxPercentage + "%");*//*
+
 
         return fourthPairPercentage < maxPercentage; // Используем поле maxPercentage
     }
 
-    /**
+    */
+/**
      * Подсчитывает количество занятий на 4 пару для объекта (преподаватель или группа).
      *
      * @param scheduleGrid расписание объекта (преподаватель или группа)
      * @return количество занятий на 4 пару
-     */
+     *//*
+
     private int countFourthPairLessons(Map<CellForLesson, AbstractLesson> scheduleGrid) {
         return (int) scheduleGrid.entrySet().stream()
                 .filter(entry -> entry.getKey().getTimeSlotPair() == TimeSlotPair.FOURTH) // Фильтруем по 4 паре
@@ -213,14 +227,16 @@ public class ScheduleService {
                 .count();
     }
 
-    /**
+    */
+/**
      * Находит следующую свободную ячейку для занятия.
      *
      * @param startIndex     начальный индекс для поиска
      * @param cellForLessons список всех ячеек
      * @param combination    комбинация групп
      * @return индекс следующей свободной ячейки или -1, если свободных ячеек нет
-     */
+     *//*
+
     private int findNextFreeCell(int startIndex, List<CellForLesson> cellForLessons, GroupCombination combination) {
         // Инициализируем итератор, если он еще не был создан
         if (cellIterator == null) {
@@ -230,7 +246,7 @@ public class ScheduleService {
         // Используем итератор для поиска следующей свободной ячейки
         while (cellIterator.hasNext()) {
             CellForLesson cell = cellIterator.next();
-            if (isSlotFreeForCombination(combination, cell) && isSlotFree(educator.getScheduleGridMap(), cell)) {
+            if (isSlotFreeForCombination(combination, cell) && isBusyEntityInCell(educator, cell)) {
                 return cellForLessons.indexOf(cell); // Возвращаем индекс свободной ячейки
             }
         }
@@ -238,61 +254,69 @@ public class ScheduleService {
         return -1; // Свободных ячеек нет
     }
 
-    /**
+    */
+/**
      * Проверяет, свободен ли слот для всех групп в комбинации.
      *
      * @param combination комбинация групп
      * @param cell        ячейка
      * @return true, если слот свободен
-     */
+     *//*
+
     private boolean isSlotFreeForCombination(GroupCombination combination, CellForLesson cell) {
         return combination.getGroups().stream()
-                .allMatch(group -> isSlotFree(group.getScheduleGridMap(), cell));
+                .allMatch(group -> isBusyEntityInCell(group, cell));
     }
 
-    /**
+    */
+/**
      * Назначает занятие комбинации групп и преподавателю.
      *
      * @param cell        ячейка для занятия
      * @param lesson      занятие
      * @param combination комбинация групп
-     */
+     *//*
+
     private void assignLessonToCombinationAndEducator(CellForLesson cell, Lesson lesson, GroupCombination combination) {
         combination.getGroups().forEach(group -> group.addLessonScheduleGridMap(cell, lesson));
         educator.addLessonScheduleGridMap(cell, lesson);
     }
 
-    /**
-     * Назначает занятие конкретной группе и преподавателю.
+    */
+/**
+     * Проверяет, занят ли указанный объект (преподаватель, группа или аудитория) в заданной ячейке расписания.
      *
-     * @param cell   ячейка для занятия
-     * @param lesson занятие
-     * @param group  группа
-     */
-    private void assignLessonToGroupAndEducator(CellForLesson cell, Lesson lesson, Group group) {
-        group.addLessonScheduleGridMap(cell, lesson);
-        educator.addLessonScheduleGridMap(cell, lesson);
+     * @param cell   Ячейка расписания для проверки
+     * @param entity Объект для проверки (Educator, Group, GroupCombination или AbstractAuditorium)
+     * @return true, если объект занят в указанной ячейке, иначе false
+     * @throws IllegalArgumentException если передан неподдерживаемый тип объекта
+     *//*
+
+    public <T> boolean isBusyEntityInCell(T entity, CellForLesson cell) {
+        if (entity == null || cell == null) {
+            return false; // или можно выбросить IllegalArgumentException
+        }
+
+        List<AbstractLesson> lessonsInCell = scheduleGrid.getListLessonInCell(cell);
+        if (lessonsInCell == null || lessonsInCell.isEmpty()) {
+            return false;
+        }
+
+        return lessonsInCell.stream().anyMatch(lesson -> {
+            if (entity instanceof Educator) {
+                return lesson.getEducators().contains(entity);
+            } else if (entity instanceof GroupCombination) {
+                return lesson.getGroups().contains(entity);
+            } else if (entity instanceof Group) { // Дополнительная проверка для Group
+                return lesson.getGroups().stream()
+                        .flatMap(comb -> comb.getGroups().stream())
+                        .anyMatch(group -> group.equals(entity));
+            } else if (entity instanceof AbstractAuditorium) {
+                return entity.equals(lesson.getAuditorium());
+            } else {
+                throw new IllegalArgumentException("Неподдерживаемый тип объекта: " + entity.getClass());
+            }
+        });
     }
 
-    /**
-     * Проверяет, свободен ли временной слот в расписании.
-     *
-     * @param scheduleGrid расписание
-     * @param cell         ячейка
-     * @return true, если слот свободен
-     */
-    private boolean isSlotFree(Map<CellForLesson, AbstractLesson> scheduleGrid, CellForLesson cell) {
-        return scheduleGrid.get(cell) == null;
-    }
-
-    /**
-     * Проверяет, есть ли у преподавателя занятие в указанный день.
-     *
-     * @param date дата
-     * @return true, если занятие есть
-     */
-    private boolean hasEducatorLessonOnDate(LocalDate date) {
-        return educator.getScheduleGridMap().keySet().stream()
-                .anyMatch(cell -> cell.getDate().equals(date));
-    }
-}
+}*/

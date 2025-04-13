@@ -2,8 +2,8 @@ package ru.abstracts;
 
 import java.util.Objects;
 
-public class AbstractAuditorium extends AbstractMaterialEntity{
-      private int capacity;
+public class AbstractAuditorium extends AbstractMaterialEntity {
+    private int capacity;
 
     public AbstractAuditorium(int capacity) {
         this.capacity = capacity;

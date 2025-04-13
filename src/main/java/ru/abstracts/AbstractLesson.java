@@ -1,49 +1,41 @@
 package ru.abstracts;
 
-import ru.entity.CellForLesson;
-import ru.entity.Discipline;
-import ru.entity.Educator;
-import ru.entity.Group;
+import ru.entity.*;
 import ru.enums.KindOfStudy;
 
 import java.util.ArrayList;
 import java.util.List;
 
-abstract public class AbstractLesson  {
-    protected CellForLesson cellForLesson;
-    protected KindOfStudy kindOfStudy;
+abstract public class AbstractLesson {
     protected Discipline discipline;
-    protected AbstractAuditorium auditorium;
+    protected KindOfStudy kindOfStudy;
     protected List<Educator> educators = new ArrayList<>();
-    protected List<Group> groups = new ArrayList<>();
+    protected List<GroupCombination> groupCombinations = new ArrayList<>();
+    protected AbstractAuditorium auditorium;
 
-    public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator) {
+    public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator,GroupCombination groupCombinations) {
         super();
         this.discipline = discipline;
         this.kindOfStudy = kindOfStudy;
         this.educators.add(educator);
+        this.groupCombinations.add(groupCombinations);
     }
 
-    public List<Group> getGroups() {
-        return groups;
-    }
-    public void addGroup(Group group) {
-        this.groups.add(group);
-    }
-    public void setGroups(List<Group> groups) {
-        this.groups = groups;
+    public List<GroupCombination> getGroups() {
+        return groupCombinations;
     }
 
-    public void setCellForLesson(CellForLesson cellForLesson) {
-        this.cellForLesson = cellForLesson;
+    public void addGroup(GroupCombination groupCombination) {
+        this.groupCombinations.add(groupCombination);
     }
+
+    public void setGroups(List<GroupCombination> groupCombinations) {
+        this.groupCombinations = groupCombinations;
+    }
+
 
     public void addEducator(Educator educator) {
         this.educators.add(educator);
-    }
-
-    public CellForLesson getCellForLesson() {
-        return cellForLesson;
     }
 
     public Discipline getDiscipline() {
@@ -68,8 +60,9 @@ abstract public class AbstractLesson  {
 
     @Override
     public String toString() {
-        return "kind: " + kindOfStudy +
-                ", dis: " + discipline +
-                ", educ: " + educators;
+        return "dis: " + discipline +
+                ",kind: " + kindOfStudy.getAbbreviationName() +
+                 ", educ: " + educators+
+                ", "+ groupCombinations;
     }
 }

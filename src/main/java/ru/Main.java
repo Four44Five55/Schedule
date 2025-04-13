@@ -1,30 +1,38 @@
 package ru;
 
+import ru.abstracts.AbstractLesson;
 import ru.entity.*;
 import ru.entity.factories.LessonFactory;
 import ru.enums.KindOfStudy;
 import ru.inter.IScheduleGrid;
-import ru.services.ScheduleExporter;
-import ru.services.ScheduleService;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+
+import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
+import static ru.entity.factories.LessonFactory.createLogicStudySchemaDiscipline;
 
 
 public class Main {
-    public static void main(String[] args)  {
+    public static void main(String[] args) {
 
         int idEducator = 0;
         Discipline disciplineMath = new Discipline("МА");
 
 
-        Educator educatorMath = new Educator(++idEducator, "Иванов А.А.");
+        Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
+        Educator educatorMathPractise1 = new Educator(++idEducator, "Практик1 А.А.");
+        Educator educatorMathPractise2 = new Educator(++idEducator, "Практик2 А.А.");
+
         List<Group> groups = List.of
-                (new Group("931", 15, new Auditorium("306-4", 100)),
-                        new Group("933", 15, new Auditorium("205-4", 30)),
-                        new Group("934", 15, new Auditorium("313-4", 30)),
-                        new Group("935-1", 15, new Auditorium("217-4", 30)),
-                        new Group("935-2", 15, new Auditorium("206-4", 39)),
-                        new Group("936", 15, new Auditorium("312-4", 30)));
+                (new Group(1, "931", 15, new Auditorium(1, "306-4", 100)),
+                        new Group(2, "933", 15, new Auditorium(2, "205-4", 30)),
+                        new Group(3, "934", 15, new Auditorium(3, "313-4", 30)),
+                        new Group(4, "935-1", 15, new Auditorium(4, "217-4", 30)),
+                        new Group(5, "935-2", 15, new Auditorium(5, "206-4", 39)),
+                        new Group(6, "936", 15, new Auditorium(6, "312-4", 30)));
 
         List<GroupCombination> groupCombinations = List.of(
                 new GroupCombination(List.of(groups.get(0))), // Группа 931
@@ -33,7 +41,6 @@ public class Main {
                 new GroupCombination(List.of(groups.get(4))), // Группа 935-2
                 new GroupCombination(List.of(groups.get(5)))  // Группа 936
         );
-
 
 
         List<KindOfStudy> logicSchemaMath = List.of(KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
@@ -51,9 +58,19 @@ public class Main {
                 KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK);
 
-        List<Lesson> logicSchemaStudyMath = LessonFactory.createLogicStudySchemaDiscipline(disciplineMath, Lesson.class, logicSchemaMath, educatorMath);
+        Map<GroupCombination, Educator> groupCombinationEducatorMap = new HashMap<>();
+        groupCombinationEducatorMap.put(groupCombinations.get(0), educatorMathLecturer);
+        groupCombinationEducatorMap.put(groupCombinations.get(1), educatorMathLecturer);
+        groupCombinationEducatorMap.put(groupCombinations.get(2), educatorMathPractise1);
+        groupCombinationEducatorMap.put(groupCombinations.get(3), educatorMathPractise1);
+        groupCombinationEducatorMap.put(groupCombinations.get(4), educatorMathPractise1);
 
-        ScheduleService scheduleService = new ScheduleService(logicSchemaStudyMath, groupCombinations, educatorMath,30.0);
+
+        List<Lesson> logicSchemaStudyMath = createLessonsDiscipline(disciplineMath, Lesson.class, logicSchemaMath, groupCombinations, educatorMathLecturer, groupCombinationEducatorMap);
+
+
+
+/*        ScheduleService scheduleService = new ScheduleService(logicSchemaStudyMath, groupCombinations, educatorMathLecturer, 30.0);
         scheduleService.distributeLessons(IScheduleGrid.START_DATE, IScheduleGrid.END_DATE);
 
 
@@ -63,7 +80,7 @@ public class Main {
         }
 
 
-        ScheduleExporter.exportToExcel(educatorMath, educatorMath.getName());
+        ScheduleExporter.exportToExcel(educatorMathLecturer, educatorMathLecturer.getName());*/
 
 
         System.out.println();

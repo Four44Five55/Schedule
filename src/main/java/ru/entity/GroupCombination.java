@@ -13,9 +13,11 @@ public class GroupCombination {
     public GroupCombination(List<Group> groups) {
         this.groups = groups;
     }
+
     public GroupCombination(Group group) {
         this.groups.add(group);
     }
+
     public void add(Group group) {
         this.groups.add(group);
     }
@@ -43,6 +45,12 @@ public class GroupCombination {
     @Override
     public int hashCode() {
         return Objects.hash(groups);
+    }
+
+    @Override
+    public String toString() {
+        return "GroupComb: " +
+                groups;
     }
 }
 

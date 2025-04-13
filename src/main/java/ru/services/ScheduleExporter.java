@@ -1,3 +1,4 @@
+/*
 package ru.services;
 
 import org.apache.poi.ss.usermodel.*;
@@ -15,7 +16,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class ScheduleExporter {
-    /*TO DO изменить добавление данных по аудитории*/
+    */
+/*TO DO изменить добавление данных по аудитории*//*
+
     private static List<String> getListDataLessonForEntity(AEntityWithScheduleGrid entity, AbstractLesson lesson) {
         List<String> listData = new ArrayList<>();
 
@@ -44,12 +47,14 @@ public class ScheduleExporter {
         return listData;
     }
 
-    /**
+    */
+/**
      * Экспортирует данные из AEntityWithScheduleGrid в Excel-файл.
      *
      * @param entity     сущность имеющая scheduleGrid
      * @param entityName имя сущности для названия файла
-     */
+     *//*
+
     public static void exportToExcel(AEntityWithScheduleGrid entity, String entityName) {
         ScheduleGrid scheduleGrid = entity.getScheduleGrid();
 
@@ -105,13 +110,15 @@ public class ScheduleExporter {
         }
     }
 
-    /**
+    */
+/**
      * Сохраняет книгу Excel в файл.
      *
      * @param workbook   книга Excel
      * @param entityName имя сущности для названия файла
      * @throws IOException если произошла ошибка при сохранении
-     */
+     *//*
+
     private static void saveWorkbookToFile(Workbook workbook, String entityName) throws IOException {
         String filePath = Paths.get("src/main/resources", entityName + ".xlsx").toString();
 
@@ -123,7 +130,8 @@ public class ScheduleExporter {
     }
 
 
-    /**
+    */
+/**
      * Получает ячейку по номеру строки и столбца.
      * Если ячейка или строка не существуют, они создаются.
      *
@@ -131,7 +139,8 @@ public class ScheduleExporter {
      * @param row    Номер строки (начинается с 0).
      * @param column Номер столбца (начинается с 0).
      * @return Ячейка.
-     */
+     *//*
+
     public static Cell getCell(Sheet sheet, int row, int column) {
         Row rowIndex = sheet.getRow(row);
         if (rowIndex == null) {
@@ -144,13 +153,15 @@ public class ScheduleExporter {
         return cell;
     }
 
-    /**
+    */
+/**
      * Применяет форматирование даты к ячейке.
      *
      * @param cell     Ячейка, к которой нужно применить форматирование.
      * @param format   Формат даты (например, "dd.MM.yyyy").
      * @param workbook Рабочая книга (Workbook), используемая для создания стиля.
-     */
+     *//*
+
     public static void applyDateFormat(Cell cell, String format, Workbook workbook) {
         // Создаем стиль для ячейки
         CellStyle dateCellStyle = workbook.createCellStyle();
@@ -160,4 +171,4 @@ public class ScheduleExporter {
         // Применяем стиль к ячейке
         cell.setCellStyle(dateCellStyle);
     }
-}
+}*/

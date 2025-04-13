@@ -1,8 +1,8 @@
 package ru.entity;
 
+import ru.abstracts.AbstractLesson;
 import ru.entity.factories.CellForLessonFactory;
 import ru.inter.IScheduleGrid;
-import ru.inter.IScheduleEntry;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -13,7 +13,7 @@ import java.util.Map;
 public class ScheduleGrid implements IScheduleGrid {
     private final LocalDate startDate;
     private final LocalDate endDate;
-    private final Map<CellForLesson, List<IScheduleEntry>> scheduleGridMap = new HashMap<>();
+    private final Map<CellForLesson, List<AbstractLesson>> scheduleGridMap = new HashMap<>();
 
     public ScheduleGrid() {
         this.startDate = START_DATE;
@@ -34,12 +34,14 @@ public class ScheduleGrid implements IScheduleGrid {
             scheduleGridMap.put(cellForLesson, new ArrayList<>());
         }
     }
-
-    public Map<CellForLesson, List<IScheduleEntry>> getScheduleGridMap() {
+    public Map<CellForLesson, List<AbstractLesson>> getScheduleGridMap() {
         return scheduleGridMap;
     }
 
-    public LocalDate getStartDate() {
+    public List<AbstractLesson> getListLessonInCell(CellForLesson cell){
+        return scheduleGridMap.get(cell);
+    }
+      public LocalDate getStartDate() {
         return this.startDate;
     }
 
