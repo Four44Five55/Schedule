@@ -1,18 +1,13 @@
 package ru;
 
-import ru.abstracts.AbstractLesson;
 import ru.entity.*;
-import ru.entity.factories.LessonFactory;
 import ru.enums.KindOfStudy;
-import ru.inter.IScheduleGrid;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
 
 import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
-import static ru.entity.factories.LessonFactory.createLogicStudySchemaDiscipline;
 
 
 public class Main {

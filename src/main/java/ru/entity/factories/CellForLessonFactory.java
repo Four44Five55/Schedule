@@ -10,6 +10,13 @@ import java.util.List;
 import java.util.Objects;
 
 public class CellForLessonFactory {
+    /**
+     * Создание списка CellForLesson в заданный период
+     *
+     * @param startDate начальная дата периода
+     * @param endDate   конечная дата периода
+     * @return список ячеек  CellForLesson
+     */
     public static List<CellForLesson> createCellsForDateRange(LocalDate startDate, LocalDate endDate) {
         Objects.requireNonNull(startDate, "Начальная дата не может быть null");
         Objects.requireNonNull(endDate, "Конечная дата не может быть null");
@@ -22,13 +29,33 @@ public class CellForLessonFactory {
 
         // Перебираем все даты в диапазоне
         for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
-            if (!(date.getDayOfWeek() == DayOfWeek.SUNDAY)){
+            if (!(date.getDayOfWeek() == DayOfWeek.SUNDAY)) {
                 // Для каждой даты создаем объекты CellForLesson для каждого TimeSlotPair
                 for (TimeSlotPair timeSlotPair : TimeSlotPair.values()) {
                     cells.add(new CellForLesson(date, timeSlotPair));
                 }
             }
 
+        }
+        return cells;
+    }
+
+    /**
+     * Создание списка CellForLesson для одной даты
+     *
+     * @param date дата
+     * @return список ячеек  CellForLesson
+     */
+    public static List<CellForLesson> createCellForDate(LocalDate date) {
+        Objects.requireNonNull(date, "Дата не может быть null");
+
+        List<CellForLesson> cells = new ArrayList<>();
+
+        if (!(date.getDayOfWeek() == DayOfWeek.SUNDAY)) {
+            // Для каждой даты создаем объекты CellForLesson для каждого TimeSlotPair
+            for (TimeSlotPair timeSlotPair : TimeSlotPair.values()) {
+                cells.add(new CellForLesson(date, timeSlotPair));
+            }
         }
         return cells;
     }
