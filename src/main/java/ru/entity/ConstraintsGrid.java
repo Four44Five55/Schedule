@@ -9,15 +9,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-//TODO разделить на два класса приоритеты и ограничения
-public class PrioritiesConstraintsGrid extends AbstractGrid {
+public class ConstraintsGrid extends AbstractGrid {
     private final Map<CellForLesson, KindOfConstraints> constraintsGridMap = new HashMap<>();
 
-    public PrioritiesConstraintsGrid() {
+    public ConstraintsGrid() {
         super();
     }
 
-    public PrioritiesConstraintsGrid(LocalDate startDate, LocalDate endDate) {
+    public ConstraintsGrid(LocalDate startDate, LocalDate endDate) {
         super(startDate, endDate);
     }
 
@@ -46,6 +45,16 @@ public class PrioritiesConstraintsGrid extends AbstractGrid {
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
         }
+    }
+
+    /**
+     * Проверяет на пустоту ячейку
+     *
+     * @param cell проверяемая ячейка
+     * @return boolean
+     */
+    public boolean isFreeCell(CellForLesson cell) {
+        return !constraintsGridMap.containsKey(cell);
     }
 
 }

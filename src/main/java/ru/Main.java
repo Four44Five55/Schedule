@@ -18,7 +18,9 @@ public class Main {
 
 
         Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
+        educatorMathLecturer.addDefaultPriority();
         Educator educatorMathPractise1 = new Educator(++idEducator, "Практик1 А.А.");
+        educatorMathPractise1.addDefaultPriority();
         Educator educatorMathPractise2 = new Educator(++idEducator, "Практик2 А.А.");
 
         List<Group> groups = List.of
