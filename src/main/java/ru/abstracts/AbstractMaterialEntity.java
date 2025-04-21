@@ -1,10 +1,16 @@
 package ru.abstracts;
 
+import ru.entity.CellForLesson;
+import ru.entity.ConstraintsGrid;
+import ru.enums.KindOfConstraints;
 import ru.inter.IMaterialEntity;
+
+import java.time.LocalDate;
 
 public class AbstractMaterialEntity implements IMaterialEntity {
     protected int id;
     protected String name;
+    protected ConstraintsGrid constraintsGrid = new ConstraintsGrid();
 
     public AbstractMaterialEntity() {
     }
@@ -12,6 +18,27 @@ public class AbstractMaterialEntity implements IMaterialEntity {
     public AbstractMaterialEntity(int id, String name) {
         this.id = id;
         this.name = name;
+    }
+
+    /**
+     * Проверяет нет ли ограничений на указанную ячейку
+     *
+     * @param cell временной слот для занятия
+     * @return boolean
+     */
+    public boolean isFree(CellForLesson cell) {
+        return constraintsGrid.isFreeCell(cell);
+    }
+
+    /**
+     * Добавляет ограничения в карту с ограничениями в указанный диапазон
+     *
+     * @param startDate  начальная дата
+     * @param endDate    последняя дата
+     * @param constraint вид ограничения
+     */
+    public void addConstraint(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
+        constraintsGrid.fillConstraintInRangeForGrid(startDate, endDate, constraint);
     }
 
     public int getId() {

@@ -27,7 +27,7 @@ public class ConstraintsGrid extends AbstractGrid {
      * @param endDate    конечная дата
      * @param constraint тип ограничения
      */
-    private void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
+    public  void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
         List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
@@ -41,7 +41,7 @@ public class ConstraintsGrid extends AbstractGrid {
      * @param constraint тип ограничения
      */
     private void fillConstraintInDateForGrid(LocalDate date, KindOfConstraints constraint) {
-        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellForDate(date);
+        List<CellForLesson> cellForLessons = CellForLessonFactory.getCellsForDate(date);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
         }

@@ -1,11 +1,12 @@
 package ru.entity;
 
 import ru.abstracts.AbstractPerson;
+import ru.enums.KindOfConstraints;
+
+import java.time.LocalDate;
 
 public class Educator extends AbstractPerson {
-    private Priority priority;
-    private ConstraintsGrid constraintsGrid;
-
+    private final Priority priority=new Priority();
     public Educator() {
     }
 
@@ -13,13 +14,10 @@ public class Educator extends AbstractPerson {
         super(id, name);
     }
 
-    public boolean isFree(CellForLesson cell) {
-        return constraintsGrid.isFreeCell(cell);
-    }
-
     public void addDefaultPriority() {
         priority.addDefaultDays();
         priority.addDefaultTimeSlots();
     }
+
 }
 

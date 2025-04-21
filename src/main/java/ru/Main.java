@@ -1,7 +1,10 @@
 package ru;
 
 import ru.entity.*;
+import ru.enums.KindOfConstraints;
 import ru.enums.KindOfStudy;
+import ru.services.DateUtils;
+import ru.services.DistributionDiscipline;
 
 import java.util.HashMap;
 import java.util.List;
@@ -19,8 +22,10 @@ public class Main {
 
         Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
         educatorMathLecturer.addDefaultPriority();
+        educatorMathLecturer.addConstraint(DateUtils.parseDateFlexible("2025-02-06"), DateUtils.parseDateFlexible("2025-02-15"), KindOfConstraints.BUSINESS_TRIP);
         Educator educatorMathPractise1 = new Educator(++idEducator, "Практик1 А.А.");
         educatorMathPractise1.addDefaultPriority();
+        educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-02-20"), DateUtils.parseDateFlexible("2025-03-10"), KindOfConstraints.BUSINESS_TRIP);
         Educator educatorMathPractise2 = new Educator(++idEducator, "Практик2 А.А.");
 
         List<Group> groups = List.of
@@ -65,8 +70,9 @@ public class Main {
 
         List<Lesson> logicSchemaStudyMath = createLessonsDiscipline(disciplineMath, Lesson.class, logicSchemaMath, groupCombinations, educatorMathLecturer, groupCombinationEducatorMap);
 
+        ScheduleGrid scheduleGrid = new ScheduleGrid();
 
-
+        DistributionDiscipline distributionDiscipline=new DistributionDiscipline(scheduleGrid,logicSchemaStudyMath);
 /*        ScheduleService scheduleService = new ScheduleService(logicSchemaStudyMath, groupCombinations, educatorMathLecturer, 30.0);
         scheduleService.distributeLessons(IScheduleGrid.START_DATE, IScheduleGrid.END_DATE);
 

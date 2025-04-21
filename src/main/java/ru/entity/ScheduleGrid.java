@@ -2,6 +2,7 @@ package ru.entity;
 
 import ru.abstracts.AbstractGrid;
 import ru.abstracts.AbstractLesson;
+import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.factories.CellForLessonFactory;
 import ru.inter.IGrid;
 
@@ -39,7 +40,32 @@ public class ScheduleGrid extends AbstractGrid {
     }
 
     public List<AbstractLesson> getListLessonInCell(CellForLesson cell) {
-        return scheduleGridMap.get(cell);
+        return scheduleGridMap.getOrDefault(cell, new ArrayList<>());
     }
+
+    /**
+     * Метод для добавления занятия в ячейку
+     *
+     * @param cell   целевая ячейка для добавления занятия
+     * @param lesson занятие
+     * @return boolean возвращает true или исключение в случае отсутсвия ячейки
+     */
+    public boolean addLessonToCell(CellForLesson cell, AbstractLesson lesson) {
+        if (!scheduleGridMap.containsKey(cell)) {
+            return false;  // или throw new IllegalArgumentException("Ячейка не существует");
+        }
+        scheduleGridMap.get(cell).add(lesson);
+        return true;
+    }
+
+    /**
+     * Проверка на занятость сущности в мапе
+     *
+     * @param entity return boolean
+     */
+    public boolean isFreeEntity(AbstractMaterialEntity entity) {
+
+    }
+
 
 }

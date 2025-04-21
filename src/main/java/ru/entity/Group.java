@@ -7,7 +7,7 @@ import ru.abstracts.AbstractMaterialEntity;
 import java.util.Objects;
 
 public class Group extends AbstractMaterialEntity {
-    private ConstraintsGrid constraintsGrid;
+
     private int size;
     private AbstractAuditorium auditorium;
 
@@ -30,9 +30,6 @@ public class Group extends AbstractMaterialEntity {
         this.size = size;
     }
 
-    public boolean isFree(CellForLesson cell) {
-        return constraintsGrid.isFreeCell(cell);
-    }
 
     @Override
     public boolean equals(Object o) {
