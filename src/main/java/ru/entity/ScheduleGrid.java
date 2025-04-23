@@ -1,5 +1,6 @@
 package ru.entity;
 
+import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractGrid;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
@@ -7,10 +8,8 @@ import ru.entity.factories.CellForLessonFactory;
 import ru.inter.IGrid;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class ScheduleGrid extends AbstractGrid {
     private final Map<CellForLesson, List<AbstractLesson>> scheduleGridMap = new HashMap<>();
@@ -48,7 +47,7 @@ public class ScheduleGrid extends AbstractGrid {
      *
      * @param cell   целевая ячейка для добавления занятия
      * @param lesson занятие
-     * @return boolean возвращает true или исключение в случае отсутсвия ячейки
+     * @return boolean возвращает true или исключение в случае отсутствия ячейки
      */
     public boolean addLessonToCell(CellForLesson cell, AbstractLesson lesson) {
         if (!scheduleGridMap.containsKey(cell)) {
@@ -59,12 +58,22 @@ public class ScheduleGrid extends AbstractGrid {
     }
 
     /**
-     * Проверка на занятость сущности в мапе
+     * Получает список уроков в указанной ячейке, где используется заданная сущность
      *
-     * @param entity return boolean
+     * @param entity проверяемая сущность (аудитория, преподаватель, группа)
+     * @param cell   целевая ячейка расписания
+     * @return неизменяемый список уроков, использующих сущность. Пустой список, если совпадений нет.
+     * @throws NullPointerException если entity или cell == null
      */
-    public boolean isFreeEntity(AbstractMaterialEntity entity) {
+    public List<AbstractLesson> getLessonsUsingEntity(AbstractMaterialEntity entity, CellForLesson cell) {
+        Objects.requireNonNull(entity, "Сущность не может быть null");
+        Objects.requireNonNull(cell, "Ячейка не может быть null");
 
+        List<AbstractLesson> lessons = scheduleGridMap.getOrDefault(cell, Collections.emptyList());
+
+        return lessons.stream()
+                .filter(lesson -> lesson.isEntityUsed(entity))
+                .collect(Collectors.toUnmodifiableList());
     }
 
 

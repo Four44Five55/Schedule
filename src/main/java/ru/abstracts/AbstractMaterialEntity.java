@@ -2,6 +2,7 @@ package ru.abstracts;
 
 import ru.entity.CellForLesson;
 import ru.entity.ConstraintsGrid;
+import ru.entity.ScheduleGrid;
 import ru.enums.KindOfConstraints;
 import ru.inter.IMaterialEntity;
 
@@ -26,8 +27,12 @@ public class AbstractMaterialEntity implements IMaterialEntity {
      * @param cell временной слот для занятия
      * @return boolean
      */
-    public boolean isFree(CellForLesson cell) {
+    public boolean isFreeConstraintsGrid(CellForLesson cell) {
         return constraintsGrid.isFreeCell(cell);
+    }
+
+    public boolean isFree(ScheduleGrid scheduleGrid,CellForLesson cell){
+        return this.isFreeConstraintsGrid(cell)&&scheduleGrid.getLessonsUsingEntity(this,cell).isEmpty();
     }
 
     /**

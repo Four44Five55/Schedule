@@ -73,6 +73,7 @@ public class Main {
         ScheduleGrid scheduleGrid = new ScheduleGrid();
 
         DistributionDiscipline distributionDiscipline=new DistributionDiscipline(scheduleGrid,logicSchemaStudyMath);
+        distributionDiscipline.distributeLessons();
 /*        ScheduleService scheduleService = new ScheduleService(logicSchemaStudyMath, groupCombinations, educatorMathLecturer, 30.0);
         scheduleService.distributeLessons(IScheduleGrid.START_DATE, IScheduleGrid.END_DATE);
 

@@ -135,4 +135,17 @@ public class CellForLessonFactory {
                 )
                 .orElse(Collections.emptyList());       // Если даты нет - пустой список
     }
+
+    /**
+     * Возвращает все ячейки из кеша, отсортированные по дате и временному слоту.
+     */
+    public static List<CellForLesson> getAllOrderedCells() {
+        return DATE_SLOT_CACHE.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()) // Сортировка по дате
+                .flatMap(entry -> entry.getValue().entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey()) // Сортировка по TimeSlotPair
+                        .map(Map.Entry::getValue)
+                )
+                .collect(Collectors.toList());
+    }
 }
