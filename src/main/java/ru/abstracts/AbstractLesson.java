@@ -5,7 +5,9 @@ import ru.enums.KindOfStudy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 abstract public class AbstractLesson {
     protected Discipline discipline;
@@ -14,6 +16,16 @@ abstract public class AbstractLesson {
     protected List<GroupCombination> groupCombinations = new ArrayList<>();
     protected List<AbstractAuditorium> auditoriums = new ArrayList<>();
 
+    public AbstractLesson() {
+    }
+
+    public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator, List<GroupCombination> groupCombinations) {
+        super();
+        this.discipline = discipline;
+        this.kindOfStudy = kindOfStudy;
+        this.educators.add(educator);
+        this.groupCombinations.addAll(groupCombinations);
+    }
     public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator, GroupCombination groupCombinations) {
         super();
         this.discipline = discipline;
@@ -29,7 +41,7 @@ abstract public class AbstractLesson {
         for (GroupCombination groupCombination : groupCombinations) {
             groups.addAll(groupCombination.getGroups());
         }
-         Optional.of(groups).ifPresent(entities::addAll);
+        Optional.of(groups).ifPresent(entities::addAll);
         Optional.ofNullable(auditoriums).ifPresent(entities::addAll);
 
         return entities;
@@ -62,8 +74,17 @@ abstract public class AbstractLesson {
         return false;
     }
 
-    public List<GroupCombination> getGroups() {
+    public List<GroupCombination> getGroupsCombinations() {
         return groupCombinations;
+    }
+
+    public List<Group> getGroups() {
+        return groupCombinations.stream()         // Преобразуем список GroupCombination в поток
+                .filter(Objects::nonNull)        // Игнорируем null-комбинации
+                .map(GroupCombination::getGroups) // Преобразуем каждую комбинацию в список групп
+                .filter(Objects::nonNull)        // Игнорируем комбинации с null-списком групп
+                .flatMap(List::stream)           // Объединяем все группы в один поток
+                .collect(Collectors.toList());   // Собираем в список
     }
 
     public void addGroup(GroupCombination groupCombination) {

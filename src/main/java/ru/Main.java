@@ -5,6 +5,7 @@ import ru.enums.KindOfConstraints;
 import ru.enums.KindOfStudy;
 import ru.services.DateUtils;
 import ru.services.DistributionDiscipline;
+import ru.services.ScheduleExporter;
 
 import java.util.HashMap;
 import java.util.List;
@@ -74,18 +75,17 @@ public class Main {
 
         DistributionDiscipline distributionDiscipline=new DistributionDiscipline(scheduleGrid,logicSchemaStudyMath);
         distributionDiscipline.distributeLessons();
-/*        ScheduleService scheduleService = new ScheduleService(logicSchemaStudyMath, groupCombinations, educatorMathLecturer, 30.0);
-        scheduleService.distributeLessons(IScheduleGrid.START_DATE, IScheduleGrid.END_DATE);
+
 
 
         //Экспорт в Excel
         for (Group group : groups) {
-            ScheduleExporter.exportToExcel(group, group.getName());
+            ScheduleExporter.exportToExcel(scheduleGrid,group, group.getName());
         }
 
 
-        ScheduleExporter.exportToExcel(educatorMathLecturer, educatorMathLecturer.getName());*/
-
+        ScheduleExporter.exportToExcel(scheduleGrid,educatorMathLecturer, educatorMathLecturer.getName());
+        ScheduleExporter.exportToExcel(scheduleGrid,educatorMathPractise1, educatorMathPractise1.getName());
 
         System.out.println();
 /*        List<String> disciplineNames = List.of("Математика", "Физика", "Программирование");

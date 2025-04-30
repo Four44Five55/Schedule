@@ -58,11 +58,11 @@ public class CellForLessonFactory {
      * @param slot временной слот
      * @return Optional с ячейкой, если она существует
      */
-    public static Optional<CellForLesson> getCellByDateAndSlot(LocalDate date, TimeSlotPair slot) {
+    public static CellForLesson getCellByDateAndSlot(LocalDate date, TimeSlotPair slot) {
         Objects.requireNonNull(date, "Дата не может быть null");
         Objects.requireNonNull(slot, "Временной слот не может быть null");
 
-        return Optional.ofNullable(DATE_SLOT_CACHE.getOrDefault(date, Collections.emptyMap()).get(slot));
+        return DATE_SLOT_CACHE.getOrDefault(date, Collections.emptyMap()).get(slot);
     }
 
     /**

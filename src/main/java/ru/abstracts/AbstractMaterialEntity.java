@@ -31,8 +31,21 @@ public class AbstractMaterialEntity implements IMaterialEntity {
         return constraintsGrid.isFreeCell(cell);
     }
 
-    public boolean isFree(ScheduleGrid scheduleGrid,CellForLesson cell){
-        return this.isFreeConstraintsGrid(cell)&&scheduleGrid.getLessonsUsingEntity(this,cell).isEmpty();
+    public boolean isFree(ScheduleGrid scheduleGrid, CellForLesson cell) {
+        return this.isFreeConstraintsGrid(cell) && scheduleGrid.getLessonsUsingEntity(this, cell).isEmpty();
+    }
+
+    /**
+     * Проверяет наличие ограничения в указанной ячейке
+     *
+     * @return boolean
+     */
+    public boolean hasConstraint(CellForLesson cell) {
+        return constraintsGrid.getConstraintsGridMap().containsKey(cell);
+    }
+
+    public KindOfConstraints getConstraint(CellForLesson cell) {
+        return constraintsGrid.getConstraint(cell);
     }
 
     /**

@@ -1,14 +1,16 @@
-/*
 package ru.services;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import ru.abstracts.AbstractLesson;
+import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.*;
+import ru.entity.factories.CellForLessonFactory;
 import ru.enums.TimeSlotPair;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Paths;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -16,10 +18,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class ScheduleExporter {
-    */
-/*TO DO изменить добавление данных по аудитории*//*
+//TODO изменить добавление данных по аудитории
 
-    private static List<String> getListDataLessonForEntity(AEntityWithScheduleGrid entity, AbstractLesson lesson) {
+    private static List<String> getListDataLessonForEntity(AbstractMaterialEntity entity, AbstractLesson lesson) {
         List<String> listData = new ArrayList<>();
 
         if (entity instanceof Educator) {
@@ -47,22 +48,31 @@ public class ScheduleExporter {
         return listData;
     }
 
-    */
-/**
+    /**
      * Экспортирует данные из AEntityWithScheduleGrid в Excel-файл.
      *
      * @param entity     сущность имеющая scheduleGrid
      * @param entityName имя сущности для названия файла
-     *//*
+     */
 
-    public static void exportToExcel(AEntityWithScheduleGrid entity, String entityName) {
-        ScheduleGrid scheduleGrid = entity.getScheduleGrid();
+    public static void exportToExcel(ScheduleGrid scheduleGrid, AbstractMaterialEntity entity, String entityName) {
 
-        // Создаем новую книгу Excel
-        try (Workbook workbook = new XSSFWorkbook()) {
-            Sheet sheet = workbook.createSheet("Расписание");
-            int startRow = 6;
-            int startColumn = 5;
+        // Загрузка шаблона из ресурсов
+        try (InputStream is = ScheduleExporter.class.getClassLoader().getResourceAsStream("templates/template.xlsx")) {
+            if (is == null) {
+                throw new IOException("Шаблон не найден в ресурсах!");
+            }
+
+            // Создание книги из шаблона
+            Workbook workbook = new XSSFWorkbook(is);
+            Sheet sheet = workbook.getSheet("Расписание"); // Используем существующий лист
+
+            if (sheet == null) {
+                throw new IOException("Лист 'Расписание' не найден в шаблоне!");
+            }
+
+            int startRow = 8;
+            int startColumn = 3;
 
             int row = startRow;
             int column = startColumn;
@@ -74,7 +84,14 @@ public class ScheduleExporter {
                     applyDateFormat(getCell(sheet, row, column), "dd", workbook);
                     row++;
                     for (TimeSlotPair timeSlotPair : TimeSlotPair.values()) {
-                        AbstractLesson lesson = scheduleGrid.getScheduleGridMap().get(new CellForLesson(checkedDate, timeSlotPair));
+
+                        CellForLesson cell = CellForLessonFactory.getCellByDateAndSlot(checkedDate, timeSlotPair);
+                        List<AbstractLesson> lessonList = scheduleGrid.getLessonsUsingEntity(entity, cell);
+                        AbstractLesson lesson = null;
+                        if (!lessonList.isEmpty()) {
+                            lesson = lessonList.getFirst();
+                        }
+
 
                         if (!(lesson == null)) {
                             List<String> listDataLesson = getListDataLessonForEntity(entity, lesson);
@@ -84,6 +101,11 @@ public class ScheduleExporter {
                             row++;
                             getCell(sheet, row, column).setCellValue(listDataLesson.get(2));//запись в 3 строку
                             row++;
+                        } else if (entity.hasConstraint(cell)) {
+                            row++;
+                            getCell(sheet, row, column).
+                                    setCellValue(entity.getConstraint(cell).getAbbreviationName());//запись аббревиатуры ограничения
+                            row += 2;
                         } else {
                             row += 3;
                         }
@@ -110,14 +132,13 @@ public class ScheduleExporter {
         }
     }
 
-    */
-/**
+    /**
      * Сохраняет книгу Excel в файл.
      *
      * @param workbook   книга Excel
      * @param entityName имя сущности для названия файла
      * @throws IOException если произошла ошибка при сохранении
-     *//*
+     */
 
     private static void saveWorkbookToFile(Workbook workbook, String entityName) throws IOException {
         String filePath = Paths.get("src/main/resources", entityName + ".xlsx").toString();
@@ -130,8 +151,7 @@ public class ScheduleExporter {
     }
 
 
-    */
-/**
+    /**
      * Получает ячейку по номеру строки и столбца.
      * Если ячейка или строка не существуют, они создаются.
      *
@@ -139,7 +159,7 @@ public class ScheduleExporter {
      * @param row    Номер строки (начинается с 0).
      * @param column Номер столбца (начинается с 0).
      * @return Ячейка.
-     *//*
+     */
 
     public static Cell getCell(Sheet sheet, int row, int column) {
         Row rowIndex = sheet.getRow(row);
@@ -153,14 +173,13 @@ public class ScheduleExporter {
         return cell;
     }
 
-    */
-/**
+    /**
      * Применяет форматирование даты к ячейке.
      *
      * @param cell     Ячейка, к которой нужно применить форматирование.
      * @param format   Формат даты (например, "dd.MM.yyyy").
      * @param workbook Рабочая книга (Workbook), используемая для создания стиля.
-     *//*
+     */
 
     public static void applyDateFormat(Cell cell, String format, Workbook workbook) {
         // Создаем стиль для ячейки
@@ -171,4 +190,4 @@ public class ScheduleExporter {
         // Применяем стиль к ячейке
         cell.setCellStyle(dateCellStyle);
     }
-}*/
+}

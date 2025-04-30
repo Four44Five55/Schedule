@@ -1,7 +1,5 @@
 package ru.services;
 
-import ru.abstracts.AbstractLesson;
-import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
 import ru.entity.ScheduleGrid;
@@ -32,12 +30,12 @@ public class DistributionDiscipline {
             while (cellIterator.hasNext()) {
                 CellForLesson cell = cellIterator.next();
 
-                // Проверяем занятость сущностей урока в текущей ячейке
+                // Проверяем занятость сущностей занятие в текущей ячейке
                 boolean allFree = lesson.getAllMaterialEntity().stream()
                         .allMatch(entity -> entity.isFree(scheduleGrid, cell));
 
                 if (allFree) {
-                    // Назначаем урок в ячейку
+                    // Назначаем занятие в ячейку
                     scheduleGrid.addLessonToCell(cell, lesson);
 
                     // Удаляем ячейку из доступных, если она больше не может использоваться

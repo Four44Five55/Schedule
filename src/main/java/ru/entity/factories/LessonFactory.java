@@ -27,9 +27,9 @@ public class LessonFactory {
         try {
             for (KindOfStudy kindOfStudy : logicSchema) {
                 if (kindOfStudy == KindOfStudy.LECTURE) {
-                    Constructor<T> constructor = lessonClass.getDeclaredConstructor(Discipline.class, KindOfStudy.class, Educator.class, GroupCombination.class);
-                    GroupCombination allGroupsCombination = groupCombinationEducatorMap.keySet().iterator().next();
-                    T lesson = constructor.newInstance(discipline, kindOfStudy, lecturer, allGroupsCombination);
+                    Constructor<T> constructor = lessonClass.getDeclaredConstructor(Discipline.class, KindOfStudy.class, Educator.class, List.class);
+                    //GroupCombination allGroupsCombination = groupCombinations.keySet().iterator().next();
+                    T lesson = constructor.newInstance(discipline, kindOfStudy, lecturer, groupCombinations);
                     logicStudySchemaDiscipline.add(lesson);
                 } else {
                     // Для других видов занятий создаем занятие для каждой комбинации групп

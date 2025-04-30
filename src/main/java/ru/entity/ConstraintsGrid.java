@@ -21,13 +21,29 @@ public class ConstraintsGrid extends AbstractGrid {
     }
 
     /**
+     * Получает карту с ограничениями
+     * @return Map<CellForLesson, KindOfConstraints>
+     */
+    public Map<CellForLesson, KindOfConstraints> getConstraintsGridMap() {
+        return constraintsGridMap;
+    }
+    /**
+     * Получает карту ограничение
+     * @param cell ячейка
+     * @return KindOfConstraints
+     */
+    public KindOfConstraints getConstraint(CellForLesson cell) {
+        return constraintsGridMap.get(cell);
+    }
+
+    /**
      * Заполняет сетку ограничениями
      *
      * @param startDate  начальная дата
      * @param endDate    конечная дата
      * @param constraint тип ограничения
      */
-    public  void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
+    public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
         List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
