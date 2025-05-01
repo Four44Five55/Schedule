@@ -19,5 +19,6 @@ public class Educator extends AbstractPerson {
         priority.addDefaultTimeSlots();
     }
 
+
 }
 

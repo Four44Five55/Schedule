@@ -1,21 +1,33 @@
 package ru.services;
 
+import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
+import ru.entity.Educator;
 import ru.entity.Lesson;
 import ru.entity.ScheduleGrid;
 import ru.entity.factories.CellForLessonFactory;
 
-import java.util.Iterator;
-import java.util.List;
-import java.util.ListIterator;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class DistributionDiscipline {
     ScheduleGrid scheduleGrid;
     List<Lesson> lessons;
+    Map<Educator, List<AbstractLesson>> lessonsMapEducator = new HashMap<>();
 
     public DistributionDiscipline(ScheduleGrid scheduleGrid, List<Lesson> lessons) {
         this.scheduleGrid = scheduleGrid;
         this.lessons = lessons;
+
+    }
+
+    private void FillMapEducatorLessons() {
+        List<Educator> uniqueEducators= lessons.stream() //создание потока из списка
+                .map(AbstractLesson::getEducators)// преобразование каждого занятие в список преподов
+                .flatMap(List::stream) //объединение списков преподавателей кажд занятия в поток
+                .distinct() //удаление дубликатов
+                .toList();
     }
 
     public void distributeLessons() {
@@ -45,7 +57,5 @@ public class DistributionDiscipline {
                 }
             }
         }
-
-
     }
 }

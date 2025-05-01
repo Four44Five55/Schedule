@@ -85,7 +85,13 @@ public class ScheduleExporter {
                     row++;
                     for (TimeSlotPair timeSlotPair : TimeSlotPair.values()) {
 
+                        if (!ScheduleDaysSlotsConfig.isSlotAvailable(checkedDate, timeSlotPair)) {
+                            row += 3;
+                            continue; // Пропускаем запрещённые слоты
+                        }
+
                         CellForLesson cell = CellForLessonFactory.getCellByDateAndSlot(checkedDate, timeSlotPair);
+
                         List<AbstractLesson> lessonList = scheduleGrid.getLessonsUsingEntity(entity, cell);
                         AbstractLesson lesson = null;
                         if (!lessonList.isEmpty()) {

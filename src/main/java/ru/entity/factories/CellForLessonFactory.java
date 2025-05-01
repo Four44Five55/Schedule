@@ -2,6 +2,7 @@ package ru.entity.factories;
 
 import ru.entity.CellForLesson;
 import ru.enums.TimeSlotPair;
+import ru.services.ScheduleDaysSlotsConfig;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -32,13 +33,13 @@ public class CellForLessonFactory {
         List<CellForLesson> generatedCells = new ArrayList<>();
 
         for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
-            // Пропускаем воскресенья
-            if (date.getDayOfWeek() == DayOfWeek.SUNDAY) {
-                continue;
-            }
-
-            // Создаем ячейки для всех временных слотов
+            // Создаем ячейки для временных слотов
             for (TimeSlotPair slot : TimeSlotPair.values()) {
+                // Проверка на доступность сгенерированного слота
+                if (!ScheduleDaysSlotsConfig.isSlotAvailable(date, slot)) {
+                    continue; // Пропускаем запрещённые слоты
+                }
+
                 CellForLesson cell = new CellForLesson(date, slot);
 
                 // Добавляем в кеш

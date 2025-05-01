@@ -24,4 +24,12 @@ public enum DayOfWeek {
     public String getAbbreviation() {
         return abbreviation;
     }
+
+    public java.time.DayOfWeek toJavaTimeDayOfWeek() {
+        return java.time.DayOfWeek.valueOf(this.name());
+    }
+
+    public static DayOfWeek fromJavaTimeDayOfWeek(java.time.DayOfWeek day) {
+        return DayOfWeek.valueOf(day.name());
+    }
 }
