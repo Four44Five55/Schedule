@@ -1,11 +1,9 @@
 package ru.entity;
 
-import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractGrid;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.factories.CellForLessonFactory;
-import ru.inter.IGrid;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -55,6 +53,19 @@ public class ScheduleGrid extends AbstractGrid {
         }
         scheduleGridMap.get(cell).add(lesson);
         return true;
+    }
+
+    /**
+     * Подсчитывает количество уникальных дат в scheduleGridMap (по ключам CellForLesson).
+     *
+     * @return количество уникальных дат (0 если мапа пуста)
+     */
+    public long getAmountDays() {
+        return scheduleGridMap.keySet().stream()
+                .map(CellForLesson::getDate)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
     }
 
     /**

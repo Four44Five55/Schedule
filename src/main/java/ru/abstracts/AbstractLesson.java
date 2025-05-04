@@ -25,6 +25,7 @@ abstract public class AbstractLesson {
         this.kindOfStudy = kindOfStudy;
         this.educators.add(educator);
         this.groupCombinations.addAll(groupCombinations);
+        this.auditoriums.add(groupCombinations.getAuditorium());
     }
     public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator, GroupCombination groupCombinations) {
         super();
@@ -32,6 +33,7 @@ abstract public class AbstractLesson {
         this.kindOfStudy = kindOfStudy;
         this.educators.add(educator);
         this.groupCombinations.add(groupCombinations);
+        this.auditoriums.add(groupCombinations.getAuditorium());
     }
 
     public List<AbstractMaterialEntity> getAllMaterialEntity() {

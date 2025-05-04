@@ -30,6 +30,9 @@ public class Group extends AbstractMaterialEntity {
         this.size = size;
     }
 
+    public AbstractAuditorium getAuditorium() {
+        return auditorium;
+    }
 
     @Override
     public boolean equals(Object o) {

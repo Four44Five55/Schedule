@@ -19,73 +19,161 @@ public class Main {
 
         int idEducator = 0;
         Discipline disciplineMath = new Discipline("МА");
-
+        Discipline disciplineAG = new Discipline("АГ");
 
         Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
         educatorMathLecturer.addDefaultPriority();
-        educatorMathLecturer.addConstraint(DateUtils.parseDateFlexible("2025-02-06"), DateUtils.parseDateFlexible("2025-02-15"), KindOfConstraints.BUSINESS_TRIP);
+        educatorMathLecturer.addConstraint(DateUtils.parseDateFlexible("2025-09-06"), DateUtils.parseDateFlexible("2025-09-15"), KindOfConstraints.BUSINESS_TRIP);
         Educator educatorMathPractise1 = new Educator(++idEducator, "Практик1 А.А.");
         educatorMathPractise1.addDefaultPriority();
-        educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-02-20"), DateUtils.parseDateFlexible("2025-03-10"), KindOfConstraints.BUSINESS_TRIP);
-        Educator educatorMathPractise2 = new Educator(++idEducator, "Практик2 А.А.");
+        educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-27"), KindOfConstraints.BUSINESS_TRIP);
+
+        Educator educatorAG = new Educator(++idEducator, "Аналитик Г.А.");
+        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-30"), KindOfConstraints.VACATION);
+        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-12-29"), DateUtils.parseDateFlexible("2026-01-12"), KindOfConstraints.VACATION);
+
 
         List<Group> groups = List.of
-                (new Group(1, "931", 15, new Auditorium(1, "306-4", 100)),
-                        new Group(2, "933", 15, new Auditorium(2, "205-4", 30)),
-                        new Group(3, "934", 15, new Auditorium(3, "313-4", 30)),
-                        new Group(4, "935-1", 15, new Auditorium(4, "217-4", 30)),
-                        new Group(5, "935-2", 15, new Auditorium(5, "206-4", 39)),
-                        new Group(6, "936", 15, new Auditorium(6, "312-4", 30)));
+                (new Group(1, "31", 10, new Auditorium(1, "306-4", 110)),
+                        new Group(2, "33", 13, new Auditorium(2, "205-4", 30)),
+                        new Group(3, "34", 14, new Auditorium(3, "313-4", 30)),
+                        new Group(4, "35-1", 25, new Auditorium(4, "217-4", 30)),
+                        new Group(5, "35-2", 24, new Auditorium(5, "206-4", 39)),
+                        new Group(6, "36", 18, new Auditorium(6, "312-4", 30)));
 
         List<GroupCombination> groupCombinations = List.of(
-                new GroupCombination(List.of(groups.get(0))), // Группа 931
-                new GroupCombination(List.of(groups.get(1), groups.get(2))), // Группы 933 и 934
-                new GroupCombination(List.of(groups.get(3))), // Группа 935-1
-                new GroupCombination(List.of(groups.get(4))), // Группа 935-2
-                new GroupCombination(List.of(groups.get(5)))  // Группа 936
+                new GroupCombination(List.of(groups.get(0))), // Группа 31
+                new GroupCombination(List.of(groups.get(1), groups.get(2))), // Группы 33 и 34
+                new GroupCombination(List.of(groups.get(3))), // Группа 35-1
+                new GroupCombination(List.of(groups.get(4))), // Группа 35-2
+                new GroupCombination(List.of(groups.get(5)))  // Группа 36
         );
 
 
-        List<KindOfStudy> logicSchemaMath = List.of(KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
+        List<KindOfStudy> logicSchemaMA = List.of(KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
+                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK);
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,KindOfStudy.LECTURE,KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.LAB_WORK,
+                KindOfStudy.LECTURE,KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.QUIZ);
+        List<KindOfStudy> logicSchemaAG = List.of(KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.LAB_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK);
 
-        Map<GroupCombination, Educator> groupCombinationEducatorMap = new HashMap<>();
-        groupCombinationEducatorMap.put(groupCombinations.get(0), educatorMathLecturer);
-        groupCombinationEducatorMap.put(groupCombinations.get(1), educatorMathLecturer);
-        groupCombinationEducatorMap.put(groupCombinations.get(2), educatorMathPractise1);
-        groupCombinationEducatorMap.put(groupCombinations.get(3), educatorMathPractise1);
-        groupCombinationEducatorMap.put(groupCombinations.get(4), educatorMathPractise1);
+
+/*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
+        groupCombinationEducatorMA.put(groupCombinations.get(0), educatorMathLecturer);
+        groupCombinationEducatorMA.put(groupCombinations.get(1), educatorMathLecturer);
+        groupCombinationEducatorMA.put(groupCombinations.get(2), educatorMathPractise1);
+        groupCombinationEducatorMA.put(groupCombinations.get(3), educatorMathPractise1);
+        groupCombinationEducatorMA.put(groupCombinations.get(4), educatorMathPractise1);
+
+        List<Educator> educators = List.of(educatorMathLecturer, educatorMathPractise1);*/
 
 
-        List<Lesson> logicSchemaStudyMath = createLessonsDiscipline(disciplineMath, Lesson.class, logicSchemaMath, groupCombinations, educatorMathLecturer, groupCombinationEducatorMap);
+        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
+        groupCombinationEducatorMA.put(groupCombinations.get(0), educatorMathLecturer);
+        groupCombinationEducatorMA.put(groupCombinations.get(1), educatorMathLecturer);
+        groupCombinationEducatorMA.put(groupCombinations.get(2), educatorMathLecturer);
+        groupCombinationEducatorMA.put(groupCombinations.get(3), educatorMathLecturer);
+        groupCombinationEducatorMA.put(groupCombinations.get(4), educatorMathLecturer);
+
+        Map<GroupCombination, Educator> groupCombinationEducatorAG = new HashMap<>();
+        groupCombinationEducatorAG.put(groupCombinations.get(0), educatorAG);
+        groupCombinationEducatorAG.put(groupCombinations.get(1), educatorAG);
+        groupCombinationEducatorAG.put(groupCombinations.get(2), educatorAG);
+        groupCombinationEducatorAG.put(groupCombinations.get(3), educatorAG);
+        groupCombinationEducatorAG.put(groupCombinations.get(4), educatorAG);
+
+
+        List<Educator> educatorsMA = List.of(educatorMathLecturer);
+        List<Educator> educatorsAG = List.of(educatorAG);
+
+
+        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMath, Lesson.class, logicSchemaMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
+        List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, logicSchemaAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
+
 
         ScheduleGrid scheduleGrid = new ScheduleGrid();
 
-        DistributionDiscipline distributionDiscipline=new DistributionDiscipline(scheduleGrid,logicSchemaStudyMath);
-        distributionDiscipline.distributeLessons();
+        DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA);
+        distributionDisciplineMA.distributeLessons();
 
+        DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG);
+        distributionDisciplineAG.distributeLessons();
 
 
         //Экспорт в Excel
         for (Group group : groups) {
-            ScheduleExporter.exportToExcel(scheduleGrid,group, group.getName());
+            ScheduleExporter.exportToExcel(scheduleGrid, group, group.getName());
         }
 
+        System.out.println(scheduleGrid.getAmountDays());
 
-        ScheduleExporter.exportToExcel(scheduleGrid,educatorMathLecturer, educatorMathLecturer.getName());
-        ScheduleExporter.exportToExcel(scheduleGrid,educatorMathPractise1, educatorMathPractise1.getName());
+        ScheduleExporter.exportToExcel(scheduleGrid, educatorMathLecturer, educatorMathLecturer.getName());
+        ScheduleExporter.exportToExcel(scheduleGrid, educatorMathPractise1, educatorMathPractise1.getName());
+        ScheduleExporter.exportToExcel(scheduleGrid, educatorAG, educatorAG.getName());
+
 
         System.out.println();
 /*        List<String> disciplineNames = List.of("Математика", "Физика", "Программирование");

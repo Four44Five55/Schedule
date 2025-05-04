@@ -71,7 +71,7 @@ public class ScheduleExporter {
                 throw new IOException("Лист 'Расписание' не найден в шаблоне!");
             }
 
-            int startRow = 8;
+            int startRow = 6;
             int startColumn = 3;
 
             int row = startRow;

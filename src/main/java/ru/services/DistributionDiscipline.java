@@ -1,61 +1,69 @@
 package ru.services;
 
-import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
 import ru.entity.ScheduleGrid;
 import ru.entity.factories.CellForLessonFactory;
+import ru.enums.TimeSlotPair;
 
-import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.concurrent.ForkJoinPool;
 
 public class DistributionDiscipline {
     ScheduleGrid scheduleGrid;
     List<Lesson> lessons;
-    Map<Educator, List<AbstractLesson>> lessonsMapEducator = new HashMap<>();
+    List<Educator> educators;
 
-    public DistributionDiscipline(ScheduleGrid scheduleGrid, List<Lesson> lessons) {
+    public DistributionDiscipline(ScheduleGrid scheduleGrid, List<Lesson> lessons, List<Educator> educators) {
         this.scheduleGrid = scheduleGrid;
         this.lessons = lessons;
-
-    }
-
-    private void FillMapEducatorLessons() {
-        List<Educator> uniqueEducators= lessons.stream() //создание потока из списка
-                .map(AbstractLesson::getEducators)// преобразование каждого занятие в список преподов
-                .flatMap(List::stream) //объединение списков преподавателей кажд занятия в поток
-                .distinct() //удаление дубликатов
-                .toList();
+        this.educators = educators;
     }
 
     public void distributeLessons() {
+        for (Educator educator : educators) {
+            distributeLessonsForEducator(educator);
+        }
+    }
+
+    public void distributeLessonsForEducator(Educator educator) {
         ListIterator<Lesson> lessonIterator = lessons.listIterator();
         List<CellForLesson> cellForLessons = CellForLessonFactory.getAllOrderedCells();
         Iterator<CellForLesson> cellIterator = cellForLessons.iterator();
 
+
         while (lessonIterator.hasNext()) {
             Lesson lesson = lessonIterator.next();
 
-            // Перебираем доступные ячейки
-            while (cellIterator.hasNext()) {
-                CellForLesson cell = cellIterator.next();
+            if (lesson.isEntityUsed(educator)) {
 
-                // Проверяем занятость сущностей занятие в текущей ячейке
-                boolean allFree = lesson.getAllMaterialEntity().stream()
-                        .allMatch(entity -> entity.isFree(scheduleGrid, cell));
+                // Перебираем доступные ячейки
+                while (cellIterator.hasNext()) {
+                    CellForLesson cell = cellIterator.next();
 
-                if (allFree) {
-                    // Назначаем занятие в ячейку
-                    scheduleGrid.addLessonToCell(cell, lesson);
+                    if (!(cell.getTimeSlotPair() == TimeSlotPair.FOURTH)) {
+                        // Проверяем занятость сущностей занятие в текущей ячейке
+                        boolean allFree = lesson.getAllMaterialEntity().stream()
+                                .allMatch(entity -> entity.isFree(scheduleGrid, cell));
 
-                    // Удаляем ячейку из доступных, если она больше не может использоваться
-                    cellIterator.remove();
+                        if (allFree) {
+                            // Назначаем занятие в ячейку
+                            scheduleGrid.addLessonToCell(cell, lesson);
 
-                    break;
+                            // Удаляем ячейку из доступных, если она больше не может использоваться
+                            cellIterator.remove();
+
+                            break;
+                        }
+                    }
                 }
+
             }
+
         }
     }
+
 }
