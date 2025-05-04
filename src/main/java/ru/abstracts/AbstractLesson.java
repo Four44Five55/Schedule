@@ -25,7 +25,7 @@ abstract public class AbstractLesson {
         this.kindOfStudy = kindOfStudy;
         this.educators.add(educator);
         this.groupCombinations.addAll(groupCombinations);
-        this.auditoriums.add(groupCombinations.getAuditorium());
+        this.auditoriums.add(GroupCombination.calculateCapacityAuditoriumForCombinations(groupCombinations));
     }
     public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator, GroupCombination groupCombinations) {
         super();

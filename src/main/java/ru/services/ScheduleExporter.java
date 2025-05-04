@@ -28,13 +28,19 @@ public class ScheduleExporter {
             listData.add(lesson.getGroups().stream()
                     .map(Group::getName)
                     .collect(Collectors.joining(", ")));//Список групп занятия
-            //listData.add(lesson.getAuditorium().getName());//Аудитория проведения занятия
-            listData.add("120-3");//Аудитория проведения занятия
+            listData.add(String.valueOf(lesson.getAuditorium().stream()
+                    .map(AbstractMaterialEntity::getName)
+                    .distinct()
+                    .collect(Collectors.toList())));//Аудитория проведения занятия
+
+            //listData.add("120-3");//Аудитория проведения занятия
         } else if (entity instanceof Group) {
             listData.add(lesson.getKindOfStudy().getAbbreviationName());//Тема занятия
             listData.add(lesson.getDiscipline().getName());//Дисциплина
-            //listData.add(lesson.getAuditorium().getName());//Аудитория проведения занятия
-            listData.add("120-3");//Аудитория проведения занятия
+            listData.add(String.valueOf(lesson.getAuditorium().stream()
+                    .map(AbstractMaterialEntity::getName)
+                    .distinct()
+                    .collect(Collectors.toList())));//Аудитория проведения занятия
         } else if (entity instanceof Auditorium) {
             listData.add(lesson.getKindOfStudy().getAbbreviationName());//Тема занятия
             listData.add(lesson.getGroups().stream()

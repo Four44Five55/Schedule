@@ -58,6 +58,11 @@ public class GroupCombination {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Возвращает подходящую аудиторию, и списка аудиторий для комбинации групп.
+     *
+     * @return Аудитория
+     */
     private AbstractAuditorium calculateCapacityAuditorium(List<AbstractAuditorium> availableAuditoriums) {
         if (availableAuditoriums == null || availableAuditoriums.isEmpty()) {
             return null;
@@ -70,6 +75,40 @@ public class GroupCombination {
         return availableAuditoriums.stream()
                 .filter(auditorium -> auditorium.getCapacity() >= totalStudents)
                 .min(Comparator.comparingInt(AbstractAuditorium::getCapacity)) // самая маленькая подходящая
+                .orElse(null);
+    }
+
+    /**
+     * Возвращает подходящую аудиторию для списка комбинаций групп.
+     * Находит аудиторию, которая может вместить суммарное количество студентов всех групп
+     * в списке комбинаций, и является наименьшей по вместимости из подходящих.
+     * Аудитории берутся из всех доступных аудиторий в переданных комбинациях групп.
+     *
+     * @param groupCombinations Список комбинаций групп
+     * @return Подходящая аудитория или null, если подходящей не найдено
+     */
+    public static AbstractAuditorium calculateCapacityAuditoriumForCombinations(
+            List<GroupCombination> groupCombinations) {
+
+        if (groupCombinations == null || groupCombinations.isEmpty()) {
+            return null;
+        }
+
+        // Получаем все уникальные аудитории из всех комбинаций групп
+        List<AbstractAuditorium> availableAuditoriums = groupCombinations.stream()
+                .flatMap(comb -> comb.getAllAuditoriums().stream())
+                .distinct()
+                .collect(Collectors.toList());
+
+        // Суммарный размер всех групп во всех комбинациях
+        int totalStudents = groupCombinations.stream()
+                .flatMap(comb -> comb.getGroups().stream())
+                .mapToInt(Group::getSize)
+                .sum();
+
+        return availableAuditoriums.stream()
+                .filter(auditorium -> auditorium.getCapacity() >= totalStudents)
+                .min(Comparator.comparingInt(AbstractAuditorium::getCapacity))
                 .orElse(null);
     }
 
