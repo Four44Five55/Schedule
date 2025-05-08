@@ -86,6 +86,33 @@ public class ScheduleGrid extends AbstractGrid {
                 .filter(lesson -> lesson.isEntityUsed(entity))
                 .collect(Collectors.toUnmodifiableList());
     }
+    public ScheduleGrid deepCopy() {
+        // Создаём новую сетку с теми же датами
+        ScheduleGrid copy = new ScheduleGrid(START_DATE, END_DATE);
 
+        // Копируем все занятия из каждой ячейки, используя кешированные CellForLesson
+        for (Map.Entry<CellForLesson, List<AbstractLesson>> entry : this.scheduleGridMap.entrySet()) {
+            CellForLesson originalCell = entry.getKey();
+            List<AbstractLesson> originalLessons = entry.getValue();
+
+            // Получаем ячейку из кеша (или создаём, если её нет)
+            CellForLesson cachedCell = CellForLessonFactory.getCellByDateAndSlot(
+                    originalCell.getDate(),
+                    originalCell.getTimeSlotPair()
+            );
+
+            // Если ячейки нет в кеше (маловероятно, но на всякий случай)
+            if (cachedCell == null) {
+                cachedCell = new CellForLesson(originalCell.getDate(), originalCell.getTimeSlotPair());
+            }
+
+            // Копируем список занятий (сами занятия не клонируем, если они immutable)
+            List<AbstractLesson> copiedLessons = new ArrayList<>(originalLessons);
+
+            copy.scheduleGridMap.put(cachedCell, copiedLessons);
+        }
+
+        return copy;
+    }
 
 }

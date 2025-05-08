@@ -10,4 +10,6 @@ public class Auditorium extends AbstractAuditorium {
     public Auditorium(int id, String name, int capacity) {
         super(id, name, capacity);
     }
+
+
 }

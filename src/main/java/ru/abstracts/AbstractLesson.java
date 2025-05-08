@@ -12,6 +12,9 @@ import java.util.stream.Collectors;
 abstract public class AbstractLesson {
     protected Discipline discipline;
     protected KindOfStudy kindOfStudy;
+
+    /*protected CurriculumSlot curriculumSlot;*/
+
     protected List<Educator> educators = new ArrayList<>();
     protected List<GroupCombination> groupCombinations = new ArrayList<>();
     protected List<AbstractAuditorium> auditoriums = new ArrayList<>();
@@ -23,6 +26,8 @@ abstract public class AbstractLesson {
         super();
         this.discipline = discipline;
         this.kindOfStudy = kindOfStudy;
+        //this.curriculumSlot=curriculumSlot;
+
         this.educators.add(educator);
         this.groupCombinations.addAll(groupCombinations);
         this.auditoriums.add(GroupCombination.calculateCapacityAuditoriumForCombinations(groupCombinations));
@@ -31,6 +36,7 @@ abstract public class AbstractLesson {
         super();
         this.discipline = discipline;
         this.kindOfStudy = kindOfStudy;
+        //this.curriculumSlot=curriculumSlot;
         this.educators.add(educator);
         this.groupCombinations.add(groupCombinations);
         this.auditoriums.add(groupCombinations.getAuditorium());
@@ -106,6 +112,9 @@ abstract public class AbstractLesson {
         return discipline;
     }
 
+/*    public KindOfStudy getKindOfStudy() {
+        return curriculumSlot.getKindOfStudy();
+    }*/
     public KindOfStudy getKindOfStudy() {
         return kindOfStudy;
     }
@@ -125,7 +134,7 @@ abstract public class AbstractLesson {
     @Override
     public String toString() {
         return "dis: " + discipline +
-                ",kind: " + kindOfStudy.getAbbreviationName() +
+                /*",kind: " + curriculumSlot.getKindOfStudy().getAbbreviationName() +*/
                 ", educ: " + educators +
                 ", " + groupCombinations;
     }

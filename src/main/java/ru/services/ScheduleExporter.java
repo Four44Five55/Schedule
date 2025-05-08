@@ -2,6 +2,7 @@ package ru.services;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.*;
@@ -24,29 +25,29 @@ public class ScheduleExporter {
         List<String> listData = new ArrayList<>();
 
         if (entity instanceof Educator) {
-            listData.add(lesson.getDiscipline().getName());//Дисциплина
+            listData.add(lesson.getDiscipline().getAbbreviation());//Дисциплина
             listData.add(lesson.getGroups().stream()
                     .map(Group::getName)
                     .collect(Collectors.joining(", ")));//Список групп занятия
-            listData.add(String.valueOf(lesson.getAuditorium().stream()
-                    .map(AbstractMaterialEntity::getName)
+            listData.add(lesson.getAuditorium().stream()
+                    .map(AbstractAuditorium::getName)
                     .distinct()
-                    .collect(Collectors.toList())));//Аудитория проведения занятия
+                    .collect(Collectors.joining(", ")));//Аудитория проведения занятия
 
             //listData.add("120-3");//Аудитория проведения занятия
         } else if (entity instanceof Group) {
             listData.add(lesson.getKindOfStudy().getAbbreviationName());//Тема занятия
-            listData.add(lesson.getDiscipline().getName());//Дисциплина
-            listData.add(String.valueOf(lesson.getAuditorium().stream()
-                    .map(AbstractMaterialEntity::getName)
+            listData.add(lesson.getDiscipline().getAbbreviation());//Дисциплина
+            listData.add(lesson.getAuditorium().stream()
+                    .map(AbstractAuditorium::getName)
                     .distinct()
-                    .collect(Collectors.toList())));//Аудитория проведения занятия
+                    .collect(Collectors.joining(", ")));//Аудитория проведения занятия
         } else if (entity instanceof Auditorium) {
             listData.add(lesson.getKindOfStudy().getAbbreviationName());//Тема занятия
             listData.add(lesson.getGroups().stream()
                     .map(Group::getName)
                     .collect(Collectors.joining(", ")));//Список групп занятия
-            listData.add(lesson.getDiscipline().getName());//Дисциплина
+            listData.add(lesson.getDiscipline().getAbbreviation());//Дисциплина
         } else {
             throw new IllegalArgumentException("Неизвестный тип сущности: " + entity.getClass());
         }

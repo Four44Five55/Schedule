@@ -1,11 +1,13 @@
 package ru;
 
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 import ru.entity.*;
 import ru.enums.KindOfConstraints;
 import ru.enums.KindOfStudy;
-import ru.services.DateUtils;
 import ru.services.DistributionDiscipline;
 import ru.services.ScheduleExporter;
+import ru.utils.DateUtils;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,13 +15,43 @@ import java.util.Map;
 
 import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
 
-
-public class Main {
+@SpringBootApplication
+public class Application {
     public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+
+
+
+/*        SQLiteDataSource dataSource = new SQLiteDataSource();
+        dataSource.setUrl("jdbc:sqlite:schedule_db.db");
+
+
+        Discipline disciplineMA = null;
+
+        try (Connection connection = dataSource.getConnection()) {
+
+            // Работа с репозиторием
+            CurriculumRepository repo = new CurriculumRepository(connection);
+            disciplineMA = new CurriculumRepository(connection).loadDiscipline(1);
+
+
+            //Discipline disciplineMA = repo.loadDiscipline(1);
+            DisciplineCurriculum curriculumMA = repo.findCurriculumByDisciplineId(1);
+
+            // Вывод результатов
+            CurriculumPrinter.print(curriculumMA);
+
+
+        } catch (Exception e) {
+            System.err.println("Ошибка: " + e.getMessage());
+            e.printStackTrace();
+        }*/
+
 
         int idEducator = 0;
-        Discipline disciplineMath = new Discipline("МА");
-        Discipline disciplineAG = new Discipline("АГ");
+        //Discipline disciplineMath = new Discipline("МА");
+        Discipline disciplineMA = new Discipline(1, "Математический анализ", "МА");
+        Discipline disciplineAG = new Discipline(2, "Аналитическая геометрия и линейная алгебра", "АГ");
 
         Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
         educatorMathLecturer.addDefaultPriority();
@@ -66,23 +98,23 @@ public class Main {
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,KindOfStudy.LECTURE,KindOfStudy.LECTURE,
+                KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
                 KindOfStudy.LAB_WORK,
-                KindOfStudy.LECTURE,KindOfStudy.LECTURE,
+                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.QUIZ);
         List<KindOfStudy> logicSchemaAG = List.of(KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE, KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
@@ -112,13 +144,13 @@ public class Main {
                 KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK,KindOfStudy.PRACTICAL_WORK);
+                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK);
 
 
 /*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
@@ -150,7 +182,7 @@ public class Main {
         List<Educator> educatorsAG = List.of(educatorAG);
 
 
-        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMath, Lesson.class, logicSchemaMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
+        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, logicSchemaMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
         List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, logicSchemaAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
 
 
@@ -161,6 +193,27 @@ public class Main {
 
         DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG);
         distributionDisciplineAG.distributeLessons();
+
+
+        //========================================================================
+/*        // 2. Запуск ГА
+        ScheduleChromosome bestSchedule = GeneticAlgorithm.run(
+                logicSchemaStudyMA, scheduleGrid,
+                100,   // Размер популяции
+                50,    // Поколений
+                0.1    // Вероятность мутации
+        );
+
+        //Экспорт в Excel
+        for (Group group : groups) {
+            ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), group, group.getName());
+        }
+
+
+        ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), educatorMathLecturer, educatorMathLecturer.getName());
+        ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), educatorMathPractise1, educatorMathPractise1.getName());
+        ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), educatorAG, educatorAG.getName());*/
+        //==============================================================================================================
 
 
         //Экспорт в Excel
@@ -176,15 +229,7 @@ public class Main {
 
 
         System.out.println();
-/*        List<String> disciplineNames = List.of("Математика", "Физика", "Программирование");
-        List<String> educatorNames = List.of("Иванова И.И.", "Петрова А.А.", "Сидорова Н.Н.");
-        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
 
-        // Создаем список дисциплин с помощью фабрики
-        List<Discipline> disciplines = DisciplineFactory.createDisciplines(disciplineNames, Discipline.class);
-        List<Educator> educators = EducatorFactory.createEducators(educatorNames, Educator.class);
-        List<Lesson> lessonList= LessonFactory.createLessons(disciplines, Lesson.class,KindOfStudy.GROUP_WORK,educators);
-        }*/
 
     }
 }
