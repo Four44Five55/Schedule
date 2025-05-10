@@ -1,11 +1,15 @@
 package ru.entity;
 
+import lombok.Getter;
+import lombok.Setter;
 import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
 
 import java.util.Objects;
 
+@Getter
+@Setter
 public class Group extends AbstractMaterialEntity {
 
     private int size;
@@ -16,22 +20,10 @@ public class Group extends AbstractMaterialEntity {
         this.auditorium = auditorium;
     }
 
-    public Group(int id, String name, int size, AbstractAuditorium auditorium) {
-        super(id, name);
+    public Group( String name, int size, AbstractAuditorium auditorium) {
+        super( name);
         this.size = size;
         this.auditorium = auditorium;
-    }
-
-    public int getSize() {
-        return size;
-    }
-
-    public void setSize(int size) {
-        this.size = size;
-    }
-
-    public AbstractAuditorium getAuditorium() {
-        return auditorium;
     }
 
     @Override

@@ -7,8 +7,8 @@ public class Auditorium extends AbstractAuditorium {
         super(capacity);
     }
 
-    public Auditorium(int id, String name, int capacity) {
-        super(id, name, capacity);
+    public Auditorium(String name, int capacity) {
+        super(name, capacity);
     }
 
 

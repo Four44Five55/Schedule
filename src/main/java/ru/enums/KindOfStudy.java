@@ -1,5 +1,10 @@
 package ru.enums;
 
+import jakarta.persistence.Entity;
+import lombok.Getter;
+
+
+@Getter
 public enum KindOfStudy {
 
     LECTURE("Лекция", "Л"),
@@ -21,13 +26,6 @@ public enum KindOfStudy {
         this.abbreviationName = abbreviationName;
     }
 
-    public String getFullName() {
-        return fullName;
-    }
-
-    public String getAbbreviationName() {
-        return abbreviationName;
-    }
 }
 /*Лекция – Lecture
  * Семинар – Seminar

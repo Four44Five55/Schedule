@@ -1,7 +1,12 @@
 package ru.abstracts;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.Objects;
 
+@Getter
+@Setter
 public class AbstractAuditorium extends AbstractMaterialEntity {
     private int capacity;
 
@@ -9,16 +14,8 @@ public class AbstractAuditorium extends AbstractMaterialEntity {
         this.capacity = capacity;
     }
 
-    public AbstractAuditorium(int id, String name, int capacity) {
-        super(id, name);
-        this.capacity = capacity;
-    }
-
-    public int getCapacity() {
-        return capacity;
-    }
-
-    public void setCapacity(int capacity) {
+    public AbstractAuditorium(String name, int capacity) {
+        super(name);
         this.capacity = capacity;
     }
 

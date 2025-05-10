@@ -1,7 +1,10 @@
 package ru.enums;
 
+import lombok.Getter;
+
 import java.time.LocalTime;
 
+@Getter
 public enum TimeSlotPair {
     FIRST(9, 0, 10, 35),
     SECOND(10, 55, 12, 30),
@@ -16,11 +19,4 @@ public enum TimeSlotPair {
         this.endTime = LocalTime.of(endHour, endMinute);
     }
 
-    public LocalTime getStartTime() {
-        return startTime;
-    }
-
-    public LocalTime getEndTime() {
-        return endTime;
-    }
 }

@@ -1,16 +1,16 @@
 package ru.abstracts;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import ru.inter.Person;
 
 import java.util.Objects;
-
+@Getter
+@NoArgsConstructor
 abstract public class AbstractPerson extends AbstractMaterialEntity  implements Person {
 
-    public AbstractPerson() {
-    }
-
-    public AbstractPerson(int id, String name) {
-        super(id, name);
+    public AbstractPerson(String name) {
+        super(name);
     }
 
     @Override
@@ -19,17 +19,5 @@ abstract public class AbstractPerson extends AbstractMaterialEntity  implements 
                 "id: " + id + " " + name + '\'';
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        AbstractPerson that = (AbstractPerson) o;
-        return id == that.id && Objects.equals(name, that.name);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id, name);
-    }
 }
 

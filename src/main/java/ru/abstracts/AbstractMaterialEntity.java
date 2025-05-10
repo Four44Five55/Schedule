@@ -1,5 +1,8 @@
 package ru.abstracts;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import ru.entity.CellForLesson;
 import ru.entity.ConstraintsGrid;
 import ru.entity.ScheduleGrid;
@@ -7,17 +10,17 @@ import ru.enums.KindOfConstraints;
 import ru.inter.IMaterialEntity;
 
 import java.time.LocalDate;
+import java.util.Objects;
 
+@Getter
+@Setter
+@NoArgsConstructor
 public class AbstractMaterialEntity implements IMaterialEntity {
-    protected int id;
+    protected Integer id;
     protected String name;
     protected ConstraintsGrid constraintsGrid = new ConstraintsGrid();
 
-    public AbstractMaterialEntity() {
-    }
-
-    public AbstractMaterialEntity(int id, String name) {
-        this.id = id;
+    public AbstractMaterialEntity(String name) {
         this.name = name;
     }
 
@@ -59,21 +62,15 @@ public class AbstractMaterialEntity implements IMaterialEntity {
         constraintsGrid.fillConstraintInRangeForGrid(startDate, endDate, constraint);
     }
 
-    public int getId() {
-        return id;
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        AbstractMaterialEntity that = (AbstractMaterialEntity) o;
+        return Objects.equals(id, that.id) && Objects.equals(name, that.name) && Objects.equals(constraintsGrid, that.constraintsGrid);
     }
 
-    public void setId(int id) {
-        this.id = id;
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, name, constraintsGrid);
     }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-
 }

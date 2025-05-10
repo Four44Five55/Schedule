@@ -1,5 +1,8 @@
 package ru.enums;
 
+import lombok.Getter;
+
+@Getter
 public enum KindOfConstraints {
     BUSINESS_TRIP("Командировка", "Ком"),
     VACATION("Отпуск", "Отп"),
@@ -17,11 +20,4 @@ public enum KindOfConstraints {
         this.abbreviationName = abbreviationName;
     }
 
-    public String getFullName() {
-        return fullName;
-    }
-
-    public String getAbbreviationName() {
-        return abbreviationName;
-    }
 }

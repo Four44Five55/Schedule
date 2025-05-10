@@ -1,6 +1,6 @@
 package ru.inter;
 
 public interface Person {
-    int getId();
+    Integer getId();
     String getName();
 }

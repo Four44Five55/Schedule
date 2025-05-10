@@ -1,17 +1,16 @@
 package ru.entity;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import ru.abstracts.AbstractPerson;
-import ru.enums.KindOfConstraints;
 
-import java.time.LocalDate;
-
+@Getter
+@NoArgsConstructor
 public class Educator extends AbstractPerson {
-    private final Priority priority=new Priority();
-    public Educator() {
-    }
+    private final Priority priority = new Priority();
 
-    public Educator(int id, String name) {
-        super(id, name);
+    public Educator(String name) {
+        super(name);
     }
 
     public void addDefaultPriority() {
@@ -19,6 +18,14 @@ public class Educator extends AbstractPerson {
         priority.addDefaultTimeSlots();
     }
 
+    @Override
+    public Integer getId() {
+        return super.getId();
+    }
 
+    @Override
+    public String getName() {
+        return super.getName();
+    }
 }
 

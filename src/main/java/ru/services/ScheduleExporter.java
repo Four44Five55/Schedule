@@ -2,6 +2,7 @@ package ru.services;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.stereotype.Service;
 import ru.abstracts.AbstractAuditorium;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
@@ -17,7 +18,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
-
+@Service
 public class ScheduleExporter {
 //TODO изменить добавление данных по аудитории
 

@@ -1,5 +1,8 @@
 package ru.enums;
 
+import lombok.Getter;
+
+@Getter
 public enum DayOfWeek {
     MONDAY("Понедельник", "Пн"),
     TUESDAY("Вторник", "Вт"),
@@ -15,14 +18,6 @@ public enum DayOfWeek {
     DayOfWeek(String fullName, String abbreviation) {
         this.fullName = fullName;
         this.abbreviation = abbreviation;
-    }
-
-    public String getFullName() {
-        return fullName;
-    }
-
-    public String getAbbreviation() {
-        return abbreviation;
     }
 
     public java.time.DayOfWeek toJavaTimeDayOfWeek() {

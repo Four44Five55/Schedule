@@ -1,43 +1,35 @@
 package ru.entity.logicSchema;
 
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import ru.enums.KindOfStudy;
 
+@Entity
+@Getter
+@Setter
+@NoArgsConstructor
+@Table(name = "curriculum_slot")
 public class CurriculumSlot {
-    private int id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
     private KindOfStudy kindOfStudy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "theme_lesson_id")
     private ThemeLesson themeLesson;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "discipline_curriculum_id")
+    private DisciplineCurriculum disciplineCurriculum;
 
-    public CurriculumSlot() {
-    }
-
-    public CurriculumSlot(int id, KindOfStudy kindOfStudy, ThemeLesson themeLesson) {
-        this.id = id;
+    public CurriculumSlot(KindOfStudy kindOfStudy) {
         this.kindOfStudy = kindOfStudy;
-        this.themeLesson = themeLesson;
+
     }
 
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public KindOfStudy getKindOfStudy() {
-        return kindOfStudy;
-    }
-
-    public void setKindOfStudy(KindOfStudy kindOfStudy) {
-        this.kindOfStudy = kindOfStudy;
-    }
-
-    public ThemeLesson getThemeLesson() {
-        return themeLesson;
-    }
-
-    public void setThemeLesson(ThemeLesson themeLesson) {
-        this.themeLesson = themeLesson;
-    }
 }

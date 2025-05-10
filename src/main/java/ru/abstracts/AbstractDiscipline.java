@@ -1,40 +1,28 @@
 package ru.abstracts;
 
-abstract public class AbstractDiscipline {
-    protected int id;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@MappedSuperclass
+@Getter
+@Setter
+@NoArgsConstructor
+public abstract class AbstractDiscipline {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    protected Integer id;
+
+    @Column(name = "name", nullable = false)
     protected String name;
+
+    @Column(name = "abbreviation")
     protected String abbreviation;
 
-    public AbstractDiscipline() {
-    }
-
-    public AbstractDiscipline(int id, String name, String abbreviation) {
-        this.id = id;
+    public AbstractDiscipline(String name, String abbreviation) {
         this.name = name;
-        this.abbreviation = abbreviation;
-    }
-
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getAbbreviation() {
-        return abbreviation;
-    }
-
-    public void setAbbreviation(String abbreviation) {
         this.abbreviation = abbreviation;
     }
 
