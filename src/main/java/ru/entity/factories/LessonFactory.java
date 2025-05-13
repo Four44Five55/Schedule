@@ -12,11 +12,12 @@ import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class LessonFactory {
 
 
-    public static <T extends AbstractLesson> List<T> createLessonsDiscipline(
+    /*public static <T extends AbstractLesson> List<T> createLessonsDiscipline(
             Discipline discipline,
             Class<T> lessonClass,
             List<KindOfStudy> logicSchema,
@@ -45,7 +46,7 @@ public class LessonFactory {
             throw new RuntimeException("Ошибка при создании дисциплины", e);
         }
         return logicStudySchemaDiscipline;
-    }
+    }*/
 
     public static <T extends AbstractLesson> List<T> createLessonsDiscipline(
             Discipline discipline,

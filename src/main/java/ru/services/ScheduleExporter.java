@@ -15,7 +15,8 @@ import java.io.InputStream;
 import java.nio.file.Paths;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class ScheduleExporter {
@@ -34,16 +35,15 @@ public class ScheduleExporter {
                     .distinct()
                     .collect(Collectors.joining(", ")));//Аудитория проведения занятия
 
-            //listData.add("120-3");//Аудитория проведения занятия
         } else if (entity instanceof Group) {
-            listData.add(lesson.getKindOfStudy().getAbbreviationName());//Тема занятия
+            listData.add(lesson.getKindOfStudy().getAbbreviationName() +  lesson.getNumberThemeLesson());//Тема занятия
             listData.add(lesson.getDiscipline().getAbbreviation());//Дисциплина
             listData.add(lesson.getAuditorium().stream()
                     .map(AbstractAuditorium::getName)
                     .distinct()
                     .collect(Collectors.joining(", ")));//Аудитория проведения занятия
         } else if (entity instanceof Auditorium) {
-            listData.add(lesson.getKindOfStudy().getAbbreviationName());//Тема занятия
+            listData.add(lesson.getKindOfStudy().getAbbreviationName() +  lesson.getNumberThemeLesson());//Тема занятия
             listData.add(lesson.getGroups().stream()
                     .map(Group::getName)
                     .collect(Collectors.joining(", ")));//Список групп занятия

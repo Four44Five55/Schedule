@@ -1,6 +1,9 @@
 package ru.abstracts;
 
+import lombok.Getter;
 import ru.entity.*;
+import ru.entity.logicSchema.CurriculumSlot;
+import ru.entity.logicSchema.ThemeLesson;
 import ru.enums.KindOfStudy;
 
 import java.util.ArrayList;
@@ -9,12 +12,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@Getter
 abstract public class AbstractLesson {
     protected Discipline discipline;
-    protected KindOfStudy kindOfStudy;
-
-    /*protected CurriculumSlot curriculumSlot;*/
-
+    protected CurriculumSlot curriculumSlot;
     protected List<Educator> educators = new ArrayList<>();
     protected List<GroupCombination> groupCombinations = new ArrayList<>();
     protected List<AbstractAuditorium> auditoriums = new ArrayList<>();
@@ -22,21 +23,19 @@ abstract public class AbstractLesson {
     public AbstractLesson() {
     }
 
-    public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator, List<GroupCombination> groupCombinations) {
+    public AbstractLesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, List<GroupCombination> groupCombinations) {
         super();
         this.discipline = discipline;
-        this.kindOfStudy = kindOfStudy;
-        //this.curriculumSlot=curriculumSlot;
-
+        this.curriculumSlot = curriculumSlot;
         this.educators.add(educator);
         this.groupCombinations.addAll(groupCombinations);
         this.auditoriums.add(GroupCombination.calculateCapacityAuditoriumForCombinations(groupCombinations));
     }
-    public AbstractLesson(Discipline discipline, KindOfStudy kindOfStudy, Educator educator, GroupCombination groupCombinations) {
+
+    public AbstractLesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, GroupCombination groupCombinations) {
         super();
         this.discipline = discipline;
-        this.kindOfStudy = kindOfStudy;
-        //this.curriculumSlot=curriculumSlot;
+        this.curriculumSlot = curriculumSlot;
         this.educators.add(educator);
         this.groupCombinations.add(groupCombinations);
         this.auditoriums.add(groupCombinations.getAuditorium());
@@ -103,24 +102,20 @@ abstract public class AbstractLesson {
         this.groupCombinations = groupCombinations;
     }
 
-
     public void addEducator(Educator educator) {
         this.educators.add(educator);
     }
 
-    public Discipline getDiscipline() {
-        return discipline;
-    }
-
-/*    public KindOfStudy getKindOfStudy() {
-        return curriculumSlot.getKindOfStudy();
-    }*/
     public KindOfStudy getKindOfStudy() {
-        return kindOfStudy;
+        return curriculumSlot.getKindOfStudy();
     }
 
-    public List<Educator> getEducators() {
-        return educators;
+    public String getNumberThemeLesson() {
+        String numberTheme = "";
+        if (curriculumSlot.getThemeLesson()!=null){
+            numberTheme="/Т."+curriculumSlot.getThemeLesson().getThemeNumber();
+        }
+        return numberTheme;
     }
 
     public List<AbstractAuditorium> getAuditorium() {
@@ -134,7 +129,7 @@ abstract public class AbstractLesson {
     @Override
     public String toString() {
         return "dis: " + discipline +
-                /*",kind: " + curriculumSlot.getKindOfStudy().getAbbreviationName() +*/
+                ",kind: " + curriculumSlot.getKindOfStudy().getAbbreviationName() +
                 ", educ: " + educators +
                 ", " + groupCombinations;
     }

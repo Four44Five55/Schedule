@@ -2,60 +2,46 @@ package ru;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ConfigurableApplicationContext;
 import ru.entity.*;
+import ru.entity.logicSchema.CurriculumSlot;
+import ru.entity.logicSchema.DisciplineCurriculum;
+import ru.entity.logicSchema.ThemeLesson;
 import ru.enums.KindOfConstraints;
 import ru.enums.KindOfStudy;
-import ru.services.DistributionDiscipline;
-import ru.services.ScheduleExporter;
+import ru.repositories.ThemeLessonRepository;
+import ru.services.*;
 import ru.utils.DateUtils;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.sql.SQLException;
+import java.util.*;
 
 import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
 
 @SpringBootApplication
 public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
+    public static void main(String[] args) throws SQLException {
+        ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
 
 
+        DisciplineService disciplineService = context.getBean(DisciplineService.class);
+        DisciplineCurriculumService disciplineCurriculumService = context.getBean(DisciplineCurriculumService.class);
+        CurriculumSlotService curriculumSlotService = context.getBean(CurriculumSlotService.class);
+        ThemeLessonService themeLessonService = context.getBean(ThemeLessonService.class);
+        SlotChainService slotChainService = context.getBean(SlotChainService.class);
 
-/*        SQLiteDataSource dataSource = new SQLiteDataSource();
-        dataSource.setUrl("jdbc:sqlite:schedule_db.db");
+        System.out.println(slotChainService.getByID(1).toString());
 
-
-        Discipline disciplineMA = null;
-
-        try (Connection connection = dataSource.getConnection()) {
-
-            // Работа с репозиторием
-            CurriculumRepository repo = new CurriculumRepository(connection);
-            disciplineMA = new CurriculumRepository(connection).loadDiscipline(1);
-
-
-            //Discipline disciplineMA = repo.loadDiscipline(1);
-            DisciplineCurriculum curriculumMA = repo.findCurriculumByDisciplineId(1);
-
-            // Вывод результатов
-            CurriculumPrinter.print(curriculumMA);
-
-
-        } catch (Exception e) {
-            System.err.println("Ошибка: " + e.getMessage());
-            e.printStackTrace();
-        }*/
+        Discipline disciplineMA = disciplineService.getById(1);
+        Discipline disciplineAG = disciplineService.getById(2);
+        Discipline disciplineIR = disciplineService.getById(3);
 
 
         int idEducator = 0;
-        //Discipline disciplineMath = new Discipline("МА");
-        Discipline disciplineMA = new Discipline(1, "Математический анализ", "МА");
-        Discipline disciplineAG = new Discipline(2, "Аналитическая геометрия и линейная алгебра", "АГ");
-
         Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
         educatorMathLecturer.addDefaultPriority();
         educatorMathLecturer.addConstraint(DateUtils.parseDateFlexible("2025-09-06"), DateUtils.parseDateFlexible("2025-09-15"), KindOfConstraints.BUSINESS_TRIP);
+
         Educator educatorMathPractise1 = new Educator(++idEducator, "Практик1 А.А.");
         educatorMathPractise1.addDefaultPriority();
         educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-27"), KindOfConstraints.BUSINESS_TRIP);
@@ -82,33 +68,13 @@ public class Application {
         );
 
 
-        List<KindOfStudy> logicSchemaMA = List.of(KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.LAB_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.QUIZ);
+        DisciplineCurriculum curriculumMA = disciplineCurriculumService.getById(1);
+        System.out.println(curriculumMA.toString());
+
+        List<CurriculumSlot> curriculumSlotListMA = curriculumSlotService.getAllSlotsForDiscipline(curriculumMA);
+        curriculumMA.setCurriculumSlots(curriculumSlotListMA);
+
+
         List<KindOfStudy> logicSchemaAG = List.of(KindOfStudy.LECTURE,
                 KindOfStudy.PRACTICAL_WORK,
                 KindOfStudy.LECTURE, KindOfStudy.LECTURE,
@@ -182,8 +148,11 @@ public class Application {
         List<Educator> educatorsAG = List.of(educatorAG);
 
 
-        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, logicSchemaMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
-        List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, logicSchemaAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
+        //List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, logicSchemaMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
+        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, curriculumMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
+
+
+        //List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, logicSchemaAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
 
 
         ScheduleGrid scheduleGrid = new ScheduleGrid();
@@ -191,8 +160,8 @@ public class Application {
         DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA);
         distributionDisciplineMA.distributeLessons();
 
-        DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG);
-        distributionDisciplineAG.distributeLessons();
+        /*DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG);
+        distributionDisciplineAG.distributeLessons();*/
 
 
         //========================================================================
@@ -230,6 +199,6 @@ public class Application {
 
         System.out.println();
 
-
+        //context.close();
     }
 }

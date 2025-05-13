@@ -1,55 +1,41 @@
 package ru.entity.logicSchema;
 
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import ru.entity.Discipline;
 
+import java.util.ArrayList;
 import java.util.List;
 
+@Entity
+@Getter
+@Setter
+@NoArgsConstructor
 public class DisciplineCurriculum {
-    private int id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "discipline_id")
     private Discipline discipline;
-    private List<CurriculumSlot> curriculumSlots;
 
-    private ChainManager chainManager;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "start_slot_id")
+    private CurriculumSlot startSlot;
 
-    public DisciplineCurriculum() {
-    }
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "end_slot_id")
+    private CurriculumSlot endSlot;
+    @Transient
+    private List<CurriculumSlot> curriculumSlots = new ArrayList<>();
 
-    public DisciplineCurriculum(int id, Discipline discipline, List<CurriculumSlot> curriculumSlots,ChainManager chainManager) {
-        this.id = id;
+    public DisciplineCurriculum(Discipline discipline, CurriculumSlot startSlot, CurriculumSlot endSlot) {
         this.discipline = discipline;
-        this.curriculumSlots = curriculumSlots;
-        this.chainManager = chainManager;
+        this.startSlot = startSlot;
+        this.endSlot = endSlot;
     }
 
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public Discipline getDiscipline() {
-        return discipline;
-    }
-
-    public void setDiscipline(Discipline discipline) {
-        this.discipline = discipline;
-    }
-
-    public List<CurriculumSlot> getCurriculumSlots() {
-        return curriculumSlots;
-    }
-
-    public void setCurriculumSlots(List<CurriculumSlot> curriculumSlots) {
-        this.curriculumSlots = curriculumSlots;
-    }
-
-    public ChainManager getChainManager() {
-        return chainManager;
-    }
-
-    public void setChainManager(ChainManager chainManager) {
-        this.chainManager = chainManager;
-    }
 }

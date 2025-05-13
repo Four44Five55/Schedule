@@ -1,36 +1,35 @@
 package ru.entity.logicSchema;
 
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Getter
+@Setter
+@NoArgsConstructor
 public class ThemeLesson {
-    private int id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
     private String themeNumber;
+
     private String title;
 
-    public ThemeLesson() {
-    }
 
-    public ThemeLesson(int id, String themeNumber, String title) {
-        this.id = id;
+    public ThemeLesson(String themeNumber, String title) {
         this.themeNumber = themeNumber;
         this.title = title;
     }
 
-    public String getThemeNumber() {
-        return themeNumber;
-    }
-
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public void setTitle(String title) {
-        this.title = title;
+    @Override
+    public String toString() {
+        return "ThemeLesson{" +
+                "id=" + id +
+                ", themeNumber='" + themeNumber + '\'' +
+                ", title='" + title + '\'' +
+                '}';
     }
 }

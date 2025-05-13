@@ -32,7 +32,8 @@ dependencies {
     implementation 'org.apache.poi:poi:5.2.3'
     implementation 'org.apache.poi:poi-ooxml:5.3.0'
 
-
+    compileOnly("org.projectlombok:lombok:1.18.38")
+    annotationProcessor("org.projectlombok:lombok:1.18.38")
 
     // Для тестирования (уже было)
     testImplementation platform('org.junit:junit-bom:5.9.1')
