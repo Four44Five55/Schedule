@@ -1,20 +1,35 @@
 package ru.abstracts;
 
-import org.example.inter.Person;
+import ru.inter.Person;
 
-abstract public class AbstractPerson implements Person {
+import java.util.Objects;
 
-    private int id;
-    private String name;
+abstract public class AbstractPerson extends AbstractMaterialEntity  implements Person {
 
-    @Override
-    public int getId() {
-        return id;
+    public AbstractPerson() {
+    }
+
+    public AbstractPerson(int id, String name) {
+        super(id, name);
     }
 
     @Override
-    public String getName() {
-        return name;
+    public String toString() {
+        return
+                "id: " + id + " " + name + '\'';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        AbstractPerson that = (AbstractPerson) o;
+        return id == that.id && Objects.equals(name, that.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, name);
     }
 }
 
