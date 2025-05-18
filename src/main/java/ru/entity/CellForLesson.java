@@ -1,32 +1,21 @@
 package ru.entity;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import ru.enums.TimeSlotPair;
 
 import java.time.LocalDate;
 import java.util.Objects;
 
+@Getter
+@NoArgsConstructor
 public class CellForLesson {
     private LocalDate date;
     private TimeSlotPair timeSlotPair;
 
-    public CellForLesson() {
-    }
-
     public CellForLesson(LocalDate date, TimeSlotPair timeSlotPair) {
         this.date = date;
         this.timeSlotPair = timeSlotPair;
-    }
-
-    public CellForLesson(TimeSlotPair timeSlotPair) {
-        this.timeSlotPair = timeSlotPair;
-    }
-
-    public LocalDate getDate() {
-        return date;
-    }
-
-    public TimeSlotPair getTimeSlotPair() {
-        return timeSlotPair;
     }
 
     @Override

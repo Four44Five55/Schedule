@@ -6,19 +6,16 @@ import org.hibernate.Hibernate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import ru.entity.Discipline;
+import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCurriculum;
-import ru.entity.logicSchema.ThemeLesson;
-import ru.enums.KindOfStudy;
 import ru.repositories.CurriculumSlotRepository;
-import ru.repositories.DisciplineCurriculumRepository;
 import ru.repositories.DisciplineRepository;
 import ru.repositories.ThemeLessonRepository;
 
-import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -50,8 +47,8 @@ public class CurriculumSlotService {
         repository.deleteById(id);
     }
 
-    @Transactional
 
+    @Transactional
     public List<CurriculumSlot> getAllSlotsForDiscipline(DisciplineCurriculum curriculum) {
         int startId = curriculum.getStartSlot().getId();
         int endId = curriculum.getEndSlot().getId();
@@ -74,5 +71,24 @@ public class CurriculumSlotService {
         }
 
         return slots;
+    }
+
+    public Integer getPreviousSlotIdForDiscipline(Lesson lesson) {
+        Integer currentSlotId = lesson.getCurriculumSlotId();
+        Integer disciplineId = lesson.getDiscipline().getId();
+
+        // Проверяем, что текущий слот существует и принадлежит указанной дисциплине
+        CurriculumSlot currentSlot = repository.findById(currentSlotId)
+                .orElseThrow(() -> new RuntimeException("CurriculumSlot не найден id: " + currentSlotId));
+
+        if (!currentSlot.getDiscipline().getId().equals(disciplineId)) {
+            return null; // или можно бросить исключение, если это ошибка
+        }
+
+        // Ищем предыдущий слот для этой дисциплины
+        Optional<CurriculumSlot> previousSlot = repository.findFirstByIdLessThanAndDisciplineIdOrderByIdDesc(
+                currentSlotId, disciplineId);
+
+        return previousSlot.map(CurriculumSlot::getId).orElse(null);
     }
 }

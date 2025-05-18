@@ -1,9 +1,12 @@
 package ru.abstracts;
 
 import lombok.Getter;
-import ru.entity.*;
+import lombok.NoArgsConstructor;
+import ru.entity.Discipline;
+import ru.entity.Educator;
+import ru.entity.Group;
+import ru.entity.GroupCombination;
 import ru.entity.logicSchema.CurriculumSlot;
-import ru.entity.logicSchema.ThemeLesson;
 import ru.enums.KindOfStudy;
 
 import java.util.ArrayList;
@@ -13,15 +16,13 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Getter
+@NoArgsConstructor
 abstract public class AbstractLesson {
     protected Discipline discipline;
     protected CurriculumSlot curriculumSlot;
     protected List<Educator> educators = new ArrayList<>();
     protected List<GroupCombination> groupCombinations = new ArrayList<>();
     protected List<AbstractAuditorium> auditoriums = new ArrayList<>();
-
-    public AbstractLesson() {
-    }
 
     public AbstractLesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, List<GroupCombination> groupCombinations) {
         super();
@@ -106,14 +107,18 @@ abstract public class AbstractLesson {
         this.educators.add(educator);
     }
 
+    public Integer getCurriculumSlotId() {
+        return curriculumSlot.getId();
+    }
+
     public KindOfStudy getKindOfStudy() {
         return curriculumSlot.getKindOfStudy();
     }
 
     public String getNumberThemeLesson() {
         String numberTheme = "";
-        if (curriculumSlot.getThemeLesson()!=null){
-            numberTheme="/Т."+curriculumSlot.getThemeLesson().getThemeNumber();
+        if (curriculumSlot.getThemeLesson() != null) {
+            numberTheme = "/Т." + curriculumSlot.getThemeLesson().getThemeNumber();
         }
         return numberTheme;
     }
@@ -124,6 +129,18 @@ abstract public class AbstractLesson {
 
     public void addAuditorium(AbstractAuditorium auditorium) {
         this.auditoriums.add(auditorium);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        AbstractLesson that = (AbstractLesson) o;
+        return Objects.equals(discipline, that.discipline) && Objects.equals(curriculumSlot, that.curriculumSlot) && Objects.equals(educators, that.educators) && Objects.equals(groupCombinations, that.groupCombinations) && Objects.equals(auditoriums, that.auditoriums);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(discipline, curriculumSlot, educators, groupCombinations, auditoriums);
     }
 
     @Override

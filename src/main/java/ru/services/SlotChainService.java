@@ -3,12 +3,12 @@ package ru.services;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.SlotChain;
 import ru.repositories.SlotChainRepository;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Service
 @Transactional
@@ -58,15 +58,61 @@ public class SlotChainService {
                 repository.existsBySlotAIdAndSlotBId(slotBId, slotAId);
     }
 
-    public List<Integer> getLinkedSlotIds(Integer slotId) {
-        List<Integer> linkedIds = new ArrayList<>();
+    /**
+     * Возвращает всю последовательность slotId связанных с запрашиваемым curriculumSlot
+     *
+     * @param slotId id проверяемого curriculumSlot
+     * @return List<Integer> с отсортированным списком id
+     */
+    public List<Integer> getAllLinkedSlotIds(Integer slotId) {
+        Set<Integer> visited = new HashSet<>();
+        Queue<Integer> queue = new LinkedList<>();
+        Set<Integer> result = new TreeSet<>();
 
-        repository.findBySlotAId(slotId)
-                .forEach(sc -> linkedIds.add(sc.getSlotB().getId()));
+        queue.add(slotId);
+        visited.add(slotId);
 
-        repository.findBySlotBId(slotId)
-                .forEach(sc -> linkedIds.add(sc.getSlotA().getId()));
+        while (!queue.isEmpty()) {
+            Integer currentSlotId = queue.poll();
 
-        return linkedIds;
+            List<Integer> directLinks = repository.findLinkedSlotIds(currentSlotId);
+
+            for (Integer linkedSlotId : directLinks) {
+                if (!visited.contains(linkedSlotId)) {
+                    visited.add(linkedSlotId);
+                    result.add(linkedSlotId);
+                    queue.add(linkedSlotId);
+                }
+            }
+        }
+
+        if (!result.isEmpty()) {
+            result.add(slotId); // Добавляем исходный slotId, только если есть связи
+        }
+
+        return new ArrayList<>(result);
+    }
+
+    /**
+     * Находит занятия, связанные через цепочку слотов и совпадающие по группам.
+     *
+     * @param lesson  Исходное занятие для сравнения групп.
+     * @param lessons Список всех занятий для фильтрации.
+     * @return Список связанных занятий с теми же группами.
+     */
+    public List<Lesson> findLessonsInSlotChain(Lesson lesson, List<Lesson> lessons) {
+        if (lesson == null || lesson.getCurriculumSlotId() == null || lesson.getGroupCombinations() == null) {
+            return Collections.emptyList(); // Защита от null
+        }
+
+        // Получаем цепочку связанных слотов
+        List<Integer> slotChainList = getAllLinkedSlotIds(lesson.getCurriculumSlotId());
+
+        return lessons.stream()
+                .filter(lesson1 ->
+                        slotChainList.contains(lesson1.getCurriculumSlotId()) &&
+                                lesson1.getGroupCombinations().equals(lesson.getGroupCombinations())
+                )
+                .toList();
     }
 }

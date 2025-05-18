@@ -38,7 +38,7 @@ public class Application {
 
 
         int idEducator = 0;
-        Educator educatorMathLecturer = new Educator(++idEducator, "Лектор А.А.");
+        Educator educatorMathLecturer = new Educator(++idEducator, "Математик Л.А.");
         educatorMathLecturer.addDefaultPriority();
         educatorMathLecturer.addConstraint(DateUtils.parseDateFlexible("2025-09-06"), DateUtils.parseDateFlexible("2025-09-15"), KindOfConstraints.BUSINESS_TRIP);
 
@@ -46,9 +46,11 @@ public class Application {
         educatorMathPractise1.addDefaultPriority();
         educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-27"), KindOfConstraints.BUSINESS_TRIP);
 
-        Educator educatorAG = new Educator(++idEducator, "Аналитик Г.А.");
+        Educator educatorAG = new Educator(++idEducator, "Аналитик Л.А.");
         educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-30"), KindOfConstraints.VACATION);
         educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-12-29"), DateUtils.parseDateFlexible("2026-01-12"), KindOfConstraints.VACATION);
+
+        Educator educatorIR = new Educator(++idEducator, "Историк Л.Ф.");
 
 
         List<Group> groups = List.of
@@ -69,54 +71,18 @@ public class Application {
 
 
         DisciplineCurriculum curriculumMA = disciplineCurriculumService.getById(1);
-        System.out.println(curriculumMA.toString());
+        DisciplineCurriculum curriculumAG = disciplineCurriculumService.getById(3);
+        DisciplineCurriculum curriculumIR = disciplineCurriculumService.getById(2);
 
         List<CurriculumSlot> curriculumSlotListMA = curriculumSlotService.getAllSlotsForDiscipline(curriculumMA);
+        List<CurriculumSlot> curriculumSlotListAG = curriculumSlotService.getAllSlotsForDiscipline(curriculumAG);
+        List<CurriculumSlot> curriculumSlotListIR = curriculumSlotService.getAllSlotsForDiscipline(curriculumIR);
+
+
+
         curriculumMA.setCurriculumSlots(curriculumSlotListMA);
-
-
-        List<KindOfStudy> logicSchemaAG = List.of(KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE, KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.LAB_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK,
-                KindOfStudy.LECTURE,
-                KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK, KindOfStudy.PRACTICAL_WORK);
+        curriculumAG.setCurriculumSlots(curriculumSlotListAG);
+        curriculumIR.setCurriculumSlots(curriculumSlotListIR);
 
 
 /*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
@@ -130,39 +96,35 @@ public class Application {
 
 
         Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
-        groupCombinationEducatorMA.put(groupCombinations.get(0), educatorMathLecturer);
-        groupCombinationEducatorMA.put(groupCombinations.get(1), educatorMathLecturer);
-        groupCombinationEducatorMA.put(groupCombinations.get(2), educatorMathLecturer);
-        groupCombinationEducatorMA.put(groupCombinations.get(3), educatorMathLecturer);
-        groupCombinationEducatorMA.put(groupCombinations.get(4), educatorMathLecturer);
-
         Map<GroupCombination, Educator> groupCombinationEducatorAG = new HashMap<>();
-        groupCombinationEducatorAG.put(groupCombinations.get(0), educatorAG);
-        groupCombinationEducatorAG.put(groupCombinations.get(1), educatorAG);
-        groupCombinationEducatorAG.put(groupCombinations.get(2), educatorAG);
-        groupCombinationEducatorAG.put(groupCombinations.get(3), educatorAG);
-        groupCombinationEducatorAG.put(groupCombinations.get(4), educatorAG);
+        Map<GroupCombination, Educator> groupCombinationEducatorIR = new HashMap<>();
+
+        for (int i = 0; i < 5; i++) {
+            groupCombinationEducatorMA.put(groupCombinations.get(i), educatorMathLecturer);
+            groupCombinationEducatorAG.put(groupCombinations.get(i), educatorAG);
+            groupCombinationEducatorIR.put(groupCombinations.get(i), educatorIR);
+        }
 
 
         List<Educator> educatorsMA = List.of(educatorMathLecturer);
         List<Educator> educatorsAG = List.of(educatorAG);
+        List<Educator> educatorsIR = List.of(educatorIR);
 
 
-        //List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, logicSchemaMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
         List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, curriculumMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
-
-
-        //List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, logicSchemaAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
-
+        List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, curriculumAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
+        List<Lesson> logicSchemaStudyIR = createLessonsDiscipline(disciplineIR, Lesson.class, curriculumIR, groupCombinations, educatorIR, groupCombinationEducatorIR);
 
         ScheduleGrid scheduleGrid = new ScheduleGrid();
 
-        DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA);
+        DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA,slotChainService,curriculumSlotService);
         distributionDisciplineMA.distributeLessons();
 
-        /*DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG);
-        distributionDisciplineAG.distributeLessons();*/
+        DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG,slotChainService,curriculumSlotService);
+        distributionDisciplineAG.distributeLessons();
 
+        DistributionDiscipline distributionDisciplineIR = new DistributionDiscipline(scheduleGrid, logicSchemaStudyIR, educatorsIR,slotChainService,curriculumSlotService);
+        distributionDisciplineIR.distributeLessons();
 
         //========================================================================
 /*        // 2. Запуск ГА
@@ -193,12 +155,12 @@ public class Application {
         System.out.println(scheduleGrid.getAmountDays());
 
         ScheduleExporter.exportToExcel(scheduleGrid, educatorMathLecturer, educatorMathLecturer.getName());
-        ScheduleExporter.exportToExcel(scheduleGrid, educatorMathPractise1, educatorMathPractise1.getName());
+        //ScheduleExporter.exportToExcel(scheduleGrid, educatorMathPractise1, educatorMathPractise1.getName());
         ScheduleExporter.exportToExcel(scheduleGrid, educatorAG, educatorAG.getName());
-
+        ScheduleExporter.exportToExcel(scheduleGrid, educatorIR, educatorIR.getName());
 
         System.out.println();
 
-        //context.close();
+        context.close();
     }
 }

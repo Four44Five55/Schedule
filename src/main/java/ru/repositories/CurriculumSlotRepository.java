@@ -9,8 +9,9 @@ import ru.entity.Discipline;
 import ru.entity.logicSchema.CurriculumSlot;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, Integer> {
-
+    Optional<CurriculumSlot> findFirstByIdLessThanAndDisciplineIdOrderByIdDesc(Integer id, Integer disciplineId);
 }

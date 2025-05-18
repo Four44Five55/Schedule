@@ -40,6 +40,14 @@ public class ScheduleGrid extends AbstractGrid {
         return scheduleGridMap.getOrDefault(cell, new ArrayList<>());
     }
 
+    public CellForLesson getCellForLesson(AbstractLesson targetLesson) {
+        return scheduleGridMap.entrySet().parallelStream()
+                .filter(entry -> entry.getValue().contains(targetLesson))
+                .findAny()
+                .map(Map.Entry::getKey)
+                .orElse(null);
+    }
+
     /**
      * Метод для добавления занятия в ячейку
      *
@@ -52,6 +60,21 @@ public class ScheduleGrid extends AbstractGrid {
             return false;  // или throw new IllegalArgumentException("Ячейка не существует");
         }
         scheduleGridMap.get(cell).add(lesson);
+        return true;
+    }
+
+    /**
+     * Метод для удаления занятия в ячейке
+     *
+     * @param cell   целевая ячейка для удаления занятия
+     * @param lesson занятие
+     * @return boolean возвращает true или исключение в случае отсутствия ячейки
+     */
+    public boolean removeLessonFromCell(CellForLesson cell, AbstractLesson lesson) {
+        if (!scheduleGridMap.containsKey(cell)) {
+            return false;
+        }
+        scheduleGridMap.get(cell).remove(lesson);
         return true;
     }
 
@@ -86,6 +109,7 @@ public class ScheduleGrid extends AbstractGrid {
                 .filter(lesson -> lesson.isEntityUsed(entity))
                 .collect(Collectors.toUnmodifiableList());
     }
+
     public ScheduleGrid deepCopy() {
         // Создаём новую сетку с теми же датами
         ScheduleGrid copy = new ScheduleGrid(START_DATE, END_DATE);
