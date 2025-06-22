@@ -73,6 +73,22 @@ public class CurriculumSlotService {
         return slots;
     }
 
+    public Optional<CurriculumSlot> getPreviousLecture(Integer currentSlotId, Integer disciplineId) {
+        // Используем один запрос (рекомендуется)
+        return repository.findPreviousLecture(currentSlotId,disciplineId);
+
+        // Два запроса (если нужна дополнительная логика)
+        /*
+        return slotRepository.findById(currentSlotId)
+            .flatMap(currentSlot ->
+                slotRepository.findPreviousLectureInDiscipline(
+                    currentSlotId,
+                    currentSlot.getDisciplineId()
+                )
+            );
+        */
+    }
+
     public Integer getPreviousSlotIdForDiscipline(Lesson lesson) {
         Integer currentSlotId = lesson.getCurriculumSlotId();
         Integer disciplineId = lesson.getDiscipline().getId();

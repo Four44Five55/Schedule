@@ -14,6 +14,7 @@ import ru.services.*;
 import ru.utils.DateUtils;
 
 import java.sql.SQLException;
+import java.time.DayOfWeek;
 import java.util.*;
 
 import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
@@ -47,8 +48,8 @@ public class Application {
         educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-27"), KindOfConstraints.BUSINESS_TRIP);
 
         Educator educatorAG = new Educator(++idEducator, "Аналитик Л.А.");
-        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-30"), KindOfConstraints.VACATION);
-        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-12-29"), DateUtils.parseDateFlexible("2026-01-12"), KindOfConstraints.VACATION);
+        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-09"), DateUtils.parseDateFlexible("2025-09-20"), KindOfConstraints.VACATION);
+        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-01"), DateUtils.parseDateFlexible("2026-01-26"), KindOfConstraints.VACATION, DayOfWeek.MONDAY);
 
         Educator educatorIR = new Educator(++idEducator, "Историк Л.Ф.");
 
@@ -60,6 +61,9 @@ public class Application {
                         new Group(4, "35-1", 25, new Auditorium(4, "217-4", 30)),
                         new Group(5, "35-2", 24, new Auditorium(5, "206-4", 39)),
                         new Group(6, "36", 18, new Auditorium(6, "312-4", 30)));
+
+        groups.forEach(group -> {group.addConstraint(DateUtils.parseDateFlexible("2025-12-25"), DateUtils.parseDateFlexible("2026-01-08"), KindOfConstraints.VACATION);});
+        groups.forEach(group -> group.addConstraint(DateUtils.parseDateFlexible("2026-01-20"), DateUtils.parseDateFlexible("2026-01-31"), KindOfConstraints.EXAM_SESSION));
 
         List<GroupCombination> groupCombinations = List.of(
                 new GroupCombination(List.of(groups.get(0))), // Группа 31
@@ -77,7 +81,6 @@ public class Application {
         List<CurriculumSlot> curriculumSlotListMA = curriculumSlotService.getAllSlotsForDiscipline(curriculumMA);
         List<CurriculumSlot> curriculumSlotListAG = curriculumSlotService.getAllSlotsForDiscipline(curriculumAG);
         List<CurriculumSlot> curriculumSlotListIR = curriculumSlotService.getAllSlotsForDiscipline(curriculumIR);
-
 
 
         curriculumMA.setCurriculumSlots(curriculumSlotListMA);
@@ -117,13 +120,13 @@ public class Application {
 
         ScheduleGrid scheduleGrid = new ScheduleGrid();
 
-        DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA,slotChainService,curriculumSlotService);
+        DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA, slotChainService, curriculumSlotService);
         distributionDisciplineMA.distributeLessons();
 
-        DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG,slotChainService,curriculumSlotService);
+        DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG, slotChainService, curriculumSlotService);
         distributionDisciplineAG.distributeLessons();
 
-        DistributionDiscipline distributionDisciplineIR = new DistributionDiscipline(scheduleGrid, logicSchemaStudyIR, educatorsIR,slotChainService,curriculumSlotService);
+        DistributionDiscipline distributionDisciplineIR = new DistributionDiscipline(scheduleGrid, logicSchemaStudyIR, educatorsIR, slotChainService, curriculumSlotService);
         distributionDisciplineIR.distributeLessons();
 
         //========================================================================

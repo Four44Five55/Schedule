@@ -6,6 +6,7 @@ import ru.entity.ScheduleGrid;
 import ru.enums.KindOfConstraints;
 import ru.inter.IMaterialEntity;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 
 public class AbstractMaterialEntity implements IMaterialEntity {
@@ -58,6 +59,19 @@ public class AbstractMaterialEntity implements IMaterialEntity {
     public void addConstraint(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
         constraintsGrid.fillConstraintInRangeForGrid(startDate, endDate, constraint);
     }
+
+    /**
+     * Добавляет ограничения в карту с ограничениями в указанный диапазон
+     *
+     * @param startDate  начальная дата
+     * @param endDate    последняя дата
+     * @param constraint вид ограничения
+     * @param dayOfWeek  день недели в котором определяется ограничение
+     */
+    public void addConstraint(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint, DayOfWeek dayOfWeek) {
+        constraintsGrid.fillConstraintInRangeForGrid(startDate, endDate, constraint, dayOfWeek);
+    }
+
 
     public int getId() {
         return id;

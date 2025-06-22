@@ -123,6 +123,7 @@ abstract public class AbstractLesson {
         return numberTheme;
     }
 
+
     public List<AbstractAuditorium> getAuditorium() {
         return auditoriums;
     }
@@ -147,6 +148,8 @@ abstract public class AbstractLesson {
     public String toString() {
         return "dis: " + discipline +
                 ",kind: " + curriculumSlot.getKindOfStudy().getAbbreviationName() +
+                curriculumSlot.getThemeLesson().getThemeNumber() +
+                "(" + curriculumSlot.getId() + ")" +
                 ", educ: " + educators +
                 ", " + groupCombinations;
     }

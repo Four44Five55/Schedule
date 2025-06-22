@@ -26,9 +26,6 @@ abstract public class AbstractDiscipline {
 
     @Override
     public String toString() {
-        return "AbstractDiscipline{" +
-                "name='" + name + '\'' +
-                ", abbreviation='" + abbreviation + '\'' +
-                '}';
+        return  abbreviation;
     }
 }
