@@ -20,7 +20,7 @@ public class CurriculumSlot {
     @ManyToOne
     private ThemeLesson themeLesson;
     @ManyToOne
-    @JoinColumn(name = "discipline_id") // Добавляем явную связь
+    @JoinColumn(name = "discipline_id")
     private Discipline discipline;
 
     public CurriculumSlot(KindOfStudy kindOfStudy, ThemeLesson themeLesson, Discipline discipline) {

@@ -3,6 +3,7 @@ package ru.entity.logicSchema;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import ru.entity.Discipline;
 
 import java.util.Objects;
@@ -15,11 +16,11 @@ public class SlotChain {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;  // Новое поле для первичного ключа
-
+    @Setter
     @ManyToOne
     @JoinColumn(name = "slot_a_id", referencedColumnName = "id")
     private CurriculumSlot slotA;
-
+    @Setter
     @ManyToOne
     @JoinColumn(name = "slot_b_id", referencedColumnName = "id")
     private CurriculumSlot slotB;
@@ -28,21 +29,9 @@ public class SlotChain {
     @JoinColumn(name = "discipline_id")
     private Discipline discipline;
 
-    public void setDiscipline(Discipline discipline) {
-        this.discipline = discipline;
-    }
 
     public SlotChain(CurriculumSlot slotA, CurriculumSlot slotB) {
         this.slotA = slotA;
-        this.slotB = slotB;
-    }
-
-
-    public void setSlotA(CurriculumSlot slotA) {
-        this.slotA = slotA;
-    }
-
-    public void setSlotB(CurriculumSlot slotB) {
         this.slotB = slotB;
     }
 

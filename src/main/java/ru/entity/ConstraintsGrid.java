@@ -4,6 +4,7 @@ import ru.abstracts.AbstractGrid;
 import ru.entity.factories.CellForLessonFactory;
 import ru.enums.KindOfConstraints;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -22,13 +23,16 @@ public class ConstraintsGrid extends AbstractGrid {
 
     /**
      * Получает карту с ограничениями
+     *
      * @return Map<CellForLesson, KindOfConstraints>
      */
     public Map<CellForLesson, KindOfConstraints> getConstraintsGridMap() {
         return constraintsGridMap;
     }
+
     /**
      * Получает карту ограничение
+     *
      * @param cell ячейка
      * @return KindOfConstraints
      */
@@ -47,6 +51,24 @@ public class ConstraintsGrid extends AbstractGrid {
         List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
+        }
+    }
+
+    /**
+     * Заполняет сетку ограничениями только для указанного дня недели
+     *
+     * @param startDate  начальная дата
+     * @param endDate    конечная дата
+     * @param constraint тип ограничения
+     * @param dayOfWeek  день недели, для которого применяется ограничение
+     */
+    public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate,
+                                             KindOfConstraints constraint, DayOfWeek dayOfWeek) {
+        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
+        for (CellForLesson cellForLesson : cellForLessons) {
+            if (cellForLesson.getDate().getDayOfWeek() == dayOfWeek) {
+                constraintsGridMap.put(cellForLesson, constraint);
+            }
         }
     }
 

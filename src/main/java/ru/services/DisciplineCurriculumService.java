@@ -15,7 +15,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DisciplineCurriculumService {
     private final DisciplineCurriculumRepository repository;
-    private final CurriculumSlotRepository slotRepository;
 
     public DisciplineCurriculum create(DisciplineCurriculum disciplineCurriculum) {
         return repository.save(disciplineCurriculum);
@@ -29,4 +28,7 @@ public class DisciplineCurriculumService {
         return curriculum;
     }
 
+    public DisciplineCurriculum findByDisciplineId(Integer disciplineId){
+        return repository.findByDisciplineId(disciplineId);
+    }
 }

@@ -6,27 +6,26 @@ import org.hibernate.Hibernate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import ru.entity.Discipline;
+import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCurriculum;
-import ru.entity.logicSchema.ThemeLesson;
-import ru.enums.KindOfStudy;
 import ru.repositories.CurriculumSlotRepository;
 import ru.repositories.DisciplineCurriculumRepository;
 import ru.repositories.DisciplineRepository;
 import ru.repositories.ThemeLessonRepository;
 
-import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class CurriculumSlotService {
     private final CurriculumSlotRepository repository;
-    private final DisciplineRepository disciplineRepository;
-    private final ThemeLessonRepository themeLessonRepository;
+    private final DisciplineCurriculumService disciplineCurriculumService;
+
+
 
     private static final Logger logger = LoggerFactory.getLogger(CurriculumSlotService.class);
 
@@ -50,9 +49,10 @@ public class CurriculumSlotService {
         repository.deleteById(id);
     }
 
-    @Transactional
 
-    public List<CurriculumSlot> getAllSlotsForDiscipline(DisciplineCurriculum curriculum) {
+    @Transactional
+    public List<CurriculumSlot> getAllSlotsForDiscipline(Integer disciplineId) {
+        DisciplineCurriculum curriculum = disciplineCurriculumService.findByDisciplineId(disciplineId);
         int startId = curriculum.getStartSlot().getId();
         int endId = curriculum.getEndSlot().getId();
 
@@ -75,4 +75,9 @@ public class CurriculumSlotService {
 
         return slots;
     }
+
+    public Optional<CurriculumSlot> getPreviousLecture(Integer currentSlotId, Integer disciplineId) {
+        return repository.findPreviousLecture(currentSlotId, disciplineId);
+    }
+
 }

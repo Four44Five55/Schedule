@@ -9,9 +9,12 @@ import ru.entity.*;
 import ru.entity.factories.CellForLessonFactory;
 import ru.enums.TimeSlotPair;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -20,7 +23,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class ScheduleExporter {
-//TODO изменить добавление данных по аудитории
 
     private static List<String> getListDataLessonForEntity(AbstractMaterialEntity entity, AbstractLesson lesson) {
         List<String> listData = new ArrayList<>();
@@ -36,14 +38,14 @@ public class ScheduleExporter {
                     .collect(Collectors.joining(", ")));//Аудитория проведения занятия
 
         } else if (entity instanceof Group) {
-            listData.add(lesson.getKindOfStudy().getAbbreviationName() +  lesson.getNumberThemeLesson());//Тема занятия
+            listData.add(lesson.getKindOfStudy().getAbbreviationName() + lesson.getNumberThemeLesson());//Тема занятия
             listData.add(lesson.getDiscipline().getAbbreviation());//Дисциплина
             listData.add(lesson.getAuditorium().stream()
                     .map(AbstractAuditorium::getName)
                     .distinct()
                     .collect(Collectors.joining(", ")));//Аудитория проведения занятия
         } else if (entity instanceof Auditorium) {
-            listData.add(lesson.getKindOfStudy().getAbbreviationName() +  lesson.getNumberThemeLesson());//Тема занятия
+            listData.add(lesson.getKindOfStudy().getAbbreviationName() + lesson.getNumberThemeLesson());//Тема занятия
             listData.add(lesson.getGroups().stream()
                     .map(Group::getName)
                     .collect(Collectors.joining(", ")));//Список групп занятия
@@ -62,7 +64,7 @@ public class ScheduleExporter {
      * @param entityName имя сущности для названия файла
      */
 
-    public static void exportToExcel(ScheduleGrid scheduleGrid, AbstractMaterialEntity entity, String entityName) {
+    public static void exportToExcel(ScheduleGrid scheduleGrid, AbstractMaterialEntity entity, String entityName, String subDirectory) {
 
         // Загрузка шаблона из ресурсов
         try (InputStream is = ScheduleExporter.class.getClassLoader().getResourceAsStream("templates/template.xlsx")) {
@@ -131,13 +133,13 @@ public class ScheduleExporter {
             }
 
             // Авторазмер колонок
-            int widthInUnits = (int) (45 * 256 / 7.0); // Результат: ~1645 единиц
+/*            int widthInUnits = (int) (45 * 256 / 7.0); // Результат: ~1645 единиц
             for (int i = 0; i < column; i++) {
                 sheet.setColumnWidth(i, widthInUnits);
                 //sheet.autoSizeColumn(i);
-            }
+            }*/
             // Сохраняем файл
-            saveWorkbookToFile(workbook, entityName);
+            saveWorkbookToFile(workbook, entityName, subDirectory);
 
 
         } catch (IOException e) {
@@ -153,16 +155,43 @@ public class ScheduleExporter {
      * @throws IOException если произошла ошибка при сохранении
      */
 
-    private static void saveWorkbookToFile(Workbook workbook, String entityName) throws IOException {
-        String filePath = Paths.get("src/main/resources", entityName + ".xlsx").toString();
+    private static void saveWorkbookToFile(Workbook workbook, String entityName, String subDirectory) throws IOException {
+        String correctSubDirectory = subDirectory + File.separator + entityName + ".xlsx";
+        String filePath = Paths.get("src/main/resources", correctSubDirectory).toString();
+        boolean success = createDirectoriesForFile(filePath);
 
-        try (FileOutputStream fileOut = new FileOutputStream(filePath)) {
-            workbook.write(fileOut);
-            System.out.println("Файл успешно создан: " + filePath);
+        if (success) {
+            try (FileOutputStream fileOut = new FileOutputStream(filePath)) {
+                workbook.write(fileOut);
+                System.out.println("Файл успешно создан: " + filePath);
+            }
+        } else {
+            System.out.println("Не удалось создать директории для файла");
         }
+
 
     }
 
+    /**
+     * Создание директории для сохранения файла
+     *
+     * @param filePath путь к файлу
+     * @return Boolean
+     */
+    private static boolean createDirectoriesForFile(String filePath) {
+        try {
+            Path path = Paths.get(filePath);
+            Path parentDir = path.getParent(); // Путь к родительской директории
+
+            if (parentDir != null) {
+                Files.createDirectories(parentDir);
+            }
+            return true;
+        } catch (IOException e) {
+            System.err.println("Ошибка при создании директорий для файла: " + e.getMessage());
+            return false;
+        }
+    }
 
     /**
      * Получает ячейку по номеру строки и столбца.
