@@ -43,3 +43,9 @@ schedule_db
 
 # IDE settings
 .idea/
+
+# Generated output
+/output/
+
+# Generated sources
+/src/main/generated/
