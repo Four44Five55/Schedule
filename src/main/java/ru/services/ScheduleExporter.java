@@ -157,7 +157,7 @@ public class ScheduleExporter {
 
     private static void saveWorkbookToFile(Workbook workbook, String entityName, String subDirectory) throws IOException {
         String correctSubDirectory = subDirectory + File.separator + entityName + ".xlsx";
-        String filePath = Paths.get("src/main/resources", correctSubDirectory).toString();
+        String filePath = Paths.get("src/output", correctSubDirectory).toString();
         boolean success = createDirectoriesForFile(filePath);
 
         if (success) {
