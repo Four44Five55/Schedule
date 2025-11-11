@@ -1,21 +1,25 @@
 package ru;
 
+import org.apache.commons.compress.utils.Lists;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
+import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.*;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCurriculum;
-import ru.entity.logicSchema.ThemeLesson;
 import ru.enums.KindOfConstraints;
-import ru.enums.KindOfStudy;
-import ru.repositories.ThemeLessonRepository;
+import ru.enums.TimeSlotPair;
+import ru.inter.IGrid;
 import ru.services.*;
+import ru.services.distribution.DistributionDisciplineUniform;
+import ru.services.distribution.UnifiedScheduleManager;
 import ru.utils.DateUtils;
 
 import java.sql.SQLException;
-import java.time.DayOfWeek;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
 
@@ -31,27 +35,43 @@ public class Application {
         ThemeLessonService themeLessonService = context.getBean(ThemeLessonService.class);
         SlotChainService slotChainService = context.getBean(SlotChainService.class);
 
-        System.out.println(slotChainService.getByID(1).toString());
-
-        Discipline disciplineMA = disciplineService.getById(1);
         Discipline disciplineAG = disciplineService.getById(2);
         Discipline disciplineIR = disciplineService.getById(3);
 
+        Discipline disciplineIYa = disciplineService.getById(4); //Иняз
+        Discipline disciplineFL = disciplineService.getById(5);//Философия
+        //Культурология добавить
+        Discipline disciplineMA = disciplineService.getById(11);//Математический анализ
+        Discipline disciplineSGM = disciplineService.getById(7); //СГМ
+        Discipline disciplineF = disciplineService.getById(8); //Физика
+        Discipline disciplineBZH = disciplineService.getById(9);//Безопасность ЖД
+        Discipline disciplineIT = disciplineService.getById(10);
 
         int idEducator = 0;
-        Educator educatorMathLecturer = new Educator(++idEducator, "Математик Л.А.");
-        educatorMathLecturer.addDefaultPriority();
-        educatorMathLecturer.addConstraint(DateUtils.parseDateFlexible("2025-09-06"), DateUtils.parseDateFlexible("2025-09-15"), KindOfConstraints.BUSINESS_TRIP);
 
-        Educator educatorMathPractise1 = new Educator(++idEducator, "Практик1 А.А.");
-        educatorMathPractise1.addDefaultPriority();
-        educatorMathPractise1.addConstraint(DateUtils.parseDateFlexible("2025-09-20"), DateUtils.parseDateFlexible("2025-09-27"), KindOfConstraints.BUSINESS_TRIP);
+        Educator educatorIYa = new Educator(++idEducator, "Иняз П.П.");
+        educatorIYa.addDefaultPriority();
+        educatorIYa.getPriority().removeTimeSlot(TimeSlotPair.FIRST);
+        educatorIYa.getPriority().addTimeSlot(TimeSlotPair.FOURTH);
+        educatorIYa.addConstraint(DateUtils.parseDateFlexible("2025-10-16"), DateUtils.parseDateFlexible("2025-10-31"), KindOfConstraints.VACATION);
 
-        Educator educatorAG = new Educator(++idEducator, "Аналитик Л.А.");
-        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-09"), DateUtils.parseDateFlexible("2025-09-20"), KindOfConstraints.VACATION);
-        educatorAG.addConstraint(DateUtils.parseDateFlexible("2025-09-01"), DateUtils.parseDateFlexible("2026-01-26"), KindOfConstraints.VACATION, DayOfWeek.MONDAY);
+        Educator educatorFL = new Educator(++idEducator, "Философ Л.Л.");
 
-        Educator educatorIR = new Educator(++idEducator, "Историк Л.Ф.");
+        Educator educatorMA = new Educator(++idEducator, "Математик Л.А.");
+        educatorMA.addDefaultPriority();
+        educatorMA.addConstraint(DateUtils.parseDateFlexible("2025-10-20"), DateUtils.parseDateFlexible("2025-10-27"), KindOfConstraints.VACATION);
+
+        Educator educatorSGM = new Educator(++idEducator, "СГМ Л.П.");
+        educatorSGM.addDefaultPriority();
+
+        Educator educatorF = new Educator(++idEducator, "Физик Л.Л.");
+        educatorF.addDefaultPriority();
+
+        Educator educatorBZH = new Educator(++idEducator, "Безопасный А.А.");
+        educatorBZH.addDefaultPriority();
+
+        Educator educatorIT = new Educator(++idEducator, "Информационный А.А.");
+        educatorIT.addDefaultPriority();
 
 
         List<Group> groups = List.of
@@ -62,8 +82,57 @@ public class Application {
                         new Group(5, "35-2", 24, new Auditorium(5, "206-4", 39)),
                         new Group(6, "36", 18, new Auditorium(6, "312-4", 30)));
 
-        groups.forEach(group -> {group.addConstraint(DateUtils.parseDateFlexible("2025-12-25"), DateUtils.parseDateFlexible("2026-01-08"), KindOfConstraints.VACATION);});
+        groups.forEach(group -> {
+            group.addConstraint(DateUtils.parseDateFlexible("2025-12-25"), DateUtils.parseDateFlexible("2026-01-08"), KindOfConstraints.VACATION);
+        });
         groups.forEach(group -> group.addConstraint(DateUtils.parseDateFlexible("2026-01-20"), DateUtils.parseDateFlexible("2026-01-31"), KindOfConstraints.EXAM_SESSION));
+
+
+        //
+        DisciplineCurriculum curriculumIYa = disciplineCurriculumService.findByDisciplineId(disciplineIYa.getId());
+        DisciplineCurriculum curriculumFL = disciplineCurriculumService.findByDisciplineId(disciplineFL.getId());
+        DisciplineCurriculum curriculumMA = disciplineCurriculumService.findByDisciplineId(disciplineMA.getId());
+        DisciplineCurriculum curriculumSGM = disciplineCurriculumService.findByDisciplineId(disciplineSGM.getId());
+        DisciplineCurriculum curriculumF = disciplineCurriculumService.findByDisciplineId(disciplineF.getId());
+        DisciplineCurriculum curriculumBZH = disciplineCurriculumService.findByDisciplineId(disciplineBZH.getId());
+        DisciplineCurriculum curriculumIT = disciplineCurriculumService.findByDisciplineId(disciplineIT.getId());
+
+        //
+        List<CurriculumSlot> curriculumSlotListIYa = curriculumSlotService.getAllSlotsForDiscipline(disciplineIYa.getId());
+        List<CurriculumSlot> curriculumSlotListFL = curriculumSlotService.getAllSlotsForDiscipline(disciplineFL.getId());
+        List<CurriculumSlot> curriculumSlotListMA = curriculumSlotService.getAllSlotsForDiscipline(disciplineMA.getId());
+        List<CurriculumSlot> curriculumSlotListSGM = curriculumSlotService.getAllSlotsForDiscipline(disciplineSGM.getId());
+        List<CurriculumSlot> curriculumSlotListF = curriculumSlotService.getAllSlotsForDiscipline(disciplineF.getId());
+        List<CurriculumSlot> curriculumSlotListBZH = curriculumSlotService.getAllSlotsForDiscipline(disciplineBZH.getId());
+        List<CurriculumSlot> curriculumSlotListIT = curriculumSlotService.getAllSlotsForDiscipline(disciplineIT.getId());
+
+        //
+        curriculumIYa.setCurriculumSlots(curriculumSlotListIYa);
+        curriculumFL.setCurriculumSlots(curriculumSlotListFL);
+        curriculumMA.setCurriculumSlots(curriculumSlotListMA);
+        curriculumSGM.setCurriculumSlots(curriculumSlotListSGM);
+        curriculumF.setCurriculumSlots(curriculumSlotListF);
+        curriculumBZH.setCurriculumSlots(curriculumSlotListBZH);
+        curriculumIT.setCurriculumSlots(curriculumSlotListIT);
+
+
+/*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
+        groupCombinationEducatorMA.put(groupCombinations.get(0), educatorMA);
+        groupCombinationEducatorMA.put(groupCombinations.get(1), educatorMA);
+        groupCombinationEducatorMA.put(groupCombinations.get(2), educatorMathPractise1);
+        groupCombinationEducatorMA.put(groupCombinations.get(3), educatorMathPractise1);
+        groupCombinationEducatorMA.put(groupCombinations.get(4), educatorMathPractise1);
+
+        List<Educator> educators = List.of(educatorMA, educatorMathPractise1);*/
+
+
+        Map<GroupCombination, Educator> groupCombinationEducatorIYa = new HashMap<>();
+        Map<GroupCombination, Educator> groupCombinationEducatorFL = new HashMap<>();
+        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
+        Map<GroupCombination, Educator> groupCombinationEducatorSGM = new HashMap<>();
+        Map<GroupCombination, Educator> groupCombinationEducatorF = new HashMap<>();
+        Map<GroupCombination, Educator> groupCombinationEducatorBZH = new HashMap<>();
+        Map<GroupCombination, Educator> groupCombinationEducatorIT = new HashMap<>();
 
         List<GroupCombination> groupCombinations = List.of(
                 new GroupCombination(List.of(groups.get(0))), // Группа 31
@@ -72,98 +141,141 @@ public class Application {
                 new GroupCombination(List.of(groups.get(4))), // Группа 35-2
                 new GroupCombination(List.of(groups.get(5)))  // Группа 36
         );
-
-
-        DisciplineCurriculum curriculumMA = disciplineCurriculumService.getById(1);
-        DisciplineCurriculum curriculumAG = disciplineCurriculumService.getById(3);
-        DisciplineCurriculum curriculumIR = disciplineCurriculumService.getById(2);
-
-        List<CurriculumSlot> curriculumSlotListMA = curriculumSlotService.getAllSlotsForDiscipline(curriculumMA);
-        List<CurriculumSlot> curriculumSlotListAG = curriculumSlotService.getAllSlotsForDiscipline(curriculumAG);
-        List<CurriculumSlot> curriculumSlotListIR = curriculumSlotService.getAllSlotsForDiscipline(curriculumIR);
-
-
-        curriculumMA.setCurriculumSlots(curriculumSlotListMA);
-        curriculumAG.setCurriculumSlots(curriculumSlotListAG);
-        curriculumIR.setCurriculumSlots(curriculumSlotListIR);
-
-
-/*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
-        groupCombinationEducatorMA.put(groupCombinations.get(0), educatorMathLecturer);
-        groupCombinationEducatorMA.put(groupCombinations.get(1), educatorMathLecturer);
-        groupCombinationEducatorMA.put(groupCombinations.get(2), educatorMathPractise1);
-        groupCombinationEducatorMA.put(groupCombinations.get(3), educatorMathPractise1);
-        groupCombinationEducatorMA.put(groupCombinations.get(4), educatorMathPractise1);
-
-        List<Educator> educators = List.of(educatorMathLecturer, educatorMathPractise1);*/
-
-
-        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
-        Map<GroupCombination, Educator> groupCombinationEducatorAG = new HashMap<>();
-        Map<GroupCombination, Educator> groupCombinationEducatorIR = new HashMap<>();
-
-        for (int i = 0; i < 5; i++) {
-            groupCombinationEducatorMA.put(groupCombinations.get(i), educatorMathLecturer);
-            groupCombinationEducatorAG.put(groupCombinations.get(i), educatorAG);
-            groupCombinationEducatorIR.put(groupCombinations.get(i), educatorIR);
-        }
-
-
-        List<Educator> educatorsMA = List.of(educatorMathLecturer);
-        List<Educator> educatorsAG = List.of(educatorAG);
-        List<Educator> educatorsIR = List.of(educatorIR);
-
-
-        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, curriculumMA, groupCombinations, educatorMathLecturer, groupCombinationEducatorMA);
-        List<Lesson> logicSchemaStudyAG = createLessonsDiscipline(disciplineAG, Lesson.class, curriculumAG, groupCombinations, educatorAG, groupCombinationEducatorAG);
-        List<Lesson> logicSchemaStudyIR = createLessonsDiscipline(disciplineIR, Lesson.class, curriculumIR, groupCombinations, educatorIR, groupCombinationEducatorIR);
-
-        ScheduleGrid scheduleGrid = new ScheduleGrid();
-
-        DistributionDiscipline distributionDisciplineMA = new DistributionDiscipline(scheduleGrid, logicSchemaStudyMA, educatorsMA, slotChainService, curriculumSlotService);
-        distributionDisciplineMA.distributeLessons();
-
-        DistributionDiscipline distributionDisciplineAG = new DistributionDiscipline(scheduleGrid, logicSchemaStudyAG, educatorsAG, slotChainService, curriculumSlotService);
-        distributionDisciplineAG.distributeLessons();
-
-        DistributionDiscipline distributionDisciplineIR = new DistributionDiscipline(scheduleGrid, logicSchemaStudyIR, educatorsIR, slotChainService, curriculumSlotService);
-        distributionDisciplineIR.distributeLessons();
-
-        //========================================================================
-/*        // 2. Запуск ГА
-        ScheduleChromosome bestSchedule = GeneticAlgorithm.run(
-                logicSchemaStudyMA, scheduleGrid,
-                100,   // Размер популяции
-                50,    // Поколений
-                0.1    // Вероятность мутации
+        List<GroupCombination> groupCombinationsFL = List.of(
+                new GroupCombination(List.of(groups.get(0), groups.get(5))), // Группа 31 и 36
+                new GroupCombination(List.of(groups.get(1), groups.get(2))), // Группы 33 и 34
+                new GroupCombination(List.of(groups.get(3))), // Группа 35-1
+                new GroupCombination(List.of(groups.get(4))) // Группа 35-2
         );
 
-        //Экспорт в Excel
-        for (Group group : groups) {
-            ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), group, group.getName());
+        List<GroupCombination> groupCombinationsIYa = List.of(
+                new GroupCombination(List.of(groups.get(0))), // Группа 31
+                new GroupCombination(List.of(groups.get(1))),// Группы 33
+                new GroupCombination(List.of(groups.get(2))),// Группы 34
+                new GroupCombination(List.of(groups.get(3))), // Группа 35-1
+                new GroupCombination(List.of(groups.get(4))), // Группа 35-2
+                new GroupCombination(List.of(groups.get(5)))  // Группа 36
+        );
+        List<GroupCombination> groupCombinationsIT = List.of(
+                new GroupCombination(List.of(groups.get(0))), // Группа 31
+                new GroupCombination(List.of(groups.get(1))),// Группы 33
+                new GroupCombination(List.of(groups.get(2))),// Группы 34
+                new GroupCombination(List.of(groups.get(3))), // Группа 35-1
+                new GroupCombination(List.of(groups.get(4))) // Группа 35-2
+        );
+
+        for (int i = 0; i < 4; i++) {
+            groupCombinationEducatorFL.put(groupCombinationsFL.get(i), educatorFL);
+        }
+
+        for (int i = 0; i < 5; i++) {
+            groupCombinationEducatorMA.put(groupCombinations.get(i), educatorMA);
+            groupCombinationEducatorSGM.put(groupCombinations.get(i), educatorSGM);
+            groupCombinationEducatorF.put(groupCombinations.get(i), educatorF);
+            groupCombinationEducatorBZH.put(groupCombinations.get(i), educatorBZH);
+            groupCombinationEducatorIT.put(groupCombinationsIT.get(i), educatorIT);
+        }
+
+        for (int i = 0; i < 6; i++) {
+            groupCombinationEducatorIYa.put(groupCombinationsIYa.get(i), educatorIYa);
         }
 
 
-        ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), educatorMathLecturer, educatorMathLecturer.getName());
-        ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), educatorMathPractise1, educatorMathPractise1.getName());
-        ScheduleExporter.exportToExcel(bestSchedule.getScheduleGrid(), educatorAG, educatorAG.getName());*/
-        //==============================================================================================================
+        //
+        List<Educator> educatorsIYa = List.of(educatorIYa);
+        List<Educator> educatorsFL = List.of(educatorFL);
+        List<Educator> educatorsMA = List.of(educatorMA);
+        List<Educator> educatorsSGM = List.of(educatorSGM);
+        List<Educator> educatorsF = List.of(educatorF);
+        List<Educator> educatorsBZH = List.of(educatorBZH);
+        List<Educator> educatorsIT = List.of(educatorIT);
+        //
+        List<Lesson> logicSchemaStudyIYa = createLessonsDiscipline(disciplineIYa, Lesson.class, curriculumIYa, groupCombinationsIYa, educatorIYa, groupCombinationEducatorIYa);
+        List<Lesson> logicSchemaStudyFL = createLessonsDiscipline(disciplineFL, Lesson.class, curriculumFL, groupCombinationsFL, educatorFL, groupCombinationEducatorFL);
+        List<Lesson> logicSchemaStudyMA = createLessonsDiscipline(disciplineMA, Lesson.class, curriculumMA, groupCombinations, educatorMA, groupCombinationEducatorMA);
+        List<Lesson> logicSchemaStudySGM = createLessonsDiscipline(disciplineSGM, Lesson.class, curriculumSGM, groupCombinations, educatorSGM, groupCombinationEducatorSGM);
+        List<Lesson> logicSchemaStudyF = createLessonsDiscipline(disciplineF, Lesson.class, curriculumF, groupCombinations, educatorF, groupCombinationEducatorF);
+        List<Lesson> logicSchemaStudyBZH = createLessonsDiscipline(disciplineBZH, Lesson.class, curriculumBZH, groupCombinations, educatorBZH, groupCombinationEducatorBZH);
+        List<Lesson> logicSchemaStudyIT = createLessonsDiscipline(disciplineIT, Lesson.class, curriculumIT, groupCombinationsIT, educatorIT, groupCombinationEducatorIT);
 
+        ScheduleGrid scheduleGridMain = new ScheduleGrid();
+        ScheduleGrid scheduleGridIYa = new ScheduleGrid();
+        ScheduleGrid scheduleGridFL = new ScheduleGrid();
+        ScheduleGrid scheduleGridMA = new ScheduleGrid();
+        ScheduleGrid scheduleGridSGM = new ScheduleGrid();
+        ScheduleGrid scheduleGridF = new ScheduleGrid();
+        ScheduleGrid scheduleGridBZH = new ScheduleGrid();
+        ScheduleGrid scheduleGridIT = new ScheduleGrid();
+
+
+        DistributionDisciplineUniform distributionDUIYa = new DistributionDisciplineUniform(scheduleGridIYa, logicSchemaStudyIYa, educatorsIYa, groupCombinationsIYa, slotChainService, curriculumSlotService);
+        distributionDUIYa.distributeUniformLessons();
+
+        DistributionDisciplineUniform distributionDUFL = new DistributionDisciplineUniform(scheduleGridFL, logicSchemaStudyFL, educatorsFL, groupCombinationsFL, slotChainService, curriculumSlotService);
+        distributionDUFL.distributeUniformLessons();
+
+        DistributionDisciplineUniform distributionDUMA = new DistributionDisciplineUniform(scheduleGridMA, logicSchemaStudyMA, educatorsMA, groupCombinations, slotChainService, curriculumSlotService);
+        distributionDUMA.distributeUniformLessons();
+
+        DistributionDisciplineUniform distributionDUSGM = new DistributionDisciplineUniform(scheduleGridSGM, logicSchemaStudySGM, educatorsSGM, groupCombinations, slotChainService, curriculumSlotService);
+        distributionDUSGM.distributeUniformLessons();
+
+        DistributionDisciplineUniform distributionDUF = new DistributionDisciplineUniform(scheduleGridF, logicSchemaStudyF, educatorsF, groupCombinations, slotChainService, curriculumSlotService);
+        distributionDUF.distributeUniformLessons();
+
+        DistributionDisciplineUniform distributionDUBZH = new DistributionDisciplineUniform(scheduleGridBZH, logicSchemaStudyBZH, educatorsBZH, groupCombinations, slotChainService, curriculumSlotService);
+        distributionDUBZH.distributeUniformLessons();
+
+        DistributionDisciplineUniform distributionDUIT = new DistributionDisciplineUniform(scheduleGridIT, logicSchemaStudyIT, educatorsIT, groupCombinationsIT, slotChainService, curriculumSlotService);
+        distributionDUIT.distributeUniformLessons();
+
+
+        UnifiedScheduleManager manager = new UnifiedScheduleManager(IGrid.START_DATE, IGrid.END_DATE, slotChainService, scheduleGridMain);
+
+        manager.addDisciplineSchedule(disciplineFL.getName(), scheduleGridFL);
+        manager.addDisciplineSchedule(disciplineMA.getName(), scheduleGridMA);
+        manager.addDisciplineSchedule(disciplineSGM.getName(), scheduleGridSGM);
+        manager.addDisciplineSchedule(disciplineF.getName(), scheduleGridF);
+        manager.addDisciplineSchedule(disciplineBZH.getName(), scheduleGridBZH);
+        manager.addDisciplineSchedule(disciplineIT.getName(), scheduleGridIT);
+        manager.addDisciplineSchedule(disciplineIYa.getName(), scheduleGridIYa);
+
+        // Выводим статистику распределения занятий
+        manager.printStatistics();
 
         //Экспорт в Excel
-        for (Group group : groups) {
-            ScheduleExporter.exportToExcel(scheduleGrid, group, group.getName());
-        }
+        createExcelsFiles(groups, scheduleGridIYa, educatorIYa, disciplineIYa.getName());
+        createExcelsFiles(groups, scheduleGridFL, educatorFL, disciplineFL.getName());
+        createExcelsFiles(groups, scheduleGridMA, educatorMA, disciplineMA.getName());
+        createExcelsFiles(groups, scheduleGridSGM, educatorSGM, disciplineSGM.getName());
+        createExcelsFiles(groups, scheduleGridF, educatorF, disciplineF.getName());
+        createExcelsFiles(groups, scheduleGridBZH, educatorBZH, disciplineBZH.getName());
+        createExcelsFiles(groups, scheduleGridIT, educatorIT, disciplineIT.getName());
 
-        System.out.println(scheduleGrid.getAmountDays());
+        System.out.println(scheduleGridMain.getAmountDays());
 
-        ScheduleExporter.exportToExcel(scheduleGrid, educatorMathLecturer, educatorMathLecturer.getName());
-        //ScheduleExporter.exportToExcel(scheduleGrid, educatorMathPractise1, educatorMathPractise1.getName());
-        ScheduleExporter.exportToExcel(scheduleGrid, educatorAG, educatorAG.getName());
-        ScheduleExporter.exportToExcel(scheduleGrid, educatorIR, educatorIR.getName());
+        List<AbstractMaterialEntity> entities = List.of(educatorIYa, educatorFL, educatorMA, educatorSGM, educatorF, educatorBZH, educatorIT);
+        createExcelsFiles(groups, manager.getUnifiedSchedule(), entities, "Общее расписание");
 
         System.out.println();
 
         context.close();
     }
+
+    private static void createExcelsFiles(List<Group> groups, ScheduleGrid scheduleGrid, Educator educator, String subDirectory) {
+        for (Group group : groups) {
+            ScheduleExporter.exportToExcel(scheduleGrid, group, group.getName(), subDirectory);
+        }
+        ScheduleExporter.exportToExcel(scheduleGrid, educator, educator.getName(), subDirectory);
+    }
+
+    private static void createExcelsFiles(List<Group> groups, ScheduleGrid scheduleGrid, List<AbstractMaterialEntity> entities, String subDirectory) {
+        for (Group group : groups) {
+            ScheduleExporter.exportToExcel(scheduleGrid, group, group.getName(), subDirectory);
+        }
+        for (AbstractMaterialEntity entity : entities) {
+            ScheduleExporter.exportToExcel(scheduleGrid, entity, entity.getName(), subDirectory);
+        }
+    }
+
 }

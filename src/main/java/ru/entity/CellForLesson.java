@@ -30,4 +30,12 @@ public class CellForLesson {
     public int hashCode() {
         return Objects.hash(date, timeSlotPair);
     }
+
+    @Override
+    public String toString() {
+        return "Cell{" +
+                "date=" + date +
+                ", Pair=" + timeSlotPair +
+                '}';
+    }
 }

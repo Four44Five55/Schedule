@@ -4,6 +4,7 @@ import ru.abstracts.AbstractGrid;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.factories.CellForLessonFactory;
+import ru.utils.YearWeek;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -92,11 +93,11 @@ public class ScheduleGrid extends AbstractGrid {
     }
 
     /**
-     * Получает список уроков в указанной ячейке, где используется заданная сущность
+     * Получает список занятий в указанной ячейке, где используется заданная сущность
      *
      * @param entity проверяемая сущность (аудитория, преподаватель, группа)
      * @param cell   целевая ячейка расписания
-     * @return неизменяемый список уроков, использующих сущность. Пустой список, если совпадений нет.
+     * @return неизменяемый список занятий, использующих сущность. Пустой список, если совпадений нет.
      * @throws NullPointerException если entity или cell == null
      */
     public List<AbstractLesson> getLessonsUsingEntity(AbstractMaterialEntity entity, CellForLesson cell) {
@@ -137,6 +138,37 @@ public class ScheduleGrid extends AbstractGrid {
         }
 
         return copy;
+    }
+
+    /**
+     * Возвращает список доступных ячеек для всех сущностей
+     *
+     * @param groupCombinations список комбинаций групп
+     * @param educators         список преподавателей
+     * @return List<CellForLesson> </CellForLesson>
+     */
+    public List<CellForLesson> getAvailableCells(List<GroupCombination> groupCombinations, List<Educator> educators) {
+        // Собираем все сущности (преподаватели + группы)
+        List<AbstractMaterialEntity> entities = new ArrayList<>();
+        Optional.ofNullable(educators).ifPresent(entities::addAll);
+
+        List<Group> groups = Optional.ofNullable(groupCombinations)
+                .orElse(Collections.emptyList())
+                .stream()
+                .flatMap(comb -> comb.getGroups().stream())
+                .collect(Collectors.toList());
+        entities.addAll(groups);
+
+        // Получаем все ячейки
+        List<CellForLesson> allCellsForLessons = CellForLessonFactory.getAllOrderedCells();
+
+        // Фильтруем ячейки: оставляем только те, где ВСЕ сущности свободны
+        return allCellsForLessons.stream()
+                .filter(cell -> entities.stream()
+                        .allMatch(entity -> entity.isFreeConstraintsGrid(cell)))
+                .collect(Collectors.toList());
+
+
     }
 
 }

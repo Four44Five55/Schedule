@@ -29,6 +29,30 @@ public enum KindOfStudy {
     public String getAbbreviationName() {
         return abbreviationName;
     }
+
+    /**
+     * Проверяет, является ли данный тип занятия лекционным.
+     *
+     * @return true, если это лекция.
+     */
+    public boolean isLectureType() {
+        return this == LECTURE;
+    }
+
+    /**
+     * Проверяет, можно ли менять занятия этого типа с занятиями другого типа.
+     *
+     * @param other другой тип занятия.
+     * @return true, если перестановка разрешена.
+     */
+    public boolean isInterchangeableWith(KindOfStudy other) {
+        if (this.isLectureType() || other.isLectureType()) {
+            // Если хотя бы одно из занятий - лекция, они должны быть строго одного типа.
+            return this == other;
+        }
+        // Если оба занятия - не лекции (практики, семинары и т.д.), их можно менять между собой.
+        return true;
+    }
 }
 /*Лекция – Lecture
  * Семинар – Seminar

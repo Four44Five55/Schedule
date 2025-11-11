@@ -1,12 +1,11 @@
 package ru.entity;
 
+import lombok.Getter;
 import ru.abstracts.AbstractPerson;
-import ru.enums.KindOfConstraints;
-
-import java.time.LocalDate;
-
+@Getter
 public class Educator extends AbstractPerson {
-    private final Priority priority=new Priority();
+    private final Priority priority = new Priority();
+
     public Educator() {
     }
 

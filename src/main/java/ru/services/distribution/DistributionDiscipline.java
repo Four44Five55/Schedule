@@ -1,32 +1,38 @@
-package ru.services;
+package ru.services.distribution;
 
 import ru.entity.*;
 import ru.entity.factories.CellForLessonFactory;
 import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
+import ru.services.CurriculumSlotService;
+import ru.services.SlotChainService;
+import ru.utils.ListLessonsHelper;
+import ru.utils.YearWeek;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.TemporalAdjusters;
-import java.time.temporal.WeekFields;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class DistributionDiscipline {
-    SlotChainService slotChainService;
-    CurriculumSlotService curriculumSlotService;
+
     ScheduleGrid scheduleGrid;
     List<Lesson> lessons;
     List<Educator> educators;
+    List<GroupCombination> groupCombinations;
+    SlotChainService slotChainService;
+    CurriculumSlotService curriculumSlotService;
     List<Lesson> distributedLessons = new ArrayList<>();
+    ListLessonsHelper listLessonsHelper;
 
 
-    public DistributionDiscipline(ScheduleGrid scheduleGrid, List<Lesson> lessons, List<Educator> educators, SlotChainService slotChainService, CurriculumSlotService curriculumSlotService) {
+    public DistributionDiscipline(ScheduleGrid scheduleGrid, List<Lesson> lessons, List<Educator> educators, List<GroupCombination> groupCombinationList, SlotChainService slotChainService, CurriculumSlotService curriculumSlotService) {
         this.scheduleGrid = scheduleGrid;
         this.lessons = lessons;
         this.educators = educators;
+        this.groupCombinations = groupCombinationList;
         this.slotChainService = slotChainService;
         this.curriculumSlotService = curriculumSlotService;
+        this.listLessonsHelper = new ListLessonsHelper(curriculumSlotService, slotChainService);
     }
 
     public void distributeLessons() {
@@ -78,38 +84,6 @@ public class DistributionDiscipline {
         }
     }*/
 
-    /**
-     * Метод сортирует список занятий в соответствии с логикой и неразрывно проходящих занятий для комбинации групп
-     */
-    //TODO помещять ли этот метод в фабрику занятий? LessonFactory
-    private List<Lesson> sortedLessonAboutChain(List<Lesson> lessons) {
-        List<Lesson> sortedLessons = new ArrayList<>();
-        List<Lesson> visitedLessons = new ArrayList<>();
-
-        for (Lesson lesson : lessons) {
-            if (visitedLessons.contains(lesson)) {
-                continue;
-            }
-            List<Lesson> chainFroLesson = slotChainService.findLessonsInSlotChain(lesson, lessons);
-            int i = 0;
-            if (!chainFroLesson.isEmpty()) {
-                sortedLessons.addAll(chainFroLesson);
-                visitedLessons.addAll(chainFroLesson);
-            } else {
-                sortedLessons.add(lesson);
-                visitedLessons.add(lesson);
-            }
-
-        }
-
-
-        return sortedLessons;
-    }
-
-
-
-
-
 
     public void distributeLessonsForEducator(Educator educator) {
         // Создаем рабочую копию ячеек
@@ -119,18 +93,18 @@ public class DistributionDiscipline {
                         .collect(Collectors.toList())
         );
 
-        // Группируем и сортируем ячейки по дате (не по номеру недели)
-        Map<YearWeek, List<CellForLesson>> cellsByWeek = workingCells.stream()
-                .collect(Collectors.groupingBy(
-                        cell -> new YearWeek(cell.getDate()),
-                        TreeMap::new, // автоматически сортирует по ключу
-                        Collectors.toList()));
 
-        List<Lesson> distributeLessons = changeOrderLessons(lessons);
+        // Группируем и сортируем ячейки по дате
+        Map<YearWeek, List<CellForLesson>> cellsByWeek = YearWeek.getWeekMap(workingCells);
+
+        Map<YearWeek, List<CellForLesson>> newCellsByWeek = YearWeek.getWeekMap(scheduleGrid.getAvailableCells(groupCombinations, List.of(educator)));
+
+
+        List<Lesson> distributeLessons = listLessonsHelper.changeOrderLessons(lessons);
 
         // Параметры распределения
         int practicalLessonsCount = 0;
-        int practicalLessonsPerWeek = getLectureFrequency(lessons);
+        int practicalLessonsPerWeek = listLessonsHelper.getLectureFrequency(lessons);
         int countingFirstWeekLecture = 0;
         boolean isFirstWeekLecture = true;
 
@@ -156,7 +130,7 @@ public class DistributionDiscipline {
                     continue;
                 }
                 //распределение лекций на первую учебную неделю без практик
-                if (isFirstWeekLecture && countingFirstWeekLecture < getAmountFirstLectures(lessons)) {
+                if (isFirstWeekLecture && countingFirstWeekLecture < listLessonsHelper.getAmountFirstLectures(lessons)) {
                     distributeSingleLesson(lesson, dayCellsMap.values().stream()
                             .flatMap(List::stream)
                             .collect(Collectors.toList()));
@@ -355,117 +329,8 @@ public class DistributionDiscipline {
         }
         return false;
     }
-    /**
-     * Метод определяющий частотность распределения лекций между практическими занятиями, учитывающий исключаемые первые
-     * лекции
-     */
-    //TODO доработать правило определения лекций для пропуска, и вывести расчет дополнительных лекций не попадающих под
-    //TODO правило распределения этого метода
-    private static int getLectureFrequency(List<Lesson> lessons) {
-        //количество лекций не задействованных для совместного распределения с практическими занятиями
-        int correctLecturesSize = getAmountFirstLectures(lessons);
-
-        List<Lesson> lectureLessons = getLectureLessons(lessons);
-        List<Lesson> anotherLessons = getAnotherLessons(lessons);
-
-        //частота лекций между практическими занятиями
-        float floatLectureFrequency = (float) anotherLessons.size() / (lectureLessons.size() - correctLecturesSize);
-        int lectureFrequency = (int) floatLectureFrequency;
-        // т.к. частота распределения лекций чаще всего является не целым числом, определеяем частоту распределения
-        //дополнительной лекции (условно в какую неделю выставляется доп.лекция)
-        int result = 0;
-        if (floatLectureFrequency % 1 != 0) {
-            result = (int) Math.floor(1 / (floatLectureFrequency - lectureFrequency));
-            if (result == 1) {
-                result += 1;
-            }
-        }
-        return lectureFrequency;
-    }
-    /**
-     * Метод сортирует список занятий для исключения следующих друг за другом лекций, при этом распределяя практические
-     * занятия между лекциями так, чтобы в неделе была одна лекция и равномерное количество практик
-     *
-     * @param lessons список лекций
-     * @return отсортированный список
-     */
-    //TODO изменить метод для возврата отсортированного списка
-    public List<Lesson> changeOrderLessons(List<Lesson> lessons) {
-
-        //if (lessons == null) return;
-
-        List<Lesson> sortedLessons = sortedLessonAboutChain(lessons);
-        lessons.clear();
-        lessons.addAll(sortedLessons);
-
-        List<Lesson> lectureLessons = getLectureLessons(lessons);
-        List<Lesson> anotherLessons = getAnotherLessons(lessons);
-
-        int lectureFrequency = getLectureFrequency(lessons);
-
-        List<Lesson> resultLessons = new ArrayList<>();
-        Iterator<Lesson> lectureIter = lectureLessons.iterator();
-        Iterator<Lesson> practiceIter = anotherLessons.iterator();
-
-        int practicesBetweenLectures = 0;
-        int cyclesCompleted = 0;
-        int lectureOutsideCycle = 2;
-        for (int i = 0; i < lectureOutsideCycle; i++) {
-            resultLessons.add(lectureIter.next());
-        }
-
-        while (lectureIter.hasNext() && practiceIter.hasNext()) {
-            Lesson lecture = lectureIter.next();
-            Lesson practice = new Lesson();
-            boolean successAddPractice = true;
-            // Добавляем лекцию
-            resultLessons.add(lecture);
-
-            // Добавляем практики с заданной частотой
-            practicesBetweenLectures = 0;
-            while (practiceIter.hasNext() && practicesBetweenLectures < lectureFrequency) {
-                if (successAddPractice) {
-                    practice = practiceIter.next();
-                }
 
 
-                if (curriculumSlotService.getPreviousLecture(practice.getCurriculumSlotId(), practice.getDiscipline().getId())
-                        .get().getId() <= lecture.getCurriculumSlotId()) {
-                    resultLessons.add(practice);
-                    successAddPractice = true;
-                    practicesBetweenLectures++;
-                    cyclesCompleted++;
-                } else {
-                    lecture = lectureIter.next();
-                    resultLessons.add(lecture);
-                    successAddPractice = false;
-                    if (resultLessons.size() >= 2 &&
-                            resultLessons.get(resultLessons.size() - 1).getKindOfStudy() == KindOfStudy.LECTURE &&
-                            resultLessons.get(resultLessons.size() - 2).getKindOfStudy() == KindOfStudy.LECTURE) {
-                        Lesson movableLesson = resultLessons.remove(resultLessons.size() - 2);
-                        resultLessons.add(resultLessons.size() - 3, movableLesson);
-                    }
-
-                }
-
-
-                // Проверяем условие для дополнительной лекции
-/*                if (result > 0 && cyclesCompleted >= result) {
-                    if (lectureIter.hasNext()) {
-                        resultLessons.add(lectureIter.next());
-                    }
-                    cyclesCompleted = 0;
-                }*/
-            }
-        }
-
-        // Добавляем оставшиеся элементы
-        lectureIter.forEachRemaining(resultLessons::add);
-        practiceIter.forEachRemaining(resultLessons::add);
-
-        System.out.println();
-        return resultLessons;
-    }
     /**
      * Возвращает список доступных ячеек для распределения занятия. Т.е. все ячейки после предыдущего занятия
      *
@@ -577,78 +442,8 @@ public class DistributionDiscipline {
                 );
     }
 
-    /**
-     * Метод возвращает список занятий состоящий только из лекций
-     *
-     * @param lessons список всех занятий
-     */
-    private static List<Lesson> getLectureLessons(List<Lesson> lessons) {
-        return lessons.stream()
-                .filter(lesson -> KindOfStudy.LECTURE.equals(lesson.getKindOfStudy()))
-                .toList();
-    }
 
-    /**
-     * Метод возвращает список занятий без лекций
-     *
-     * @param lessons список всех занятий
-     */
-    private static List<Lesson> getAnotherLessons(List<Lesson> lessons) {
-        return lessons.stream()
-                .filter(lesson -> !KindOfStudy.LECTURE.equals(lesson.getKindOfStudy()))
-                .toList();
-    }
 
-    /**
-     * Возвращает количество лекций до начала первого не лекционного занятия
-     * Если список пуст, содержит только нелекционные занятия или первое же занятие не является лекцией,
-     * возвращает 0.
-     *
-     * @param lessons список занятий
-     * @return количество лекций в начале списка до первого нелекционного занятия (0, если таких лекций нет)
-     */
-    private static int getAmountFirstLectures(List<Lesson> lessons) {
-        return (int) lessons.stream()
-                .takeWhile(l -> l.getKindOfStudy().equals(KindOfStudy.LECTURE))
-                .count();
-    }
 
-    /**
-     * Метод распределения экзамена
-     */
-    //TODO реализовать распределение экзамена в сессию, на данный момент метод удаляет экзамены из списка занятий
-    private void distributeExam() {
-        lessons.removeIf(lesson -> lesson.getKindOfStudy().equals(KindOfStudy.EXAM));
-    }
 
-    // Вспомогательный класс для группировки по году и неделе
-    private static class YearWeek implements Comparable<YearWeek> {
-        private final int year;
-        private final int week;
-        private final LocalDate firstDay;
-
-        public YearWeek(LocalDate date) {
-            this.year = date.get(WeekFields.ISO.weekBasedYear());
-            this.week = date.get(WeekFields.ISO.weekOfWeekBasedYear());
-            this.firstDay = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        }
-
-        @Override
-        public int compareTo(YearWeek other) {
-            return this.firstDay.compareTo(other.firstDay);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            YearWeek yearWeek = (YearWeek) o;
-            return year == yearWeek.year && week == yearWeek.week;
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(year, week);
-        }
-    }
 }

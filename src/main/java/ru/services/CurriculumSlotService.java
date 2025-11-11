@@ -10,6 +10,7 @@ import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCurriculum;
 import ru.repositories.CurriculumSlotRepository;
+import ru.repositories.DisciplineCurriculumRepository;
 import ru.repositories.DisciplineRepository;
 import ru.repositories.ThemeLessonRepository;
 
@@ -22,8 +23,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CurriculumSlotService {
     private final CurriculumSlotRepository repository;
-    private final DisciplineRepository disciplineRepository;
-    private final ThemeLessonRepository themeLessonRepository;
+    private final DisciplineCurriculumService disciplineCurriculumService;
+
+
 
     private static final Logger logger = LoggerFactory.getLogger(CurriculumSlotService.class);
 
@@ -49,7 +51,8 @@ public class CurriculumSlotService {
 
 
     @Transactional
-    public List<CurriculumSlot> getAllSlotsForDiscipline(DisciplineCurriculum curriculum) {
+    public List<CurriculumSlot> getAllSlotsForDiscipline(Integer disciplineId) {
+        DisciplineCurriculum curriculum = disciplineCurriculumService.findByDisciplineId(disciplineId);
         int startId = curriculum.getStartSlot().getId();
         int endId = curriculum.getEndSlot().getId();
 
@@ -74,37 +77,7 @@ public class CurriculumSlotService {
     }
 
     public Optional<CurriculumSlot> getPreviousLecture(Integer currentSlotId, Integer disciplineId) {
-        // Используем один запрос (рекомендуется)
-        return repository.findPreviousLecture(currentSlotId,disciplineId);
-
-        // Два запроса (если нужна дополнительная логика)
-        /*
-        return slotRepository.findById(currentSlotId)
-            .flatMap(currentSlot ->
-                slotRepository.findPreviousLectureInDiscipline(
-                    currentSlotId,
-                    currentSlot.getDisciplineId()
-                )
-            );
-        */
+        return repository.findPreviousLecture(currentSlotId, disciplineId);
     }
 
-    public Integer getPreviousSlotIdForDiscipline(Lesson lesson) {
-        Integer currentSlotId = lesson.getCurriculumSlotId();
-        Integer disciplineId = lesson.getDiscipline().getId();
-
-        // Проверяем, что текущий слот существует и принадлежит указанной дисциплине
-        CurriculumSlot currentSlot = repository.findById(currentSlotId)
-                .orElseThrow(() -> new RuntimeException("CurriculumSlot не найден id: " + currentSlotId));
-
-        if (!currentSlot.getDiscipline().getId().equals(disciplineId)) {
-            return null; // или можно бросить исключение, если это ошибка
-        }
-
-        // Ищем предыдущий слот для этой дисциплины
-        Optional<CurriculumSlot> previousSlot = repository.findFirstByIdLessThanAndDisciplineIdOrderByIdDesc(
-                currentSlotId, disciplineId);
-
-        return previousSlot.map(CurriculumSlot::getId).orElse(null);
-    }
 }
