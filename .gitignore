@@ -38,3 +38,8 @@ bin/
 ### VS Code ###
 .vscode/
 
+# Local database files
+schedule_db
+
+# IDE settings
+.idea/
