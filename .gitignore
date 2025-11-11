@@ -21,6 +21,7 @@ schedule_db
 
 # Папка для сгенерированных отчетов (например, Excel-файлов)
 /output/
+out/
 
 # Папка для автоматически сгенерированного кода (Lombok, MapStruct и т.д.)
 /src/main/generated/
