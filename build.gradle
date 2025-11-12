@@ -29,7 +29,11 @@ dependencies {
     // Диалект Hibernate для SQLite
     implementation 'org.hibernate.orm:hibernate-community-dialects:6.3.1.Final'
 
+
+
     runtimeOnly 'org.postgresql:postgresql'
+
+    implementation 'org.liquibase:liquibase-core'
 
     // Зависимости для работы с Excel
     implementation 'org.apache.poi:poi:5.2.3'
