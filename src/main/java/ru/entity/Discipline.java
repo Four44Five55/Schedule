@@ -10,8 +10,8 @@ public class Discipline extends AbstractDiscipline {
     public Discipline() {
     }
 
-    public Discipline(String name, String abbreviation, Integer semester) {
-        super(name, abbreviation, semester);
+    public Discipline(String name, String abbreviation) {
+        super(name, abbreviation);
     }
 }
 

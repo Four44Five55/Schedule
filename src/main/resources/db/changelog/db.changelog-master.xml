@@ -8,4 +8,5 @@
     <!-- Подключаем наш SQL-файл с начальной схемой -->
     <include file="001-initial-schema.sql" relativeToChangelogFile="true"/>
 
+
 </databaseChangeLog>
