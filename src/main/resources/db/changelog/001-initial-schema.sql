@@ -1,7 +1,7 @@
 -- liquibase formatted sql
 
 -- changeset four4five5:1
--- comment: Создание начальной структуры таблиц
+-- comment: Создание начальной структуры таблиц и индексов
 
 CREATE TABLE discipline (
                             id           SERIAL PRIMARY KEY,
@@ -47,9 +47,6 @@ CREATE TABLE slot_chain (
                             CHECK (slot_a_id != slot_b_id)
 );
 
--- changeset four4five5:2
--- comment: Создание индексов и представлений
-
 CREATE INDEX idx_curriculum_slot_discipline ON curriculum_slot (discipline_id);
 CREATE INDEX idx_curriculum_slot_kind ON curriculum_slot (kind_of_study);
 CREATE INDEX idx_curriculum_slot_theme ON curriculum_slot (theme_lesson_id);
@@ -60,6 +57,9 @@ CREATE INDEX idx_discipline_curriculum_end_slot ON discipline_curriculum (end_sl
 CREATE INDEX idx_slot_chain_a ON slot_chain (slot_a_id);
 CREATE INDEX idx_slot_chain_b ON slot_chain (slot_b_id);
 CREATE INDEX idx_slot_chain_discipline ON slot_chain (discipline_id);
+
+-- changeset four4five5:2
+-- comment: Создание представления view_counting_tupy_lessons
 
 CREATE OR REPLACE VIEW view_counting_tupy_lessons AS
 WITH study_types AS (
@@ -110,6 +110,8 @@ ORDER BY
     sort_order;
 ;
 
+-- changeset four4five5:3
+-- comment: Создание представления view_discipline_lessons
 CREATE OR REPLACE VIEW view_discipline_lessons AS
 SELECT
     d.abbreviation AS "Дис",
