@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:15-alpine  # Используем легковесный образ PostgreSQL 15
+    container_name: schedule-postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}       # Имя пользователя
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}     # Пароль
+      POSTGRES_DB: schedule_db        # Имя базы данных, которая будет создана
+    ports:
+      - "${DB_PORT:-5432}:5432"  # Пробрасываем порт из контейнера на ваш компьютер
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Сохраняем данные даже после удаления контейнера
+
+volumes:
+  postgres_data:

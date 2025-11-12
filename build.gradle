@@ -1,14 +1,15 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.2.0' // Добавляем плагин Spring Boot
-    id 'io.spring.dependency-management' version '1.1.4' // Для управления зависимостями
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'org.liquibase.gradle' version '2.2.1'
 }
 
 group = 'ru'
 version = '1.0-SNAPSHOT'
 
 java {
-    sourceCompatibility = '21' // Spring Boot 3.x требует Java 17+
+    sourceCompatibility = '21'
 }
 
 repositories {
@@ -22,20 +23,25 @@ dependencies {
     // Spring Data JPA (для работы с БД)
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
-    // Драйвер SQLite
-    implementation 'org.xerial:sqlite-jdbc:3.42.0.0'
+    // Драйвер H2
+    implementation 'com.h2database:h2'
 
     // Диалект Hibernate для SQLite
     implementation 'org.hibernate.orm:hibernate-community-dialects:6.3.1.Final'
+
+    runtimeOnly 'org.postgresql:postgresql'
 
     // Зависимости для работы с Excel
     implementation 'org.apache.poi:poi:5.2.3'
     implementation 'org.apache.poi:poi-ooxml:5.3.0'
 
+    // Библиотека для поддержки .env файлов
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+
     compileOnly("org.projectlombok:lombok:1.18.38")
     annotationProcessor("org.projectlombok:lombok:1.18.38")
 
-    // Для тестирования (уже было)
+    // Для тестирования
     testImplementation platform('org.junit:junit-bom:5.9.1')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -44,3 +50,4 @@ dependencies {
 test {
     useJUnitPlatform()
 }
+
