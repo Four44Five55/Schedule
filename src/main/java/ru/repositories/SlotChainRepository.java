@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import ru.entity.logicSchema.SlotChain;
 
 import java.util.List;
+
 @Repository
 public interface SlotChainRepository extends JpaRepository<SlotChain, Integer> {
     //  единый запрос для поиска всех связей (итеративная (BFS))

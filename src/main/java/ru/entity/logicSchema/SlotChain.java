@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import ru.entity.Discipline;
 
 import java.util.Objects;
 
@@ -15,7 +14,7 @@ import java.util.Objects;
 public class SlotChain {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;  // Новое поле для первичного ключа
+    private Integer id;
     @Setter
     @ManyToOne
     @JoinColumn(name = "slot_a_id", referencedColumnName = "id")
@@ -25,17 +24,11 @@ public class SlotChain {
     @JoinColumn(name = "slot_b_id", referencedColumnName = "id")
     private CurriculumSlot slotB;
 
-    @ManyToOne
-    @JoinColumn(name = "discipline_id")
-    private Discipline discipline;
-
-
     public SlotChain(CurriculumSlot slotA, CurriculumSlot slotB) {
         this.slotA = slotA;
         this.slotB = slotB;
     }
 
-    // equals и hashCode
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -56,7 +49,6 @@ public class SlotChain {
                 "id=" + id +
                 ", slotA=" + slotA +
                 ", slotB=" + slotB +
-                ", discipline=" + discipline +
                 '}';
     }
 }

@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import ru.entity.Discipline;
 import ru.enums.KindOfStudy;
 
 @Entity
@@ -20,13 +19,13 @@ public class CurriculumSlot {
     @ManyToOne
     private ThemeLesson themeLesson;
     @ManyToOne
-    @JoinColumn(name = "discipline_id")
-    private Discipline discipline;
+    @JoinColumn(name = "discipline_course")
+    private DisciplineCourse disciplineCourse;
 
-    public CurriculumSlot(KindOfStudy kindOfStudy, ThemeLesson themeLesson, Discipline discipline) {
+    public CurriculumSlot(KindOfStudy kindOfStudy, ThemeLesson themeLesson, DisciplineCourse disciplineCourse) {
         this.kindOfStudy = kindOfStudy;
         this.themeLesson = themeLesson;
-        this.discipline = discipline;
+        this.disciplineCourse = disciplineCourse;
     }
 
     @Override
@@ -35,7 +34,7 @@ public class CurriculumSlot {
                 "id=" + id +
                 ", kindOfStudy=" + kindOfStudy +
                 ", themeLesson=" + themeLesson +
-                ", discipline=" + discipline +
+                ", disciplineCourse=" + disciplineCourse +
                 '}';
     }
 }

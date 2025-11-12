@@ -11,18 +11,18 @@ import java.util.Optional;
 
 @Repository
 public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, Integer> {
-    Optional<CurriculumSlot> findFirstByIdLessThanAndDisciplineIdOrderByIdDesc(Integer id, Integer disciplineId);
+    Optional<CurriculumSlot> findFirstByIdLessThanAndDisciplineIdOrderByIdDesc(Integer id, Integer disciplineCourseId);
 
     @Query("SELECT cs FROM CurriculumSlot cs " +
-            "WHERE cs.discipline.id = :disciplineId " +
+            "WHERE cs.disciplineCourse.id = :disciplineCourseId " +
             "AND cs.kindOfStudy = 'LECTURE' " +
             "AND cs.id <:currentSlotId " +
             "ORDER BY cs.id DESC " +
             "LIMIT 1")
     Optional<CurriculumSlot> findPreviousLecture(
             @Param("currentSlotId") Integer currentSlotId,
-            @Param("disciplineId") Integer disciplineId);
+            @Param("disciplineCourseId") Integer disciplineCourseId);
 
-    @Query("SELECT cs FROM CurriculumSlot cs WHERE cs.discipline.id = :disciplineId ORDER BY cs.id")
-    List<CurriculumSlot> findByDisciplineId(@Param("disciplineId") Integer disciplineId);
+    @Query("SELECT cs FROM CurriculumSlot cs WHERE cs.disciplineCourseId = :disciplineCourseId ORDER BY cs.position")
+    List<CurriculumSlot> findByDisciplineCourseId(@Param("disciplineCourseId") Integer disciplineCourseId);
 }
