@@ -9,10 +9,38 @@ CREATE TABLE discipline (
                             abbreviation VARCHAR(255)
 );
 
+CREATE TABLE auditorium (
+                            id       INTEGER PRIMARY KEY,
+                            name     VARCHAR(255) NOT NULL UNIQUE,
+                            capacity INTEGER NOT NULL CHECK (capacity > 0)
+);
+
+CREATE TABLE auditorium_pool (
+                                 id          INTEGER PRIMARY KEY,
+                                 name        VARCHAR(255) NOT NULL UNIQUE,
+                                 description TEXT
+);
+
+CREATE TABLE groups ( -- Используем "groups" вместо "group", т.к. GROUP - ключевое слово SQL
+                        id       INTEGER PRIMARY KEY,
+                        name     VARCHAR(255) NOT NULL UNIQUE,
+                        size     INTEGER NOT NULL CHECK (size > 0)
+);
+
+CREATE TABLE educator (
+                          id   INTEGER PRIMARY KEY,
+                          name VARCHAR(255) NOT NULL
+);
+
 CREATE TABLE kind_of_study (
                                enum_name         VARCHAR(255) PRIMARY KEY,
                                full_name         VARCHAR(255) NOT NULL UNIQUE,
                                abbreviation_name VARCHAR(255) NOT NULL UNIQUE
+);
+
+CREATE TABLE study_stream (
+                              id   SERIAL PRIMARY KEY,
+                              name VARCHAR(255) NOT NULL UNIQUE
 );
 
 CREATE TABLE discipline_course (
@@ -31,11 +59,18 @@ CREATE TABLE theme_lesson (
 );
 
 CREATE TABLE curriculum_slot (
-                                 id                   INTEGER PRIMARY KEY,
-                                 discipline_course_id BIGINT NOT NULL REFERENCES discipline_course (id) ON DELETE CASCADE,
-                                 position             INTEGER NOT NULL,
-                                 kind_of_study        VARCHAR(255) NOT NULL REFERENCES kind_of_study (enum_name),
-                                 theme_lesson_id      BIGINT REFERENCES theme_lesson (id),
+                                 id                      INTEGER PRIMARY KEY,
+                                 discipline_course_id    BIGINT NOT NULL REFERENCES discipline_course (id) ON DELETE CASCADE,
+                                 position                INTEGER NOT NULL,
+                                 kind_of_study           VARCHAR(255) NOT NULL REFERENCES kind_of_study (enum_name),
+                                 theme_lesson_id         BIGINT REFERENCES theme_lesson (id),
+                                 stream_id               BIGINT NOT NULL REFERENCES study_stream(id),
+
+                                 required_auditorium_id  BIGINT REFERENCES auditorium(id),
+                                 priority_auditorium_id  BIGINT REFERENCES auditorium(id),
+                                 allowed_pool_id         BIGINT REFERENCES auditorium_pool(id),
+                                 split_rule              VARCHAR(255), -- 'BY_SIZE_15'
+
                                  UNIQUE (discipline_course_id, position)
 );
 

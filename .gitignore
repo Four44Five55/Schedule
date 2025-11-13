@@ -18,6 +18,7 @@ build/
 
 # Файл локальной базы данных
 schedule_db
+/src/main/resources/db/values
 
 # Папка для сгенерированных отчетов (например, Excel-файлов)
 /output/
