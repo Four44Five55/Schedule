@@ -1,37 +1,61 @@
 package ru.entity;
 
-import ru.abstracts.AbstractAuditorium;
-import ru.abstracts.AbstractLesson;
-import ru.abstracts.AbstractMaterialEntity;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import ru.entity.logicSchema.StudyStream;
+import ru.inter.IMaterialEntity;
 
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
-public class Group extends AbstractMaterialEntity {
+/**
+ * Сущность, представляющая учебную группу.
+ */
+@Entity
+@Table(name = "groups")
+@Getter
+@Setter
+@NoArgsConstructor
+public class Group implements IMaterialEntity {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /**
+     * Название группы.
+     */
+    @Column(name = "name", nullable = false, unique = true)
+    private String name;
+
+    /**
+     * Количество студентов в группе.
+     */
+    @Column(name = "size", nullable = false)
     private int size;
-    private AbstractAuditorium auditorium;
 
-    public Group(int size, AbstractAuditorium auditorium) {
+    /**
+     * "Домашняя" или базовая аудитория для группы.
+     * Является приоритетной по умолчанию для занятий этой группы.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "base_auditorium_id")
+    private Auditorium baseAuditorium;
+
+    /**
+     * Связь для того, чтобы можно было узнать, в каких потоках состоит группа.
+     * `mappedBy` указывает, что эта сторона связи не является управляющей.
+     */
+    @ManyToMany(mappedBy = "groups", fetch = FetchType.LAZY)
+    private Set<StudyStream> studyStreams = new HashSet<>();
+
+    // Конструктор для удобства создания новых экземпляров
+    public Group(String name, int size) {
+        this.name = name;
         this.size = size;
-        this.auditorium = auditorium;
-    }
-
-    public Group(int id, String name, int size, AbstractAuditorium auditorium) {
-        super(id, name);
-        this.size = size;
-        this.auditorium = auditorium;
-    }
-
-    public int getSize() {
-        return size;
-    }
-
-    public void setSize(int size) {
-        this.size = size;
-    }
-
-    public AbstractAuditorium getAuditorium() {
-        return auditorium;
     }
 
     @Override
@@ -39,12 +63,12 @@ public class Group extends AbstractMaterialEntity {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Group group = (Group) o;
-        return size == group.size && Objects.equals(name, group.name);
+        return id != null && Objects.equals(id, group.id);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, size);
+        return getClass().hashCode();
     }
 
     @Override
