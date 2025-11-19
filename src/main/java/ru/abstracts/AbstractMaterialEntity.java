@@ -2,14 +2,13 @@ package ru.abstracts;
 
 import ru.entity.CellForLesson;
 import ru.entity.ConstraintsGrid;
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 import ru.enums.KindOfConstraints;
-import ru.inter.IMaterialEntity;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 
-public class AbstractMaterialEntity implements IMaterialEntity {
+public class AbstractMaterialEntity  {
     protected int id;
     protected String name;
     protected ConstraintsGrid constraintsGrid = new ConstraintsGrid();

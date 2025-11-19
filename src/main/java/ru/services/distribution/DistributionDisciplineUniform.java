@@ -4,11 +4,11 @@ import ru.entity.*;
 import ru.enums.TimeSlotPair;
 import ru.services.CurriculumSlotService;
 import ru.services.SlotChainService;
+import ru.services.solver.model.ScheduleGrid;
 import ru.utils.ListLessonsHelper;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

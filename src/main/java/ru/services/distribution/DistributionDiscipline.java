@@ -6,6 +6,7 @@ import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
 import ru.services.CurriculumSlotService;
 import ru.services.SlotChainService;
+import ru.services.solver.model.ScheduleGrid;
 import ru.utils.ListLessonsHelper;
 import ru.utils.YearWeek;
 

@@ -3,7 +3,7 @@ package ru.services.distribution.swap;
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 import ru.services.SlotChainService;
 
 import java.time.LocalDate;

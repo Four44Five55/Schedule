@@ -2,12 +2,10 @@ package ru.abstracts;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import ru.entity.Discipline;
-import ru.entity.Educator;
-import ru.entity.Group;
-import ru.entity.GroupCombination;
+import ru.entity.*;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.enums.KindOfStudy;
+import ru.inter.IMaterialEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +20,7 @@ abstract public class AbstractLesson {
     protected CurriculumSlot curriculumSlot;
     protected List<Educator> educators = new ArrayList<>();
     protected List<GroupCombination> groupCombinations = new ArrayList<>();
-    protected List<AbstractAuditorium> auditoriums = new ArrayList<>();
+    protected List<Auditorium> auditoriums = new ArrayList<>();
 
     public AbstractLesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, List<GroupCombination> groupCombinations) {
         super();
@@ -42,8 +40,8 @@ abstract public class AbstractLesson {
         this.auditoriums.add(groupCombinations.getAuditorium());
     }
 
-    public List<AbstractMaterialEntity> getAllMaterialEntity() {
-        List<AbstractMaterialEntity> entities = new ArrayList<>();
+    public List<IMaterialEntity> getAllMaterialEntity() {
+        List<IMaterialEntity> entities = new ArrayList<>();
         Optional.ofNullable(educators).ifPresent(entities::addAll);
         List<Group> groups = new ArrayList<>();
         for (GroupCombination groupCombination : groupCombinations) {
@@ -62,7 +60,7 @@ abstract public class AbstractLesson {
      * @param entity проверяемая сущность (аудитория, преподаватель, группа)
      * @return true если сущность используется в занятии
      */
-    public boolean isEntityUsed(AbstractMaterialEntity entity) {
+    public boolean isEntityUsed(IMaterialEntity entity) {
         // Проверка аудитории
         if (entity instanceof AbstractAuditorium) {
             return this.auditoriums.contains(entity);

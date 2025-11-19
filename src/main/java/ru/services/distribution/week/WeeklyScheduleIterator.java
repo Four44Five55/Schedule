@@ -1,6 +1,6 @@
 package ru.services.distribution.week;
 
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.time.LocalDate;
 import java.util.Iterator;

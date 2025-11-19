@@ -4,8 +4,8 @@ import lombok.Getter;
 import ru.abstracts.AbstractLesson;
 import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.*;
-import ru.enums.KindOfStudy;
 import ru.services.SlotChainService;
+import ru.services.solver.model.ScheduleGrid;
 import ru.services.statistics.DefaultScheduleStatistics;
 import ru.services.statistics.ScheduleStatistics;
 

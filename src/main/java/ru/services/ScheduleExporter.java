@@ -8,6 +8,7 @@ import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.*;
 import ru.entity.factories.CellForLessonFactory;
 import ru.enums.TimeSlotPair;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.io.File;
 import java.io.FileOutputStream;

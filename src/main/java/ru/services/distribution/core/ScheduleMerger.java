@@ -1,6 +1,6 @@
 package ru.services.distribution.core;
 
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 
 /**
  * Интерфейс для стратегий объединения расписаний

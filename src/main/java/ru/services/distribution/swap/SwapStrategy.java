@@ -2,7 +2,7 @@ package ru.services.distribution.swap;
 
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.util.Optional;
 

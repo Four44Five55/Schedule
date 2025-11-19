@@ -2,7 +2,7 @@ package ru.services.distribution.merge;
 
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 import ru.services.distribution.core.MergeResult;
 import ru.services.distribution.core.ScheduleMerger;
 import ru.services.distribution.swap.SwapOption;

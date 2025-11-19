@@ -1,6 +1,6 @@
 package ru.services.statistics;
 
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 
 /**
  * Интерфейс для работы со статистикой расписания

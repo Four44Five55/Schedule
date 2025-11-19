@@ -2,11 +2,9 @@ package ru.services.statistics;
 
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
-import ru.entity.Discipline;
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Реализация статистики расписания по умолчанию с учетом перестановок.
