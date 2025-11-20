@@ -22,14 +22,15 @@ import java.util.List;
 import java.util.Map;
 
 import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
-
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) throws SQLException {
-        ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
+        SpringApplication.run(Application.class, args);
+
+       /*  ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
 
 
-        DisciplineService disciplineService = context.getBean(DisciplineService.class);
+       DisciplineService disciplineService = context.getBean(DisciplineService.class);
         DisciplineCurriculumService disciplineCurriculumService = context.getBean(DisciplineCurriculumService.class);
         CurriculumSlotService curriculumSlotService = context.getBean(CurriculumSlotService.class);
         ThemeLessonService themeLessonService = context.getBean(ThemeLessonService.class);
@@ -116,14 +117,14 @@ public class Application {
         curriculumIT.setCurriculumSlots(curriculumSlotListIT);
 
 
-/*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
+*//*        Map<GroupCombination, Educator> groupCombinationEducatorMA = new HashMap<>();
         groupCombinationEducatorMA.put(groupCombinations.get(0), educatorMA);
         groupCombinationEducatorMA.put(groupCombinations.get(1), educatorMA);
         groupCombinationEducatorMA.put(groupCombinations.get(2), educatorMathPractise1);
         groupCombinationEducatorMA.put(groupCombinations.get(3), educatorMathPractise1);
         groupCombinationEducatorMA.put(groupCombinations.get(4), educatorMathPractise1);
 
-        List<Educator> educators = List.of(educatorMA, educatorMathPractise1);*/
+        List<Educator> educators = List.of(educatorMA, educatorMathPractise1);*//*
 
 
         Map<GroupCombination, Educator> groupCombinationEducatorIYa = new HashMap<>();
@@ -275,7 +276,7 @@ public class Application {
         }
         for (AbstractMaterialEntity entity : entities) {
             ScheduleExporter.exportToExcel(scheduleGrid, entity, entity.getName(), subDirectory);
-        }
+        }*/
     }
 
 }
