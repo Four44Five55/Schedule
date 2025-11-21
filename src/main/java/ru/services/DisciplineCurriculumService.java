@@ -3,12 +3,8 @@ package ru.services;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCurriculum;
-import ru.repositories.CurriculumSlotRepository;
-import ru.repositories.DisciplineCurriculumRepository;
-
-import java.util.List;
+import ru.repository.DisciplineCurriculumRepository;
 
 @Service
 @Transactional

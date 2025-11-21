@@ -5,7 +5,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.entity.logicSchema.ThemeLesson;
-import ru.repositories.ThemeLessonRepository;
+import ru.repository.ThemeLessonRepository;
 
 import java.util.List;
 

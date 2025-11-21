@@ -10,8 +10,8 @@ import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
 import ru.entity.Discipline;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.mapper.DisciplineCourseMapper;
-import ru.repositories.DisciplineCourseRepository;
-import ru.repositories.DisciplineRepository;
+import ru.repository.DisciplineCourseRepository;
+import ru.repository.DisciplineRepository;
 
 import java.util.List;
 import java.util.Optional;

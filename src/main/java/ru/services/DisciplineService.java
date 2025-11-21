@@ -5,7 +5,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.entity.Discipline;
-import ru.repositories.DisciplineRepository;
+import ru.repository.DisciplineRepository;
 
 import java.util.List;
 

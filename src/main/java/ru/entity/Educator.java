@@ -25,7 +25,7 @@ public class Educator implements IMaterialEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
     /**
      * ФИО преподавателя.

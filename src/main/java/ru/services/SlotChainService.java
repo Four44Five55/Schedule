@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.SlotChain;
-import ru.repositories.SlotChainRepository;
+import ru.repository.SlotChainRepository;
 
 import java.util.*;
 

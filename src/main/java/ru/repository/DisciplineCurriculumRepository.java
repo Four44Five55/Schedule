@@ -1,4 +1,4 @@
-package ru.repositories;
+package ru.repository;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
