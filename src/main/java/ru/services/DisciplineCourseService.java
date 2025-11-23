@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.dto.discipline.DisciplineDto;
 import ru.dto.disciplineCourse.DisciplineCourseCreateDto;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
@@ -25,8 +26,7 @@ import java.util.Optional;
 public class DisciplineCourseService {
 
     private final DisciplineCourseRepository disciplineCourseRepository;
-    //TODO вынести репозиторий дисциплины и использовать сервис дисциплин
-    private final DisciplineRepository disciplineRepository;
+    private final DisciplineService disciplineService;
     private final DisciplineCourseMapper disciplineCourseMapper;
 
     /**
@@ -39,24 +39,20 @@ public class DisciplineCourseService {
      */
     @Transactional
     public DisciplineCourseDto createCourse(DisciplineCourseCreateDto createDto) {
-        // 1. Находим родительскую сущность Discipline
-        Discipline discipline = disciplineRepository.findById(createDto.getDisciplineId())
-                .orElseThrow(() -> new EntityNotFoundException("Дисциплина с id=" + createDto.disciplineId() + " не найдена."));
+        // 1. Получаем СУЩНОСТЬ Discipline через DisciplineService
+        Discipline discipline = disciplineService.getDisciplineById(createDto.getDisciplineId());
 
-        // 2. Проверяем бизнес-правило: не должно быть дубликатов
-        if (disciplineCourseRepository.existsByDisciplineIdAndSemester(createDto.getDisciplineId(), createDto.semester())) {
-            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "' и семестра " + createDto.semester() + " уже существует.");
+        // 2. Проверка дубликатов
+        if (disciplineCourseRepository.existsByDisciplineIdAndSemester(discipline.getId(), createDto.getSemester())) {
+            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "' и семестра " + createDto.getSemester() + " уже существует.");
         }
 
-        // 3. Создаем и наполняем новую сущность
+        // 3. Создаем и сохраняем новый курс
         DisciplineCourse newCourse = new DisciplineCourse();
         newCourse.setDiscipline(discipline);
-        newCourse.setSemester(createDto.semester());
-
-        // 4. Сохраняем в БД
+        newCourse.setSemester(createDto.getSemester());
         DisciplineCourse savedCourse = disciplineCourseRepository.save(newCourse);
 
-        // 5. Преобразуем в DTO для ответа
         return disciplineCourseMapper.toDto(savedCourse);
     }
 

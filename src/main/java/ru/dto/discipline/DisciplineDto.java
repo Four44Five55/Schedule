@@ -1,5 +1,9 @@
 package ru.dto.discipline;
 
+import ru.dto.disciplineCourse.DisciplineCourseDto;
+
+import java.util.List;
+
 /**
  * DTO для полного представления информации о дисциплине.
  * Используется для ответов API, когда требуется полная информация.
