@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.dto.disciplineCourse.DisciplineCourseCreateDto;
-import ru.dto.disciplineCourse.DisciplineCourseResponseDto;
+import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
 import ru.entity.Discipline;
 import ru.entity.logicSchema.DisciplineCourse;
@@ -38,7 +38,7 @@ public class DisciplineCourseService {
      * @throws IllegalStateException   если курс для данной дисциплины и семестра уже существует.
      */
     @Transactional
-    public DisciplineCourseResponseDto createCourse(DisciplineCourseCreateDto createDto) {
+    public DisciplineCourseDto createCourse(DisciplineCourseCreateDto createDto) {
         // 1. Находим родительскую сущность Discipline
         Discipline discipline = disciplineRepository.findById(createDto.getDisciplineId())
                 .orElseThrow(() -> new EntityNotFoundException("Дисциплина с id=" + createDto.disciplineId() + " не найдена."));
@@ -67,7 +67,7 @@ public class DisciplineCourseService {
      * @return Optional с DTO курса, если найден, или пустой Optional.
      */
     @Transactional(readOnly = true)
-    public Optional<DisciplineCourseResponseDto> findCourseById(Integer id) {
+    public Optional<DisciplineCourseDto> findCourseById(Integer id) {
         return disciplineCourseRepository.findById(id)
                 .map(disciplineCourseMapper::toDto);
     }
@@ -79,7 +79,7 @@ public class DisciplineCourseService {
      * @return Список DTO курсов.
      */
     @Transactional(readOnly = true)
-    public List<DisciplineCourseResponseDto> findAllCoursesByDiscipline(Integer disciplineId) {
+    public List<DisciplineCourseDto> findAllCoursesByDiscipline(Integer disciplineId) {
         List<DisciplineCourse> courses = disciplineCourseRepository.findByDisciplineIdOrderBySemester(disciplineId);
         return disciplineCourseMapper.toDtoList(courses);
     }
@@ -94,7 +94,7 @@ public class DisciplineCourseService {
      * @throws IllegalStateException   если изменение семестра приведет к дубликату.
      */
     @Transactional
-    public DisciplineCourseResponseDto updateCourse(Integer id, DisciplineCourseUpdateDto updateDto) {
+    public DisciplineCourseDto updateCourse(Integer id, DisciplineCourseUpdateDto updateDto) {
         // 1. Находим сущность в БД
         DisciplineCourse courseToUpdate = disciplineCourseRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Курс с id=" + id + " не найден."));

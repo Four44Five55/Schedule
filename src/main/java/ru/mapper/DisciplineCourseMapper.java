@@ -3,7 +3,7 @@ package ru.mapper;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingConstants;
 import ru.dto.disciplineCourse.DisciplineBriefDto;
-import ru.dto.disciplineCourse.DisciplineCourseResponseDto;
+import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.entity.Discipline;
 import ru.entity.logicSchema.DisciplineCourse;
 
@@ -26,7 +26,7 @@ public interface DisciplineCourseMapper {
      * @param course Сущность для преобразования.
      * @return DTO для отображения.
      */
-    DisciplineCourseResponseDto toDto(DisciplineCourse course);
+    DisciplineCourseDto toDto(DisciplineCourse course);
 
     /**
      * Преобразует сущность Discipline в DisciplineBriefDto.
@@ -44,6 +44,6 @@ public interface DisciplineCourseMapper {
      * @param courses Список сущностей.
      * @return Список DTO.
      */
-    List<DisciplineCourseResponseDto> toDtoList(List<DisciplineCourse> courses);
+    List<DisciplineCourseDto> toDtoList(List<DisciplineCourse> courses);
 
 }

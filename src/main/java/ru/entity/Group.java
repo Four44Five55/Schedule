@@ -23,7 +23,7 @@ public class Group implements IMaterialEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
     /**
      * Название группы.

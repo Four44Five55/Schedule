@@ -7,7 +7,7 @@ package ru.dto.disciplineCourse;
  * @param semester   Номер семестра, в котором читается курс.
  * @param discipline Вложенный DTO с краткой информацией о дисциплине.
  */
-public record DisciplineCourseResponseDto(
+public record DisciplineCourseDto(
         Integer id,
         int semester,
         DisciplineBriefDto discipline
