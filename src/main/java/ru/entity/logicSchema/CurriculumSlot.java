@@ -7,7 +7,10 @@ import lombok.Setter;
 import ru.entity.Auditorium;
 import ru.enums.KindOfStudy;
 
+import java.util.Objects;
+
 @Entity
+@Table(name = "curriculum_slot")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -31,10 +34,6 @@ public class CurriculumSlot {
     @JoinColumn(name = "theme_lesson_id")
     private ThemeLesson themeLesson;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "stream_id")
-    private StudyStream studyStream;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "required_auditorium_id")
     private Auditorium requiredAuditorium;
@@ -47,21 +46,26 @@ public class CurriculumSlot {
     @JoinColumn(name = "allowed_pool_id")
     private AuditoriumPool allowedAuditoriumPool;
 
-    private String splitRule;
-
-    public CurriculumSlot(KindOfStudy kindOfStudy, ThemeLesson themeLesson, DisciplineCourse disciplineCourse) {
-        this.kindOfStudy = kindOfStudy;
-        this.themeLesson = themeLesson;
-        this.disciplineCourse = disciplineCourse;
-    }
-
     @Override
     public String toString() {
         return "CurriculumSlot{" +
                 "id=" + id +
+                ", position=" + position +
                 ", kindOfStudy=" + kindOfStudy +
-                ", themeLesson=" + themeLesson +
-                ", disciplineCourse=" + disciplineCourse +
+                ", disciplineCourseId=" + (disciplineCourse != null ? disciplineCourse.getId() : "null") +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        CurriculumSlot that = (CurriculumSlot) o;
+        return id != null && Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 }
