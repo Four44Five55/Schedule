@@ -5,5 +5,5 @@ import org.springframework.stereotype.Repository;
 import ru.entity.Auditorium;
 
 @Repository
-public interface AuditoriumRepository extends JpaRepository<Auditorium, Long> {
+public interface AuditoriumRepository extends JpaRepository<Auditorium, Integer> {
 }

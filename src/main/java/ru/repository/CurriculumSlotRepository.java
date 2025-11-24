@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import ru.entity.logicSchema.CurriculumSlot;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, Integer> {
@@ -41,4 +42,15 @@ public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, 
     @Modifying
     @Query("UPDATE CurriculumSlot cs SET cs.position = cs.position - 1 WHERE cs.disciplineCourse.id = :courseId AND cs.position > :startPosition")
     void decrementPositionsAfter(@Param("courseId") Integer courseId, @Param("startPosition") Integer startPosition);
+
+
+    @Query("SELECT cs FROM CurriculumSlot cs " +
+            "WHERE cs.disciplineCourse.id = :courseId " +
+            "  AND cs.kindOfStudy = ru.enums.KindOfStudy.LECTURE " +
+            "  AND cs.position < :currentPosition " +
+            "ORDER BY cs.position DESC " +
+            "LIMIT 1")
+    Optional<CurriculumSlot> findPreviousLectureInCourse(
+            @Param("courseId") Integer courseId,
+            @Param("currentPosition") Integer currentPosition);
 }

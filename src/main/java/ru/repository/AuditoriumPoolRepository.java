@@ -5,5 +5,5 @@ import org.springframework.stereotype.Repository;
 import ru.entity.logicSchema.AuditoriumPool;
 
 @Repository
-public interface AuditoriumPoolRepository extends JpaRepository<AuditoriumPool, Long> {
+public interface AuditoriumPoolRepository extends JpaRepository<AuditoriumPool, Integer> {
 }
