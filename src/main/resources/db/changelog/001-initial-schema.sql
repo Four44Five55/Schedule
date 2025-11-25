@@ -2,6 +2,16 @@
 
 -- changeset four4five5:1
 -- comment: Создание начальной структуры таблиц и индексов
+CREATE TABLE study_period
+(
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(255) NOT NULL,
+    study_year  INTEGER      NOT NULL, -- e.g., 2025 for 2025/2026
+    period_type VARCHAR(50)  NOT NULL, -- 'FALL_SEMESTER', 'SPRING_SEMESTER', 'EXAM_SESSION'
+    start_date  DATE         NOT NULL,
+    end_date    DATE         NOT NULL,
+    UNIQUE (study_year, period_type)
+);
 
 CREATE TABLE discipline
 (
@@ -105,12 +115,10 @@ CREATE TABLE curriculum_slot
     position               INTEGER      NOT NULL,
     kind_of_study          VARCHAR(255) NOT NULL REFERENCES kind_of_study (enum_name),
     theme_lesson_id        BIGINT REFERENCES theme_lesson (id),
-    stream_id              BIGINT       NOT NULL REFERENCES study_stream (id),
 
     required_auditorium_id BIGINT REFERENCES auditorium (id),
     priority_auditorium_id BIGINT REFERENCES auditorium (id),
     allowed_pool_id        BIGINT REFERENCES auditorium_pool (id),
-    split_rule             VARCHAR(255), -- 'BY_SIZE_15'
 
     UNIQUE (discipline_course_id, position)
 );
@@ -123,6 +131,60 @@ CREATE TABLE slot_chain
     UNIQUE (slot_a_id, slot_b_id),
     CHECK (slot_a_id != slot_b_id)
 );
+
+-- ТАБЛИЦЫ ПОСТОЯННЫХ ОГРАНИЧЕНИЙ ДЛЯ РЕСУРСОВ
+CREATE TABLE educator_constraint
+(
+    id                 INTEGER PRIMARY KEY,
+    educator_id        BIGINT       NOT NULL REFERENCES educator (id) ON DELETE CASCADE,
+    kind_of_constraint VARCHAR(255) NOT NULL, -- Хранит строковое представление enum'а
+    start_date         DATE         NOT NULL,
+    end_date           DATE         NOT NULL,
+    description        TEXT,
+    -- Проверка, что дата начала не позже даты окончания
+    CHECK (start_date <= end_date)
+);
+
+CREATE TABLE group_constraint
+(
+    id                 INTEGER PRIMARY KEY,
+    group_id           BIGINT       NOT NULL REFERENCES groups (id) ON DELETE CASCADE,
+    kind_of_constraint VARCHAR(255) NOT NULL,
+    start_date         DATE         NOT NULL,
+    end_date           DATE         NOT NULL,
+    description        TEXT,
+    CHECK (start_date <= end_date)
+);
+
+CREATE TABLE auditorium_constraint
+(
+    id                 INTEGER PRIMARY KEY,
+    auditorium_id      BIGINT       NOT NULL REFERENCES auditorium (id) ON DELETE CASCADE,
+    kind_of_constraint VARCHAR(255) NOT NULL,
+    start_date         DATE         NOT NULL,
+    end_date           DATE         NOT NULL,
+    description        TEXT,
+    CHECK (start_date <= end_date)
+);
+CREATE TABLE assignment
+(
+    id                 SERIAL PRIMARY KEY,
+    curriculum_slot_id BIGINT NOT NULL REFERENCES curriculum_slot (id) ON DELETE CASCADE,
+    study_stream_id    BIGINT NOT NULL REFERENCES study_stream (id) ON DELETE RESTRICT,
+    UNIQUE (curriculum_slot_id, study_stream_id)
+);
+CREATE TABLE assignment_educators
+(
+    assignment_id BIGINT NOT NULL REFERENCES assignment (id) ON DELETE CASCADE,
+    educator_id   BIGINT NOT NULL REFERENCES educator (id) ON DELETE RESTRICT,
+    PRIMARY KEY (assignment_id, educator_id)
+);
+CREATE INDEX idx_assignment_slot_id ON assignment (curriculum_slot_id);
+CREATE INDEX idx_assignment_stream_id ON assignment (study_stream_id);
+-- Индексы для быстрого поиска ограничений по ресурсу
+CREATE INDEX idx_educator_constraint_educator_id ON educator_constraint (educator_id);
+CREATE INDEX idx_group_constraint_group_id ON group_constraint (group_id);
+CREATE INDEX idx_auditorium_constraint_auditorium_id ON auditorium_constraint (auditorium_id);
 
 CREATE INDEX idx_discipline_course_discipline_id ON discipline_course (discipline_id);
 CREATE INDEX idx_theme_lesson_discipline_id ON theme_lesson (discipline_id);

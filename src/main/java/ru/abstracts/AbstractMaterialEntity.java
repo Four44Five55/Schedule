@@ -9,7 +9,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 
 public class AbstractMaterialEntity  {
-    protected int id;
+  /*  protected int id;
     protected String name;
     protected ConstraintsGrid constraintsGrid = new ConstraintsGrid();
 
@@ -21,33 +21,33 @@ public class AbstractMaterialEntity  {
         this.name = name;
     }
 
-    /**
+    *//**
      * Проверяет нет ли ограничений на указанную ячейку
      *
      * @param cell временной слот для занятия
      * @return boolean
-     */
+     *//*
     public boolean isFreeConstraintsGrid(CellForLesson cell) {
         return constraintsGrid.isFreeCell(cell);
     }
 
 
-    /**
+    *//**
      * Проверка на наличие ограничения и на занятость в занятиях
      *
      * @param scheduleGrid расписание занятий
      * @param cell         проверяемая ячейка
      * @return boolean
-     */
+     *//*
     public boolean isFree(ScheduleGrid scheduleGrid, CellForLesson cell) {
         return this.isFreeConstraintsGrid(cell) && scheduleGrid.getLessonsUsingEntity(this, cell).isEmpty();
     }
 
-    /**
+    *//**
      * Проверяет наличие ограничения в указанной ячейке
      *
      * @return boolean
-     */
+     *//*
     public boolean hasConstraint(CellForLesson cell) {
         return constraintsGrid.getConstraintsGridMap().containsKey(cell);
     }
@@ -56,25 +56,25 @@ public class AbstractMaterialEntity  {
         return constraintsGrid.getConstraint(cell);
     }
 
-    /**
+    *//**
      * Добавляет ограничения в карту с ограничениями в указанный диапазон
      *
      * @param startDate  начальная дата
      * @param endDate    последняя дата
      * @param constraint вид ограничения
-     */
+     *//*
     public void addConstraint(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
         constraintsGrid.fillConstraintInRangeForGrid(startDate, endDate, constraint);
     }
 
-    /**
+    *//**
      * Добавляет ограничения в карту с ограничениями в указанный диапазон
      *
      * @param startDate  начальная дата
      * @param endDate    последняя дата
      * @param constraint вид ограничения
      * @param dayOfWeek  день недели в котором определяется ограничение
-     */
+     *//*
     public void addConstraint(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint, DayOfWeek dayOfWeek) {
         constraintsGrid.fillConstraintInRangeForGrid(startDate, endDate, constraint, dayOfWeek);
     }
@@ -96,5 +96,5 @@ public class AbstractMaterialEntity  {
         this.name = name;
     }
 
-
+*/
 }

@@ -34,7 +34,4 @@ public interface CurriculumSlotMapper {
      * Вспомогательный метод для маппинга AuditoriumPool в его краткое DTO.
      */
     CurriculumSlotDto.AuditoriumPoolBriefDto toBriefDto(AuditoriumPool auditoriumPool);
-
-    //TODO Реализовать логику Мапперы из Create/Update DTO в сущность в сервисе из-за необходимости
-    // подгружать связанные сущности из БД по ID.
 }

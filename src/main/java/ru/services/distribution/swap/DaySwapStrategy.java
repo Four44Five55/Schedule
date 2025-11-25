@@ -13,8 +13,8 @@ import java.util.stream.Collectors;
 /**
  * Реализация стратегии перестановок в рамках одного дня
  */
-public class DaySwapStrategy implements SwapStrategy {
-    private final SlotChainService slotChainService;
+public abstract class DaySwapStrategy implements SwapStrategy {
+   /* private final SlotChainService slotChainService;
 
     public DaySwapStrategy(SlotChainService slotChainService) {
         this.slotChainService = slotChainService;
@@ -26,9 +26,9 @@ public class DaySwapStrategy implements SwapStrategy {
         return chooseBestSwapOption(possibleSwaps);
     }
 
-    /**
+    *//**
      * Ищет возможные перестановки в рамках дня
-     */
+     *//*
     private List<SwapOption> findPossibleSwapsInDay(ScheduleGrid schedule, CellForLesson conflictCell, AbstractLesson newLesson) {
         List<SwapOption> possibleSwaps = new ArrayList<>();
         LocalDate date = conflictCell.getDate();
@@ -56,9 +56,9 @@ public class DaySwapStrategy implements SwapStrategy {
         return possibleSwaps;
     }
 
-    /**
+    *//**
      * Проверяет возможность перестановки
-     */
+     *//*
     private boolean isSwapPossible(ScheduleGrid schedule, CellForLesson cell1, AbstractLesson lesson1,
                                  CellForLesson cell2, AbstractLesson lesson2) {
         // Проверяем, что это разные ячейки
@@ -78,9 +78,9 @@ public class DaySwapStrategy implements SwapStrategy {
         return !hasChainConflicts(schedule, lesson1, lesson2);
     }
 
-    /**
+    *//**
      * Проверяет доступность преподавателей для перестановки
-     */
+     *//*
     private boolean areEducatorsAvailable(AbstractLesson lesson1, AbstractLesson lesson2,
                                         CellForLesson cell1, CellForLesson cell2) {
         return lesson1.getEducators().stream().allMatch(educator ->
@@ -89,9 +89,9 @@ public class DaySwapStrategy implements SwapStrategy {
                         educator.isFreeConstraintsGrid(cell1));
     }
 
-    /**
+    *//**
      * Проверяет доступность групп для перестановки
-     */
+     *//*
     private boolean areGroupsAvailable(AbstractLesson lesson1, AbstractLesson lesson2,
                                      CellForLesson cell1, CellForLesson cell2) {
         return lesson1.getGroupCombinations().stream().allMatch(group ->
@@ -100,9 +100,9 @@ public class DaySwapStrategy implements SwapStrategy {
                         group.getGroups().stream().allMatch(g -> g.isFreeConstraintsGrid(cell1)));
     }
 
-    /**
+    *//**
      * Проверяет наличие конфликтов с цепочками занятий
-     */
+     *//*
     private boolean hasChainConflicts(ScheduleGrid schedule, AbstractLesson lesson1, AbstractLesson lesson2) {
         List<Lesson> allLessons = schedule.getScheduleGridMap().values().stream()
                 .flatMap(List::stream)
@@ -116,9 +116,9 @@ public class DaySwapStrategy implements SwapStrategy {
         return !chain1.isEmpty() || !chain2.isEmpty();
     }
 
-    /**
+    *//**
      * Выбирает лучший вариант перестановки
-     */
+     *//*
     private Optional<SwapOption> chooseBestSwapOption(List<SwapOption> options) {
         if (options.isEmpty()) {
             return Optional.empty();
@@ -128,9 +128,9 @@ public class DaySwapStrategy implements SwapStrategy {
                 .min(Comparator.comparingInt(this::calculateSwapCost));
     }
 
-    /**
+    *//**
      * Рассчитывает "стоимость" перестановки
-     */
+     *//*
     private int calculateSwapCost(SwapOption swap) {
         int cost = 0;
 
@@ -145,5 +145,5 @@ public class DaySwapStrategy implements SwapStrategy {
                 .mapToInt(gc -> gc.getGroups().size()).sum();
 
         return cost;
-    }
+    }*/
 } 

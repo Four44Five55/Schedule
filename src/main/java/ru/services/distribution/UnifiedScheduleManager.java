@@ -14,7 +14,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class UnifiedScheduleManager {
-    private final Map<String, ScheduleGrid> disciplineSchedules;
+  /*  private final Map<String, ScheduleGrid> disciplineSchedules;
 
     @Getter
     private final ScheduleGrid unifiedSchedule;
@@ -35,9 +35,9 @@ public class UnifiedScheduleManager {
         this.statistics = new DefaultScheduleStatistics(unifiedSchedule, disciplineSchedules);
     }
 
-    /**
+    *//**
      * Основной метод добавления расписания дисциплины
-     */
+     *//*
     public void addDisciplineSchedule(String disciplineName, ScheduleGrid schedule) {
         if (disciplineName == null || schedule == null) {
             throw new IllegalArgumentException("Параметры не могут быть null");
@@ -100,10 +100,10 @@ public class UnifiedScheduleManager {
 
     // --- Методы для поиска решений ---
 
-    /**
+    *//**
      * Ищет наилучший вариант размещения (простой перенос или перестановка) для занятия,
      * используя динамическое окно, основанное на занятости преподавателя.
-     */
+     *//*
     private Optional<PlacementOption> findBestCrossDayPlacementFor(CellForLesson originalCell, AbstractLesson lessonToPlace, ScheduleGrid originalDisciplineSchedule) {
         LocalDate originalDate = originalCell.getDate();
 
@@ -315,5 +315,5 @@ public class UnifiedScheduleManager {
                 message,
                 conflictDetails.isEmpty() ? "  Неизвестная причина" : conflictDetails
         );
-    }
+    }*/
 }

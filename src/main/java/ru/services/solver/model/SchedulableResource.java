@@ -10,86 +10,96 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Базовый класс для любого ресурса, участвующего в расписании (преподаватель, группа, аудитория).
- * Хранит "в памяти" сетку занятости и постоянных ограничений для быстрого доступа.
+ * Базовый класс для любого ресурса, участвующего в расписании (например, группа или аудитория).
+ *
+ * <p>Этот объект создается "в памяти" на время работы алгоритма и не является JPA-сущностью.
+ * Его основная задача — инкапсулировать состояние занятости ресурса и предоставлять
+ * быстрые O(1) проверки доступности. Он содержит личное расписание (динамические ограничения)
+ * и сетку постоянных ограничений (статические ограничения).</p>
  */
 public class SchedulableResource {
 
-    protected final Object underlyingEntity; // Ссылка на исходную JPA-сущность (Group, Auditorium и т.д.)
     @Getter
     protected final Integer id;
-    @Getter
     protected final String name;
 
-    // Личное расписание ресурса: "когда" -> "чем" занят
+    /**
+     * Личное расписание ресурса: "когда" -> "чем" занят. Заполняется динамически.
+     */
     protected final Map<CellForLesson, Lesson> schedule = new HashMap<>();
 
-    // Постоянные ограничения ресурса: "когда" недоступен в принципе
-    @lombok.Getter
+    /**
+     * Постоянные ограничения ресурса (отпуска, ремонт и т.д.). Заполняется один раз при инициализации.
+     */
     protected final ConstraintsGrid hardConstraints;
 
     /**
-     * Конструктор для создания ресурса.
+     * Создает "умную карточку" для ресурса.
      *
-     * @param entity          JPA-сущность (например, Group или Auditorium)
-     * @param id              ID сущности
-     * @param name            Имя сущности для отладки
-     * @param hardConstraints Ограничения
+     * @param id   уникальный идентификатор ресурса (из JPA-сущности).
+     * @param name имя ресурса для отладки и логов.
      */
-    public SchedulableResource(Object entity, Integer id, String name, ConstraintsGrid hardConstraints) {
-        this.underlyingEntity = entity;
+    public SchedulableResource(Integer id, String name) {
         this.id = id;
         this.name = name;
-        this.hardConstraints = hardConstraints;
+        this.hardConstraints = new ConstraintsGrid(); // Инициализируем пустой сеткой
     }
 
     /**
-     * Проверяет, свободен ли ресурс в указанной ячейке.
+     * Добавляет постоянное ограничение для ресурса.
+     * Этот метод вызывается извне (например, из ResourceAvailabilityManager) для наполнения сетки ограничений.
      *
-     * @param cell Временной слот для проверки.
-     * @return true, если ресурс полностью свободен.
+     * @param cell ячейка времени, на которую действует ограничение.
+     * @param kind тип ограничения.
+     */
+    public void addHardConstraint(CellForLesson cell, KindOfConstraints kind) {
+        this.hardConstraints.getConstraintsGridMap().put(cell, kind);
+    }
+
+    /**
+     * Проверяет, свободен ли ресурс в указанном временном слоте.
+     * Учитывает как постоянные ограничения, так и текущую занятость в расписании.
+     *
+     * @param cell временной слот для проверки.
+     * @return {@code true}, если ресурс полностью свободен, иначе {@code false}.
      */
     public boolean isFree(CellForLesson cell) {
-        // Проверяем и постоянные ограничения, и динамическое расписание
         return hardConstraints.isFreeCell(cell) && !schedule.containsKey(cell);
     }
 
     /**
-     * Возвращает причину недоступности, если ресурс занят.
+     * Помечает ресурс как занятый в указанном слоте.
+     * Должен вызываться только после успешной проверки {@link #isFree(CellForLesson)}.
      *
-     * @param cell Временной слот.
-     * @return Строку с описанием причины или null, если свободен.
+     * @param cell   слот, который занимается.
+     * @param lesson занятие, которое занимает слот.
      */
-    public String getBusyReason(CellForLesson cell) {
-        if (!hardConstraints.isFreeCell(cell)) {
-            KindOfConstraints reason = hardConstraints.getConstraint(cell);
-            return "Постоянное ограничение: " + reason.getFullName();
-        }
-        if (schedule.containsKey(cell)) {
-            Lesson lesson = schedule.get(cell);
-            return "Занят в занятии: " + lesson.getDiscipline().getAbbreviation();
-        }
-        return null; // Свободен
-    }
-
-    // Методы occupy() и free() остаются без изменений
     public void occupy(CellForLesson cell, Lesson lesson) {
         schedule.put(cell, lesson);
     }
 
+    /**
+     * Освобождает ресурс в указанном слоте.
+     *
+     * @param cell слот, который освобождается.
+     */
     public void free(CellForLesson cell) {
         schedule.remove(cell);
     }
 
     /**
-     * Оценивает, насколько слот "предпочтителен" для данного ресурса.
-     * Для базовых ресурсов (группы, аудитории) предпочтений нет, поэтому штраф всегда 0.
+     * Оценивает, насколько слот "предпочтителен" для данного ресурса (мягкое ограничение).
+     * Для базовых ресурсов предпочтений нет, поэтому возвращается 0.
      *
-     * @param cell Временной слот для оценки.
+     * @param cell временной слот для оценки.
      * @return Целочисленное значение "штрафа". 0 - идеально, отрицательное значение - плохо.
      */
     public int getPreferenceScore(CellForLesson cell) {
         return 0;
+    }
+
+    public String getName() {
+        return name;
     }
 
 }

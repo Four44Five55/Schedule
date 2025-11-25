@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 
 public class ScheduleExporter {
 
-    private static List<String> getListDataLessonForEntity(AbstractMaterialEntity entity, AbstractLesson lesson) {
+    /*private static List<String> getListDataLessonForEntity(AbstractMaterialEntity entity, AbstractLesson lesson) {
         List<String> listData = new ArrayList<>();
 
         if (entity instanceof Educator) {
@@ -58,12 +58,12 @@ public class ScheduleExporter {
         return listData;
     }
 
-    /**
+    *//**
      * Экспортирует данные из AEntityWithScheduleGrid в Excel-файл.
      *
      * @param entity     сущность имеющая scheduleGrid
      * @param entityName имя сущности для названия файла
-     */
+     *//*
 
     public static void exportToExcel(ScheduleGrid scheduleGrid, AbstractMaterialEntity entity, String entityName, String subDirectory) {
 
@@ -134,11 +134,11 @@ public class ScheduleExporter {
             }
 
             // Авторазмер колонок
-/*            int widthInUnits = (int) (45 * 256 / 7.0); // Результат: ~1645 единиц
+*//*            int widthInUnits = (int) (45 * 256 / 7.0); // Результат: ~1645 единиц
             for (int i = 0; i < column; i++) {
                 sheet.setColumnWidth(i, widthInUnits);
                 //sheet.autoSizeColumn(i);
-            }*/
+            }*//*
             // Сохраняем файл
             saveWorkbookToFile(workbook, entityName, subDirectory);
 
@@ -148,13 +148,13 @@ public class ScheduleExporter {
         }
     }
 
-    /**
+    *//**
      * Сохраняет книгу Excel в файл.
      *
      * @param workbook   книга Excel
      * @param entityName имя сущности для названия файла
      * @throws IOException если произошла ошибка при сохранении
-     */
+     *//*
 
     private static void saveWorkbookToFile(Workbook workbook, String entityName, String subDirectory) throws IOException {
         String correctSubDirectory = subDirectory + File.separator + entityName + ".xlsx";
@@ -173,12 +173,12 @@ public class ScheduleExporter {
 
     }
 
-    /**
+    *//**
      * Создание директории для сохранения файла
      *
      * @param filePath путь к файлу
      * @return Boolean
-     */
+     *//*
     private static boolean createDirectoriesForFile(String filePath) {
         try {
             Path path = Paths.get(filePath);
@@ -194,7 +194,7 @@ public class ScheduleExporter {
         }
     }
 
-    /**
+    *//**
      * Получает ячейку по номеру строки и столбца.
      * Если ячейка или строка не существуют, они создаются.
      *
@@ -202,7 +202,7 @@ public class ScheduleExporter {
      * @param row    Номер строки (начинается с 0).
      * @param column Номер столбца (начинается с 0).
      * @return Ячейка.
-     */
+     *//*
 
     public static Cell getCell(Sheet sheet, int row, int column) {
         Row rowIndex = sheet.getRow(row);
@@ -216,13 +216,13 @@ public class ScheduleExporter {
         return cell;
     }
 
-    /**
+    *//**
      * Применяет форматирование даты к ячейке.
      *
      * @param cell     Ячейка, к которой нужно применить форматирование.
      * @param format   Формат даты (например, "dd.MM.yyyy").
      * @param workbook Рабочая книга (Workbook), используемая для создания стиля.
-     */
+     *//*
 
     public static void applyDateFormat(Cell cell, String format, Workbook workbook) {
         // Создаем стиль для ячейки
@@ -232,5 +232,5 @@ public class ScheduleExporter {
 
         // Применяем стиль к ячейке
         cell.setCellStyle(dateCellStyle);
-    }
+    }*/
 }

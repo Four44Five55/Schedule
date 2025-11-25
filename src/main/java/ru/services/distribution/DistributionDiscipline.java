@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class DistributionDiscipline {
+/*
 
     ScheduleGrid scheduleGrid;
     List<Lesson> lessons;
@@ -41,6 +42,7 @@ public class DistributionDiscipline {
             distributeLessonsForEducator(educator);
         }
     }
+*/
 
     /*public void distributeLessonsForEducator(Educator educator) {
         ListIterator<Lesson> lessonIterator = lessons.listIterator();
@@ -86,6 +88,7 @@ public class DistributionDiscipline {
     }*/
 
 
+/*
     public void distributeLessonsForEducator(Educator educator) {
         // Создаем рабочую копию ячеек
         List<CellForLesson> workingCells = new ArrayList<>(
@@ -248,12 +251,14 @@ public class DistributionDiscipline {
     }
 
 
-    /**
+    */
+/**
      * Метод распределения одиночного занятия
      *
      * @param lesson    распределяемое занятие
      * @param listCells список доступных ячеек для распределения
-     */
+     *//*
+
     private void distributeSingleLesson(Lesson lesson, List<CellForLesson> listCells) {
         List<CellForLesson> cells = getAvailableCellsForLesson(lesson, listCells);
         for (Iterator<CellForLesson> it = cells.iterator(); it.hasNext(); ) {
@@ -267,12 +272,14 @@ public class DistributionDiscipline {
         }
     }
 
-    /**
+    */
+/**
      * Метод распределения связной группы занятий
      *
      * @param chain     список связных занятий
      * @param listCells список доступных ячеек для распределения
-     */
+     *//*
+
     private boolean distributeLessonChain(List<Lesson> chain, List<CellForLesson> listCells) {
         int chainSize = chain.size();
         if (chain.isEmpty() || listCells.isEmpty() || chainSize > listCells.size()) {
@@ -299,14 +306,17 @@ public class DistributionDiscipline {
 
             for (int i = 0; i <= dayCells.size() - chainSize; i++) {
                 boolean canAssign = true;
-                /*// Проверяем последовательные временные слоты
+                */
+/*//*
+/ Проверяем последовательные временные слоты
                 for (int j = 0; j < chainSize - 1; j++) {
                     if (dayCells.get(i + j).getTimeSlotPair().ordinal() + 1 !=
                             dayCells.get(i + j + 1).getTimeSlotPair().ordinal()) {
                         canAssign = false;
                         break;
                     }
-                }*/
+                }*//*
+
 
                 if (canAssign) {
                     // Проверяем доступность всех ячеек
@@ -332,13 +342,15 @@ public class DistributionDiscipline {
     }
 
 
-    /**
+    */
+/**
      * Возвращает список доступных ячеек для распределения занятия. Т.е. все ячейки после предыдущего занятия
      *
      * @param lesson занятие
      * @param cells  список всех ячеек
      * @return List
-     */
+     *//*
+
     private List<CellForLesson> getAvailableCellsForLesson(Lesson lesson, List<CellForLesson> cells) {
         if (lesson == null || cells == null || cells.isEmpty()) {
             return new ArrayList<>();
@@ -375,20 +387,24 @@ public class DistributionDiscipline {
                 .allMatch(entity -> entity.isFree(scheduleGrid, cell));
     }
 
-    /**
+    */
+/**
      * Проверяет возможность назначения занятия в заданную ячейку для всех сущностей занятия
-     */
+     *//*
+
     private boolean isLessonFreeInCell(CellForLesson cell, Lesson lesson) {
         return lesson.getAllMaterialEntity().stream()
                 .allMatch(entity -> entity.isFree(scheduleGrid, cell));
     }
 
-    /**
+    */
+/**
      * Получает занятие по id slotChain
      *
      * @param slotId
      * @return Lesson
-     */
+     *//*
+
     private Lesson findLessonBySlotId(Integer slotId) {
         return lessons.stream()
                 .filter(lesson -> lesson.getCurriculumSlotId().equals(slotId))
@@ -396,12 +412,14 @@ public class DistributionDiscipline {
                 .orElseThrow(); // или orElseThrow(), если слот обязан существовать
     }
 
-    /**
+    */
+/**
      * Находит предыдущее занятие для указанного урока, учитывая общие группы в groupCombinations.
      *
      * @param currentLesson текущее занятие, для которого ищем предыдущее
      * @return предыдущее занятие или null, если не найдено
-     */
+     *//*
+
     private Lesson findPreviousLesson(Lesson currentLesson) {
         if (currentLesson == null || currentLesson.getCurriculumSlot() == null) {
             return null;
@@ -430,9 +448,11 @@ public class DistributionDiscipline {
         return null; // Не найдено
     }
 
-    /**
+    */
+/**
      * Проверяет, есть ли общие группы между двумя списками GroupCombination.
-     */
+     *//*
+
     private static boolean hasCommonGroups(List<GroupCombination> comb1, List<GroupCombination> comb2) {
         return comb1.stream()
                 .flatMap(c1 -> c1.getGroups().stream())
@@ -443,6 +463,7 @@ public class DistributionDiscipline {
                 );
     }
 
+*/
 
 
 

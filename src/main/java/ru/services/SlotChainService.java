@@ -17,7 +17,7 @@ public class SlotChainService {
     private final SlotChainRepository repository;
     private final CurriculumSlotService slotService;
 
-    public void createChain(Integer slotAId, Integer slotBId) {
+    /*public void createChain(Integer slotAId, Integer slotBId) {
         if (slotAId.equals(slotBId)) {
             throw new IllegalArgumentException("Cannot chain slot to itself");
         }
@@ -29,7 +29,7 @@ public class SlotChainService {
         CurriculumSlot slotB = slotService.getById(slotBId);
 
         repository.save(new SlotChain(slotA, slotB));
-    }
+    }*/
 
     public SlotChain getByID(Integer id) {
         return repository.findById(id).orElse(null);
@@ -93,26 +93,5 @@ public class SlotChainService {
         return new ArrayList<>(result);
     }
 
-    /**
-     * Находит занятия, связанные через цепочку слотов и совпадающие по группам.
-     *
-     * @param lesson  Исходное занятие для сравнения групп.
-     * @param lessons Список всех занятий для фильтрации.
-     * @return Список связанных занятий с теми же группами.
-     */
-    public List<Lesson> findLessonsInSlotChain(Lesson lesson, List<Lesson> lessons) {
-        if (lesson == null || lesson.getCurriculumSlotId() == null || lesson.getGroupCombinations() == null) {
-            return Collections.emptyList(); // Защита от null
-        }
 
-        // Получаем цепочку связанных слотов
-        List<Integer> slotChainList = getAllLinkedSlotIds(lesson.getCurriculumSlotId());
-
-        return lessons.stream()
-                .filter(lesson1 ->
-                        slotChainList.contains(lesson1.getCurriculumSlotId()) &&
-                                lesson1.getGroupCombinations().equals(lesson.getGroupCombinations())
-                )
-                .toList();
-    }
 }

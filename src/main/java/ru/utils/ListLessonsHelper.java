@@ -17,7 +17,7 @@ import java.util.stream.IntStream;
 
 public class ListLessonsHelper {
 
-    private final CurriculumSlotService curriculumSlotService;
+   /* private final CurriculumSlotService curriculumSlotService;
     private final SlotChainService slotChainService;
 
     public ListLessonsHelper(CurriculumSlotService slotService, SlotChainService chainService) {
@@ -25,7 +25,7 @@ public class ListLessonsHelper {
         this.slotChainService = chainService;
     }
 
-    /**
+    *//**
      * Полное распределение занятий с учетом:
      * 1. Начальных лекций (N-1 дней для первых лекций)
      * 2. Стандартных правил (1 лекция + 2 практики)
@@ -35,7 +35,7 @@ public class ListLessonsHelper {
      * @param availableDates Доступные даты для распределения
      * @return Map с распределением по датам
      * @throws IllegalArgumentException если дат недостаточно
-     */
+     *//*
     public static Map<LocalDate, List<Lesson>> distributeLessons(
             List<Lesson> lessons,
             List<LocalDate> availableDates
@@ -55,12 +55,12 @@ public class ListLessonsHelper {
         return mapToDatesUniform(dayMap, availableDates);
     }
 
-    /**
+    *//**
      * Распределяет занятия по дням с учетом:
      * 1. Первые (N-1) лекций распределяются по одной в день
      * 2. Последняя начальная лекция (N-я) распределяется вместе с практическими занятиями
      * 3. Остальные занятия по стандартным правилам
-     */
+     *//*
     private static Map<Integer, List<Lesson>> distributeToLogicalDays(List<Lesson> lessons) {
         Map<Integer, List<Lesson>> schedule = new LinkedHashMap<>();
         if (lessons == null || lessons.isEmpty()) {
@@ -108,10 +108,10 @@ public class ListLessonsHelper {
         return schedule;
     }
 
-    /**
+    *//**
      * Распределяет оставшиеся занятия (включая последнюю начальную лекцию)
      * по правилам: 1 лекция + до 2 практик в день
-     */
+     *//*
     private static void distributeRemainingLessons(
             List<Lesson> remainingLessons,
             Map<Integer, List<Lesson>> schedule,
@@ -150,9 +150,9 @@ public class ListLessonsHelper {
         }
     }
 
-    /**
+    *//**
      * Завершает заполнение текущего дня (если есть занятия)
-     */
+     *//*
     private static void completeCurrentDay(
             Map<Integer, List<Lesson>> schedule,
             int dayNumber,
@@ -163,9 +163,9 @@ public class ListLessonsHelper {
         }
     }
 
-    /**
+    *//**
      * Более простая версия равномерного распределения
-     */
+     *//*
     private static Map<LocalDate, List<Lesson>> mapToDatesUniform(
             Map<Integer, List<Lesson>> dayMap,
             List<LocalDate> availableDates
@@ -192,13 +192,13 @@ public class ListLessonsHelper {
         return result;
     }
 
-    /**
+    *//**
      * Метод сортирует список занятий для исключения следующих друг за другом лекций, при этом распределяя практические
      * занятия между лекциями так, чтобы в неделе была одна лекция и равномерное количество практик
      *
      * @param lessons список лекций
      * @return отсортированный список
-     */
+     *//*
     //TODO изменить метод для возврата отсортированного списка
     public List<Lesson> changeOrderLessons(List<Lesson> lessons) {
 
@@ -275,12 +275,12 @@ public class ListLessonsHelper {
 
 
                 // Проверяем условие для дополнительной лекции
-/*                if (result > 0 && cyclesCompleted >= result) {
+*//*                if (result > 0 && cyclesCompleted >= result) {
                     if (lectureIter.hasNext()) {
                         resultLessons.add(lectureIter.next());
                     }
                     cyclesCompleted = 0;
-                }*/
+                }*//*
             }
         }
 
@@ -292,9 +292,9 @@ public class ListLessonsHelper {
         return resultLessons;
     }
 
-    /**
+    *//**
      * Метод сортирует список занятий в соответствии с логикой и неразрывно проходящих занятий для комбинации групп
-     */
+     *//*
     //TODO помещять ли этот метод в фабрику занятий? LessonFactory
     public List<Lesson> sortedLessonAboutChain(List<Lesson> lessons) {
         List<Lesson> sortedLessons = new ArrayList<>();
@@ -320,10 +320,10 @@ public class ListLessonsHelper {
         return sortedLessons;
     }
 
-    /**
+    *//**
      * Метод определяющий частотность распределения лекций между практическими занятиями, учитывающий исключаемые первые
      * лекции
-     */
+     *//*
     //TODO доработать правило определения лекций для пропуска, и вывести расчет дополнительных лекций не попадающих под
     //TODO правило распределения этого метода
     public static int getLectureFrequency(List<Lesson> lessons) {
@@ -348,27 +348,27 @@ public class ListLessonsHelper {
         return lectureFrequency;
     }
 
-    /**
+    *//**
      * Возвращает количество лекций до начала первого не лекционного занятия
      * Если список пуст, содержит только нелекционные занятия или первое же занятие не является лекцией,
      * возвращает 0.
      *
      * @param lessons список занятий
      * @return количество лекций в начале списка до первого нелекционного занятия (0, если таких лекций нет)
-     */
+     *//*
     public static int getAmountFirstLectures(List<Lesson> lessons) {
         return (int) lessons.stream()
                 .takeWhile(l -> l.getKindOfStudy().equals(KindOfStudy.LECTURE))
                 .count();
     }
 
-    /**
+    *//**
      * Проверяет, есть ли семинары между первой группой лекций и следующей лекцией после неё.
      *
      * @param lessons список занятий
      * @return true, если между первой группой лекций и следующей лекцией есть хотя бы один семинар,
      * false в противном случае (включая случаи, когда нет первой группы лекций или нет лекций после неё)
-     */
+     *//*
     public static boolean hasSeminarsBetweenFirstLecturesAndNextLecture(List<Lesson> lessons) {
         int firstLecturesCount = getAmountFirstLectures(lessons);
 
@@ -395,9 +395,9 @@ public class ListLessonsHelper {
                 .anyMatch(l -> l.getKindOfStudy().equals(KindOfStudy.SEMINAR));
     }
 
-    /**
+    *//**
      * Считает количество необходимых дней для распределения списка занятий, по правилу 1 лекция+2 практики, или две практики
-     */
+     *//*
     public static int calculateDaysForListLessons(List<Lesson> lessons) {
         if (lessons == null || lessons.isEmpty()) {
             return 0;
@@ -435,13 +435,13 @@ public class ListLessonsHelper {
 
     }
 
-    /**
+    *//**
      * Создание списка с индексами местоположения дней с занятиями
      *
      * @param totalAvailableDays Общее количество доступных дней
      * @param requiredDays       Количество необходимых дней
      * @return list
-     */
+     *//*
     public static List<Integer> distributeLessonsEvenly(int totalAvailableDays, int requiredDays) {
         List<Integer> distribution = new ArrayList<>();
 
@@ -459,23 +459,23 @@ public class ListLessonsHelper {
         }
         // Если дней не хватает, "уплотняем" (некоторые дни будут перегружены)
         else {
-            /*float step = (float) totalAvailableDays / requiredDays;
+            *//*float step = (float) totalAvailableDays / requiredDays;
             for (int i = 0; i < requiredDays; i++) {
                 int day = (int) (i * step);
                 distribution.add(day);
-            }*/
+            }*//*
             System.out.println("Количество требуемых дней превышает количество доступных дней");
         }
 
         return distribution;
     }
 
-    /**
+    *//**
      * Возвращает количество дней в списке с ячейками
      *
      * @param cells список ячеек
      * @return int
-     */
+     *//*
     public static int countUniqueDates(List<CellForLesson> cells) {
         if (cells == null) {
             return 0;
@@ -489,31 +489,31 @@ public class ListLessonsHelper {
                 .count();
     }
 
-    /**
+    *//**
      * Метод возвращает список занятий состоящий только из лекций
      *
      * @param lessons список всех занятий
-     */
+     *//*
     private static List<Lesson> getLectureLessons(List<Lesson> lessons) {
         return lessons.stream()
                 .filter(lesson -> KindOfStudy.LECTURE.equals(lesson.getKindOfStudy()))
                 .toList();
     }
 
-    /**
+    *//**
      * Метод возвращает список занятий без лекций
      *
      * @param lessons список всех занятий
-     */
+     *//*
     private static List<Lesson> getAnotherLessons(List<Lesson> lessons) {
         return lessons.stream()
                 .filter(lesson -> !KindOfStudy.LECTURE.equals(lesson.getKindOfStudy()))
                 .toList();
     }
 
-    /**
+    *//**
      * Метод распределения экзамена
-     */
+     *//*
     //TODO реализовать распределение экзамена в сессию, на данный момент метод удаляет экзамены из списка занятий
     public static List<Lesson> distributeExam(List<Lesson> lessons) {
         List<Lesson> distribution = lessons.stream()
@@ -524,14 +524,14 @@ public class ListLessonsHelper {
 
     }
 
-    /**
+    *//**
      * Получает все занятия преподавателя на указанную дату
      *
      * @param educator преподаватель
      * @param date дата
      * @param scheduleGrid сетка расписания
      * @return список занятий преподавателя на указанную дату, отсортированный по времени пары
-     */
+     *//*
     public static List<Lesson> getEducatorLessonsForDate(Educator educator, LocalDate date, ScheduleGrid scheduleGrid) {
         if (educator == null || date == null || scheduleGrid == null) {
             throw new IllegalArgumentException("Educator, date and scheduleGrid cannot be null");
@@ -550,5 +550,5 @@ public class ListLessonsHelper {
                 }))
                 .map(lesson -> (Lesson) lesson)
                 .collect(Collectors.toList());
-    }
+    }*/
 }

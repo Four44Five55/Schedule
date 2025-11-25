@@ -3,7 +3,7 @@ package ru.abstracts;
 import java.util.Objects;
 
 public class AbstractAuditorium extends AbstractMaterialEntity {
-    private int capacity;
+    /*private int capacity;
 
     public AbstractAuditorium(int capacity) {
         this.capacity = capacity;
@@ -38,5 +38,5 @@ public class AbstractAuditorium extends AbstractMaterialEntity {
     @Override
     public int hashCode() {
         return Objects.hash(name, capacity);
-    }
+    }*/
 }

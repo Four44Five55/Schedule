@@ -1,12 +1,16 @@
 package ru.entity.constraints;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import ru.entity.Auditorium;
 import ru.enums.KindOfConstraints;
 
 import java.time.LocalDate;
 
 @Entity
+@Getter
+@Setter
 @Table(name = "auditorium_constraint")
 public class AuditoriumConstraint {
     @Id

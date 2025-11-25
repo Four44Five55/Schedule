@@ -23,12 +23,12 @@ public class WeekSchedule {
     }
 
     private Map<LocalDate, List<CellForLesson>> extractDailySchedule(ScheduleGrid schedule) {
-        return schedule.getScheduleGridMap().entrySet().stream()
-            .filter(entry -> isDateInWeek(entry.getKey().getDate()))
-            .collect(Collectors.groupingBy(
-                entry -> entry.getKey().getDate(),
-                Collectors.mapping(Map.Entry::getKey, Collectors.toList())
-            ));
+        return schedule.getGridMap().entrySet().stream()
+                .filter(entry -> isDateInWeek(entry.getKey().getDate()))
+                .collect(Collectors.groupingBy(
+                        entry -> entry.getKey().getDate(),
+                        Collectors.mapping(Map.Entry::getKey, Collectors.toList())
+                ));
     }
 
     private boolean isDateInWeek(LocalDate date) {

@@ -15,7 +15,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class DistributionDisciplineUniform {
-    ScheduleGrid scheduleGrid;
+   /* ScheduleGrid scheduleGrid;
     List<Lesson> lessons;
     List<Educator> educators;
     List<GroupCombination> groupCombinations;
@@ -39,9 +39,9 @@ public class DistributionDisciplineUniform {
         }
     }
 
-    /**
+    *//**
      * Распределение занятий для конкретного преподавателя
-     */
+     *//*
     private void distributeUniformLessonsForEducator(Educator educator) {
         ListLessonsHelper lessonsHelper = new ListLessonsHelper(curriculumSlotService, slotChainService);
         List<CellForLesson> cellForLessons = scheduleGrid.getAvailableCells(groupCombinations, List.of(educator));
@@ -61,9 +61,9 @@ public class DistributionDisciplineUniform {
         moveLessonsInGeneralSchedule(disLesson);
     }
 
-    /**
+    *//**
      * Метод записи в общее расписание занятий данных из нагрузки преподавателя
-     **/
+     **//*
     private void moveLessonsInGeneralSchedule(Map<LocalDate, List<Lesson>> distributedLessons) {
         for (Map.Entry<LocalDate, List<Lesson>> entry : distributedLessons.entrySet()) {
             LocalDate date = entry.getKey();
@@ -81,6 +81,6 @@ public class DistributionDisciplineUniform {
             }
         }
     }
-
+*/
 
 }

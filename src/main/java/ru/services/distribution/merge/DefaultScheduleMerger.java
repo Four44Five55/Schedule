@@ -18,8 +18,8 @@ import java.util.stream.Collectors;
 /**
  * Базовая реализация объединения расписаний
  */
-public class DefaultScheduleMerger implements ScheduleMerger {
-    private final SwapStrategy swapStrategy;
+public abstract class DefaultScheduleMerger implements ScheduleMerger {
+/*    private final SwapStrategy swapStrategy;
     private final ScheduleStatistics statistics;
     private MergeResult lastMergeResult;
 
@@ -182,5 +182,5 @@ public class DefaultScheduleMerger implements ScheduleMerger {
         }
         
         return description.toString();
-    }
+    }*/
 } 

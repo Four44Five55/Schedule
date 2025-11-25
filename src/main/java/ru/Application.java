@@ -21,13 +21,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static ru.entity.factories.LessonFactory.createLessonsDiscipline;
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) throws SQLException {
-        SpringApplication.run(Application.class, args);
+       /* SpringApplication.run(Application.class, args);
 
-       /*  ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
+         ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
 
 
        DisciplineService disciplineService = context.getBean(DisciplineService.class);

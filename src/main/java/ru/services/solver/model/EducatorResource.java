@@ -1,22 +1,31 @@
 package ru.services.solver.model;
 
+import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Priority;
-import ru.entity.CellForLesson;
 import ru.enums.DayOfWeek;
+
 /**
  * Специализированная "умная карточка" для ресурса "Преподаватель".
- * Добавляет логику учета мягких ограничений (предпочтений).
+ *
+ * <p>Расширяет {@link SchedulableResource}, добавляя логику учета
+ * мягких ограничений (предпочтений), хранящихся в объекте {@link Priority}.</p>
  */
-public class EducatorResource extends SchedulableResource {
+public final class EducatorResource extends SchedulableResource {
 
-    // Поле для хранения предпочтений. Существует только у этого класса.
+    /**
+     * Объект, инкапсулирующий предпочтения преподавателя по дням и парам.
+     */
     private final Priority priority;
 
+    /**
+     * Создает ресурс для преподавателя, инициализируя его предпочтения.
+     *
+     * @param educator JPA-сущность преподавателя, из которой берутся данные.
+     */
     public EducatorResource(Educator educator) {
-        super(educator, educator.getId(), educator.getName());
+        super(educator.getId(), educator.getName());
 
-        // Инициализируем объект Priority данными из JPA-сущности
         this.priority = new Priority();
         if (educator.getPreferredDays() != null) {
             this.priority.addPriorityDays(educator.getPreferredDays());
@@ -28,22 +37,21 @@ public class EducatorResource extends SchedulableResource {
 
     /**
      * Переопределенный метод. Оценивает слот с учетом предпочтений преподавателя.
+     *
+     * @param cell временной слот для оценки.
+     * @return Отрицательное число (штраф), если слот не соответствует предпочтениям, иначе 0.
      */
     @Override
     public int getPreferenceScore(CellForLesson cell) {
         int score = 0;
-
-        // Конвертируем java.time.DayOfWeek в ваш кастомный enum
         DayOfWeek customDayOfWeek = DayOfWeek.fromJavaTimeDayOfWeek(cell.getDate().getDayOfWeek());
 
-        // Проверяем, есть ли день в списке предпочтений
-        if (!priority.getDayOfWeeks().contains(customDayOfWeek)) {
-            score -= 10; // Условный штраф за работу в "нелюбимый" день
+        if (!priority.getDayOfWeeks().isEmpty() && !priority.getDayOfWeeks().contains(customDayOfWeek)) {
+            score -= 10; // Условный штраф за нежелательный день
         }
 
-        // Проверяем, есть ли пара в списке предпочтений
-        if (!priority.getSlotPairs().contains(cell.getTimeSlotPair())) {
-            score -= 5; // Условный штраф поменьше за "нелюбимую" пару
+        if (!priority.getSlotPairs().isEmpty() && !priority.getSlotPairs().contains(cell.getTimeSlotPair())) {
+            score -= 5;  // Условный штраф за нежелательную пару
         }
 
         return score;

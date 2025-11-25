@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+
 public class GroupCombination {
-    private List<Group> groups = new ArrayList<>();
+   /* private List<Group> groups = new ArrayList<>();
     private AbstractAuditorium auditorium;
 
     public GroupCombination() {
@@ -44,25 +45,25 @@ public class GroupCombination {
         return auditorium;
     }
 
-    /**
+    *//**
      * Возвращает список всех аудиторий, связанных с группами в этой комбинации.
      * Если у группы нет аудитории (auditorium == null), она не включается в результат.
      *
      * @return Список аудиторий (без дубликатов)
-     */
-    public List<AbstractAuditorium> getAllAuditoriums() {
+     *//*
+    public List<Auditorium> getAllAuditoriums() {
         return groups.stream()
-                .map(Group::getAuditorium)  // Получаем аудиторию из каждой группы
+                .map(Group::getBaseAuditorium)  // Получаем аудиторию из каждой группы
                 .filter(Objects::nonNull)   // Исключаем null (если аудитория не назначена)
                 .distinct()                 // Убираем дубликаты
                 .collect(Collectors.toList());
     }
 
-    /**
+    *//**
      * Возвращает подходящую аудиторию, и списка аудиторий для комбинации групп.
      *
      * @return Аудитория
-     */
+     *//*
     private AbstractAuditorium calculateCapacityAuditorium(List<AbstractAuditorium> availableAuditoriums) {
         if (availableAuditoriums == null || availableAuditoriums.isEmpty()) {
             return null;
@@ -78,7 +79,7 @@ public class GroupCombination {
                 .orElse(null);
     }
 
-    /**
+    *//**
      * Возвращает подходящую аудиторию для списка комбинаций групп.
      * Находит аудиторию, которая может вместить суммарное количество студентов всех групп
      * в списке комбинаций, и является наименьшей по вместимости из подходящих.
@@ -86,7 +87,7 @@ public class GroupCombination {
      *
      * @param groupCombinations Список комбинаций групп
      * @return Подходящая аудитория или null, если подходящей не найдено
-     */
+     *//*
     public static AbstractAuditorium calculateCapacityAuditoriumForCombinations(
             List<GroupCombination> groupCombinations) {
 
@@ -129,6 +130,6 @@ public class GroupCombination {
     public String toString() {
         return "GroupComb: " +
                 groups;
-    }
+    }*/
 }
 
