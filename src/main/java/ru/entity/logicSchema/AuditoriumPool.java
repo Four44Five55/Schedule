@@ -26,7 +26,7 @@ public class AuditoriumPool {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
     /**
      * Название пула, должно быть уникальным.

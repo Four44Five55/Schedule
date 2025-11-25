@@ -1,7 +1,7 @@
 package ru.entity;
 
 import ru.abstracts.AbstractGrid;
-import ru.entity.factories.CellForLessonFactory;
+import ru.services.factories.CellForLessonFactory;
 import ru.enums.KindOfConstraints;
 
 import java.time.DayOfWeek;

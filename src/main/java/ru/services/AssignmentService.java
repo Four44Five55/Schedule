@@ -127,11 +127,22 @@ public class AssignmentService {
     }
 
     /**
-     * Находит все назначения для указанного курса с полной информацией.
+     * [API-метод] Находит все назначения для курса и возвращает их в виде DTO.
+     * Предназначен для контроллеров и других "внешних" потребителей.
      */
     @Transactional(readOnly = true)
-    public List<AssignmentDto> findAllByCourseId(Integer courseId) {
+    public List<AssignmentDto> findAllDtosByCourseId(Integer courseId) {
         List<Assignment> assignments = assignmentRepository.findAllByCourseIdWithDetails(courseId);
         return assignmentMapper.toDtoList(assignments);
+    }
+
+    /**
+     * [СЛУЖЕБНЫЙ МЕТОД] Находит все назначения для курса и возвращает СУЩНОСТИ.
+     * Предназначен для использования другими сервисами и фабриками, которым нужны
+     * полноценные JPA-объекты для дальнейшей обработки.
+     */
+    @Transactional(readOnly = true)
+    public List<Assignment> findAllEntitiesByCourseId(Integer courseId) {
+        return assignmentRepository.findAllByCourseIdWithDetails(courseId);
     }
 }

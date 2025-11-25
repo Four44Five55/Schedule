@@ -1,4 +1,4 @@
-package ru.entity.factories;
+package ru.services.factories;
 
 import ru.entity.CellForLesson;
 import ru.enums.TimeSlotPair;

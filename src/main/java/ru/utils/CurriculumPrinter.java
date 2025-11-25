@@ -1,10 +1,8 @@
 package ru.utils;
 
-import ru.entity.logicSchema.DisciplineCurriculum;
-
 public class CurriculumPrinter {
 
-    public static void print(DisciplineCurriculum curriculum) {
+/*    public static void print(DisciplineCurriculum curriculum) {
         System.out.println("=== Учебный план ===");
         System.out.printf("Дисциплина: %s (%s)\n",
                 curriculum.getDiscipline().getName(),
@@ -22,6 +20,6 @@ public class CurriculumPrinter {
                     slot.getKindOfStudy().getFullName(),
                     themeInfo);
         });
-    }
+    }*/
 }
 

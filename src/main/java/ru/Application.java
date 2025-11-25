@@ -7,7 +7,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import ru.abstracts.AbstractMaterialEntity;
 import ru.entity.*;
 import ru.entity.logicSchema.CurriculumSlot;
-import ru.entity.logicSchema.DisciplineCurriculum;
 import ru.enums.KindOfConstraints;
 import ru.enums.TimeSlotPair;
 import ru.inter.IGrid;
@@ -24,9 +23,9 @@ import java.util.Map;
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) throws SQLException {
-       /* SpringApplication.run(Application.class, args);
+      SpringApplication.run(Application.class, args);
 
-         ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
+         /*  ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
 
 
        DisciplineService disciplineService = context.getBean(DisciplineService.class);
