@@ -6,4 +6,5 @@ import ru.entity.logicSchema.StudyStream;
 
 @Repository
 public interface StudyStreamRepository extends JpaRepository<StudyStream, Integer> {
+    boolean existsByName(String name);
 }
