@@ -13,9 +13,6 @@ import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.StudyStream;
 import ru.mapper.AssignmentMapper;
 import ru.repository.AssignmentRepository;
-import ru.repository.CurriculumSlotRepository;
-import ru.repository.EducatorRepository;
-import ru.repository.StudyStreamRepository;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -24,80 +21,49 @@ import java.util.Optional;
 
 /**
  * Сервис для управления "Назначениями" (Assignments).
- * Отвечает за логику создания, обновления и удаления связей между
- * слотом учебного плана, потоком и преподавателями.
  */
 @Service
 @RequiredArgsConstructor
 public class AssignmentService {
 
     private final AssignmentRepository assignmentRepository;
-    private final CurriculumSlotRepository curriculumSlotRepository;
-    private final StudyStreamRepository studyStreamRepository;
-    private final EducatorRepository educatorRepository;
+    private final CurriculumSlotService curriculumSlotService;
+    private final StudyStreamService studyStreamService;
+    private final EducatorService educatorService;
     private final AssignmentMapper assignmentMapper;
 
-    /**
-     * Создает одно или несколько назначений для одного слота учебного плана.
-     * Обрабатывает сценарии "один-ко-многим" и "деление группы".
-     *
-     * @param createDto DTO, содержащее ID слота и список деталей назначений.
-     * @return Список DTO созданных назначений.
-     */
     @Transactional
     public List<AssignmentDto> createAssignments(AssignmentCreateDto createDto) {
-        // 1. Находим родительский слот, к которому все привязывается
-        CurriculumSlot slot = curriculumSlotRepository.findById(createDto.curriculumSlotId())
-                .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + createDto.curriculumSlotId() + " не найден."));
+        // 1. Находим родительский слот через его сервис
+        CurriculumSlot slot = curriculumSlotService.findEntityById(createDto.curriculumSlotId());
 
         List<Assignment> createdAssignments = new ArrayList<>();
 
-        // 2. Итерируемся по каждому "детальному" назначению из DTO
         for (AssignmentCreateDto.AssignmentDetail detail : createDto.assignments()) {
+            // 2. Находим связанные сущности через их сервисы
+            StudyStream stream = studyStreamService.findEntityById(detail.studyStreamId());
+            List<Educator> educators = educatorService.findAllEntitiesByIds(detail.educatorIds());
 
-            // 3. Находим связанные сущности по ID
-            StudyStream stream = studyStreamRepository.findById(detail.studyStreamId())
-                    .orElseThrow(() -> new EntityNotFoundException("StudyStream с id=" + detail.studyStreamId() + " не найден."));
-
-            List<Educator> educators = educatorRepository.findAllById(detail.educatorIds());
-            if (educators.size() != detail.educatorIds().size()) {
-                throw new EntityNotFoundException("Один или несколько преподавателей из списка ID не найдены.");
-            }
-
-            // 4. Создаем и наполняем новую сущность Assignment
+            // 3. Создаем и наполняем новую сущность Assignment
             Assignment newAssignment = new Assignment();
             newAssignment.setCurriculumSlot(slot);
             newAssignment.setStudyStream(stream);
             newAssignment.setEducators(new HashSet<>(educators));
 
-            // 5. Сохраняем в БД
             createdAssignments.add(assignmentRepository.save(newAssignment));
         }
 
-        // 6. Маппим результат в DTO и возвращаем
         return assignmentMapper.toDtoList(createdAssignments);
     }
 
-    /**
-     * Обновляет существующее назначение.
-     *
-     * @param assignmentId ID обновляемого назначения.
-     * @param updateDto    DTO с новыми данными.
-     * @return DTO обновленного назначения.
-     */
     @Transactional
     public AssignmentDto updateAssignment(Integer assignmentId, AssignmentUpdateDto updateDto) {
         Assignment assignment = assignmentRepository.findById(assignmentId)
                 .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + assignmentId + " не найден."));
 
-        // Находим новые связанные сущности
-        StudyStream stream = studyStreamRepository.findById(updateDto.studyStreamId())
-                .orElseThrow(() -> new EntityNotFoundException("StudyStream с id=" + updateDto.studyStreamId() + " не найден."));
-
-        List<Educator> educators = educatorRepository.findAllById(updateDto.educatorIds());
-        if (educators.size() != updateDto.educatorIds().size()) {
-            throw new EntityNotFoundException("Один или несколько преподавателей из списка ID не найдены.");
-        }
+        // Находим новые связанные сущности через сервисы
+        StudyStream stream = studyStreamService.findEntityById(updateDto.studyStreamId());
+        List<Educator> educators = educatorService.findAllEntitiesByIds(updateDto.educatorIds());
 
         // Обновляем поля
         assignment.setStudyStream(stream);
@@ -107,9 +73,9 @@ public class AssignmentService {
         return assignmentMapper.toDto(updatedAssignment);
     }
 
-    /**
-     * Удаляет назначение по ID.
-     */
+    // Остальные методы (delete, findById, findAll...) остаются без изменений,
+    // так как они работают только со своим репозиторием.
+    // ...
     @Transactional
     public void deleteAssignment(Integer assignmentId) {
         if (!assignmentRepository.existsById(assignmentId)) {
@@ -118,29 +84,17 @@ public class AssignmentService {
         assignmentRepository.deleteById(assignmentId);
     }
 
-    /**
-     * Находит назначение по ID.
-     */
     @Transactional(readOnly = true)
     public Optional<AssignmentDto> findById(Integer assignmentId) {
         return assignmentRepository.findById(assignmentId).map(assignmentMapper::toDto);
     }
 
-    /**
-     * [API-метод] Находит все назначения для курса и возвращает их в виде DTO.
-     * Предназначен для контроллеров и других "внешних" потребителей.
-     */
     @Transactional(readOnly = true)
     public List<AssignmentDto> findAllDtosByCourseId(Integer courseId) {
         List<Assignment> assignments = assignmentRepository.findAllByCourseIdWithDetails(courseId);
         return assignmentMapper.toDtoList(assignments);
     }
 
-    /**
-     * [СЛУЖЕБНЫЙ МЕТОД] Находит все назначения для курса и возвращает СУЩНОСТИ.
-     * Предназначен для использования другими сервисами и фабриками, которым нужны
-     * полноценные JPA-объекты для дальнейшей обработки.
-     */
     @Transactional(readOnly = true)
     public List<Assignment> findAllEntitiesByCourseId(Integer courseId) {
         return assignmentRepository.findAllByCourseIdWithDetails(courseId);

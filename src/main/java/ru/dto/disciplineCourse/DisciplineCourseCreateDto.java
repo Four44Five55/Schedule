@@ -16,6 +16,9 @@ public record DisciplineCourseCreateDto(
         @Getter
         @NotNull(message = "ID дисциплины не может быть пустым")
         Integer disciplineId,
+        @NotNull
+        @Getter
+        Integer studyPeriodId,
         @Getter
         @Min(value = 1, message = "Номер семестра должен быть не меньше 1")
         @Max(value = 12, message = "Номер семестра должен быть не больше 12")

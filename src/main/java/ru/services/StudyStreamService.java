@@ -10,12 +10,12 @@ import ru.dto.studyStream.StudyStreamUpdateDto;
 import ru.entity.Group;
 import ru.entity.logicSchema.StudyStream;
 import ru.mapper.StudyStreamMapper;
-import ru.repository.GroupRepository;
 import ru.repository.StudyStreamRepository;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Сервис для управления Учебными потоками (StudyStream).
@@ -25,7 +25,7 @@ import java.util.Optional;
 public class StudyStreamService {
 
     private final StudyStreamRepository studyStreamRepository;
-    private final GroupRepository groupRepository; // Нужен для поиска групп по ID
+    private final GroupService groupService;
     private final StudyStreamMapper studyStreamMapper;
 
     /**
@@ -36,18 +36,13 @@ public class StudyStreamService {
      */
     @Transactional
     public StudyStreamDto createStudyStream(StudyStreamCreateDto createDto) {
-        // Проверяем, не занято ли имя
         if (studyStreamRepository.existsByName(createDto.name())) {
             throw new IllegalStateException("Поток с названием '" + createDto.name() + "' уже существует.");
         }
 
-        // Находим все сущности групп по их ID
-        List<Group> groups = groupRepository.findAllById(createDto.groupIds());
-        if (groups.size() != createDto.groupIds().size()) {
-            throw new EntityNotFoundException("Одна или несколько групп из списка ID не найдены.");
-        }
+        // Используем GroupService для получения сущностей
+        List<Group> groups = groupService.findAllEntitiesByIds(createDto.groupIds());
 
-        // Создаем и наполняем новую сущность
         StudyStream newStream = new StudyStream();
         newStream.setName(createDto.name());
         newStream.setSemester(createDto.semester());
@@ -59,7 +54,6 @@ public class StudyStreamService {
 
     /**
      * Обновляет существующий учебный поток.
-     * Позволяет менять название, семестр и состав групп.
      *
      * @param streamId  ID обновляемого потока.
      * @param updateDto DTO с новыми данными.
@@ -70,13 +64,9 @@ public class StudyStreamService {
         StudyStream streamToUpdate = studyStreamRepository.findById(streamId)
                 .orElseThrow(() -> new EntityNotFoundException("Поток с id=" + streamId + " не найден."));
 
-        // Находим новые группы для потока
-        List<Group> newGroups = groupRepository.findAllById(updateDto.groupIds());
-        if (newGroups.size() != updateDto.groupIds().size()) {
-            throw new EntityNotFoundException("Одна или несколько групп из нового списка ID не найдены.");
-        }
+        // Используем GroupService для получения сущностей
+        List<Group> newGroups = groupService.findAllEntitiesByIds(updateDto.groupIds());
 
-        // Обновляем поля
         streamToUpdate.setName(updateDto.name());
         streamToUpdate.setSemester(updateDto.semester());
         streamToUpdate.setGroups(new HashSet<>(newGroups));
@@ -85,44 +75,34 @@ public class StudyStreamService {
         return studyStreamMapper.toDto(updatedStream);
     }
 
-    /**
-     * Находит поток по его ID.
-     *
-     * @param streamId ID потока.
-     * @return Optional с DTO потока.
-     */
     @Transactional(readOnly = true)
     public Optional<StudyStreamDto> findById(Integer streamId) {
+        // Здесь можно использовать @EntityGraph в репозитории для жадной загрузки
         return studyStreamRepository.findById(streamId).map(studyStreamMapper::toDto);
     }
 
-    /**
-     * Возвращает список всех существующих потоков.
-     *
-     * @return Список DTO потоков.
-     */
     @Transactional(readOnly = true)
     public List<StudyStreamDto> findAll() {
-        return studyStreamMapper.toDtoList(studyStreamRepository.findAll());
+        // Примечание: этот метод вызовет N+1 запросов для загрузки групп.
+        // Для оптимизации нужно будет создать метод с @EntityGraph.
+        return studyStreamRepository.findAll().stream()
+                .map(studyStreamMapper::toDto)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Удаляет учебный поток.
-     *
-     * @param streamId ID удаляемого потока.
-     */
     @Transactional
     public void deleteStudyStream(Integer streamId) {
-        // Проверяем, не используется ли этот поток в каких-либо назначениях (Assignment)
-        // Это более правильная проверка, чем просто existsById
-        // if (assignmentRepository.existsByStudyStreamId(streamId)) {
-        //     throw new IllegalStateException("Нельзя удалить поток, так как он используется в назначениях.");
-        // }
-        // Пока этой проверки нет, делаем простую
         if (!studyStreamRepository.existsById(streamId)) {
             throw new EntityNotFoundException("Поток с id=" + streamId + " не найден.");
         }
-
         studyStreamRepository.deleteById(streamId);
+    }
+
+    // --- СЛУЖЕБНЫЙ МЕТОД ---
+
+    @Transactional(readOnly = true)
+    public StudyStream findEntityById(Integer id) {
+        return studyStreamRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Поток с id=" + id + " не найден."));
     }
 }

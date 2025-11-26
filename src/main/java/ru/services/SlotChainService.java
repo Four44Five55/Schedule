@@ -1,97 +1,106 @@
 package ru.services;
-
-import jakarta.transaction.Transactional;
+import jakarta.persistence.EntityNotFoundException;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import ru.dto.slotChain.SlotChainCreateDto;
+import ru.dto.slotChain.SlotChainDto;
 import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.SlotChain;
+import ru.mapper.SlotChainMapper;
 import ru.repository.SlotChainRepository;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
-@Transactional
 @RequiredArgsConstructor
 public class SlotChainService {
-    private final SlotChainRepository repository;
-    private final CurriculumSlotService slotService;
 
-    /*public void createChain(Integer slotAId, Integer slotBId) {
+    private final SlotChainRepository slotChainRepository;
+    private final CurriculumSlotService curriculumSlotService;
+    private final SlotChainMapper slotChainMapper;
+
+    @Transactional
+    public SlotChainDto createChain(SlotChainCreateDto createDto) {
+        Integer slotAId = createDto.slotAId();
+        Integer slotBId = createDto.slotBId();
+
         if (slotAId.equals(slotBId)) {
-            throw new IllegalArgumentException("Cannot chain slot to itself");
+            throw new IllegalArgumentException("Нельзя связать слот сам с собой.");
         }
-        if (repository.existsBySlotAIdAndSlotBId(slotAId, slotBId)) {
-            throw new IllegalStateException("Chain already exists");
+        // Проверяем на дублирование в обе стороны
+        if (slotChainRepository.existsBySlotAIdAndSlotBId(slotAId, slotBId) ||
+                slotChainRepository.existsBySlotAIdAndSlotBId(slotBId, slotAId)) {
+            throw new IllegalStateException("Такая сцепка или ее обратная версия уже существует.");
         }
 
-        CurriculumSlot slotA = slotService.getById(slotAId);
-        CurriculumSlot slotB = slotService.getById(slotBId);
+        // УБИРАЕМ ПРОВЕРКУ, запрещающую длинные цепочки.
 
-        repository.save(new SlotChain(slotA, slotB));
-    }*/
+        CurriculumSlot slotA = curriculumSlotService.findEntityById(slotAId);
+        CurriculumSlot slotB = curriculumSlotService.findEntityById(slotBId);
 
-    public SlotChain getByID(Integer id) {
-        return repository.findById(id).orElse(null);
-    }
-
-    public SlotChain update(Integer id, SlotChain slotChain) {
-        SlotChain old = repository.findById(id).orElse(null);
-        if (old != null) {
-            old.setSlotA(slotChain.getSlotA());
-            old.setSlotB(slotChain.getSlotB());
+        if (!slotA.getDisciplineCourse().getId().equals(slotB.getDisciplineCourse().getId())) {
+            throw new IllegalArgumentException("Нельзя сцепить слоты из разных учебных курсов.");
         }
-        return repository.save(old != null ? old : null);
+
+        SlotChain newChain = new SlotChain(slotA, slotB);
+        return slotChainMapper.toDto(slotChainRepository.save(newChain));
     }
 
-    public SlotChain save(SlotChain slotChain) {
-        return repository.save(slotChain);
-
+    @Transactional
+    public void deleteChain(Integer chainId) {
+        if (!slotChainRepository.existsById(chainId)) {
+            throw new EntityNotFoundException("Сцепка с id=" + chainId + " не найдена.");
+        }
+        slotChainRepository.deleteById(chainId);
     }
 
-    public void removeChain(Integer slotAId, Integer slotBId) {
-        repository.deleteBySlotAIdAndSlotBId(slotAId, slotBId);
-    }
-
-    public boolean isChained(Integer slotAId, Integer slotBId) {
-        return repository.existsBySlotAIdAndSlotBId(slotAId, slotBId) ||
-                repository.existsBySlotAIdAndSlotBId(slotBId, slotAId);
+    @Transactional(readOnly = true)
+    public List<SlotChainDto> findAll() {
+        return slotChainRepository.findAll().stream()
+                .map(slotChainMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     /**
-     * Возвращает всю последовательность slotId связанных с запрашиваемым curriculumSlot
+     * Находит всю цепочку связанных слотов, начиная с указанного.
+     * Использует обход графа в ширину (BFS) для поиска всех соединенных компонент.
      *
-     * @param slotId id проверяемого curriculumSlot
-     * @return List<Integer> с отсортированным списком id
+     * @param startSlotId ID слота, с которого начинается поиск.
+     * @return Отсортированный список ID всех слотов в цепочке.
      */
-    public List<Integer> getAllLinkedSlotIds(Integer slotId) {
+    @Transactional(readOnly = true)
+    public List<Integer> getFullChain(Integer startSlotId) {
+        if (!curriculumSlotService.existsById(startSlotId)) {
+            throw new EntityNotFoundException("Слот с id=" + startSlotId + " не найден.");
+        }
+
+        // Используем TreeSet для автоматической сортировки и уникальности
+        Set<Integer> fullChain = new TreeSet<>();
+        Queue<Integer> toVisit = new LinkedList<>();
         Set<Integer> visited = new HashSet<>();
-        Queue<Integer> queue = new LinkedList<>();
-        Set<Integer> result = new TreeSet<>();
 
-        queue.add(slotId);
-        visited.add(slotId);
+        // Начинаем обход
+        toVisit.add(startSlotId);
+        visited.add(startSlotId);
 
-        while (!queue.isEmpty()) {
-            Integer currentSlotId = queue.poll();
+        while (!toVisit.isEmpty()) {
+            Integer currentSlotId = toVisit.poll();
+            fullChain.add(currentSlotId);
 
-            List<Integer> directLinks = repository.findLinkedSlotIds(currentSlotId);
+            // Находим всех прямых "соседей"
+            List<Integer> neighbors = slotChainRepository.findDirectlyLinkedSlotIds(currentSlotId);
 
-            for (Integer linkedSlotId : directLinks) {
-                if (!visited.contains(linkedSlotId)) {
-                    visited.add(linkedSlotId);
-                    result.add(linkedSlotId);
-                    queue.add(linkedSlotId);
+            for (Integer neighborId : neighbors) {
+                if (!visited.contains(neighborId)) {
+                    visited.add(neighborId);
+                    toVisit.add(neighborId);
                 }
             }
         }
 
-        if (!result.isEmpty()) {
-            result.add(slotId); // Добавляем исходный slotId, только если есть связи
-        }
-
-        return new ArrayList<>(result);
+        return new ArrayList<>(fullChain);
     }
-
-
 }

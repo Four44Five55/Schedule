@@ -4,126 +4,96 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.dto.discipline.DisciplineDto;
 import ru.dto.disciplineCourse.DisciplineCourseCreateDto;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
 import ru.entity.Discipline;
+import ru.entity.StudyPeriod;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.mapper.DisciplineCourseMapper;
 import ru.repository.DisciplineCourseRepository;
-import ru.repository.DisciplineRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-/**
- * Сервис для управления учебными курсами (DisciplineCourse).
- * Инкапсулирует бизнес-логику, валидацию и работу с данными для курсов.
- */
+
 @Service
 @RequiredArgsConstructor
 public class DisciplineCourseService {
 
     private final DisciplineCourseRepository disciplineCourseRepository;
     private final DisciplineService disciplineService;
+    private final StudyPeriodService studyPeriodService;
     private final DisciplineCourseMapper disciplineCourseMapper;
 
-    /**
-     * Создает новый учебный курс на основе DTO.
-     *
-     * @param createDto DTO с данными для создания.
-     * @return DTO созданного курса.
-     * @throws EntityNotFoundException если дисциплина с указанным ID не найдена.
-     * @throws IllegalStateException   если курс для данной дисциплины и семестра уже существует.
-     */
     @Transactional
     public DisciplineCourseDto createCourse(DisciplineCourseCreateDto createDto) {
-        // 1. Получаем СУЩНОСТЬ Discipline через DisciplineService
-        Discipline discipline = disciplineService.getDisciplineById(createDto.getDisciplineId());
+        // 1. Получаем связанные сущности через их сервисы
+        Discipline discipline = disciplineService.findEntityById(createDto.disciplineId());
+        StudyPeriod studyPeriod = studyPeriodService.findEntityById(createDto.studyPeriodId());
 
-        // 2. Проверка дубликатов
-        if (disciplineCourseRepository.existsByDisciplineIdAndSemester(discipline.getId(), createDto.getSemester())) {
-            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "' и семестра " + createDto.getSemester() + " уже существует.");
+        // 2. Проверка на дубликаты по новой логике
+        if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodId(discipline.getId(), studyPeriod.getId())) {
+            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "' и периода '" + studyPeriod.getName() + "' уже существует.");
         }
 
         // 3. Создаем и сохраняем новый курс
         DisciplineCourse newCourse = new DisciplineCourse();
         newCourse.setDiscipline(discipline);
-        newCourse.setSemester(createDto.getSemester());
+        newCourse.setStudyPeriod(studyPeriod);
         DisciplineCourse savedCourse = disciplineCourseRepository.save(newCourse);
 
         return disciplineCourseMapper.toDto(savedCourse);
     }
 
-    /**
-     * Находит курс по его уникальному идентификатору.
-     *
-     * @param id ID курса.
-     * @return Optional с DTO курса, если найден, или пустой Optional.
-     */
-    @Transactional(readOnly = true)
-    public Optional<DisciplineCourseDto> findCourseById(Integer id) {
-        return disciplineCourseRepository.findById(id)
-                .map(disciplineCourseMapper::toDto);
-    }
-
-    /**
-     * Находит все курсы, принадлежащие одной дисциплине, и сортирует их по семестру.
-     *
-     * @param disciplineId ID родительской дисциплины.
-     * @return Список DTO курсов.
-     */
     @Transactional(readOnly = true)
     public List<DisciplineCourseDto> findAllCoursesByDiscipline(Integer disciplineId) {
-        List<DisciplineCourse> courses = disciplineCourseRepository.findByDisciplineIdOrderBySemester(disciplineId);
-        return disciplineCourseMapper.toDtoList(courses);
+        // Сортируем по дате начала периода
+        List<DisciplineCourse> courses = disciplineCourseRepository.findByDisciplineIdOrderByStudyPeriod_StartDate(disciplineId);
+        return courses.stream()
+                .map(disciplineCourseMapper::toDto)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Обновляет данные существующего учебного курса.
-     *
-     * @param id        ID обновляемого курса.
-     * @param updateDto DTO с новыми данными.
-     * @return DTO обновленного курса.
-     * @throws EntityNotFoundException если курс с указанным ID не найден.
-     * @throws IllegalStateException   если изменение семестра приведет к дубликату.
-     */
     @Transactional
     public DisciplineCourseDto updateCourse(Integer id, DisciplineCourseUpdateDto updateDto) {
-        // 1. Находим сущность в БД
-        DisciplineCourse courseToUpdate = disciplineCourseRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Курс с id=" + id + " не найден."));
+        DisciplineCourse courseToUpdate = findEntityById(id);
 
-        // 2. Проверяем, не приведет ли изменение к конфликту
-        Integer disciplineId = courseToUpdate.getDiscipline().getId();
-        if (courseToUpdate.getSemester() != updateDto.semester() &&
-                disciplineCourseRepository.existsByDisciplineIdAndSemester(disciplineId, updateDto.semester())) {
-            throw new IllegalStateException("Курс для данной дисциплины и семестра " + updateDto.semester() + " уже существует.");
+        StudyPeriod newStudyPeriod = studyPeriodService.findEntityById(updateDto.studyPeriodId());
+
+        // Проверяем, что мы не создаем дубликат, если период изменился
+        if (!courseToUpdate.getStudyPeriod().getId().equals(newStudyPeriod.getId())) {
+            if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodId(courseToUpdate.getDiscipline().getId(), newStudyPeriod.getId())) {
+                throw new IllegalStateException("Курс для данной дисциплины и периода '" + newStudyPeriod.getName() + "' уже существует.");
+            }
         }
 
-        // 3. Обновляем поля сущности
-        courseToUpdate.setSemester(updateDto.semester());
+        courseToUpdate.setStudyPeriod(newStudyPeriod);
 
-        // 4. Сохраняем. Hibernate поймет, что это UPDATE, т.к. сущность уже отслеживается.
-        DisciplineCourse updatedCourse = disciplineCourseRepository.save(courseToUpdate);
-
-        // 5. Возвращаем DTO с обновленными данными
-        return disciplineCourseMapper.toDto(updatedCourse);
+        return disciplineCourseMapper.toDto(disciplineCourseRepository.save(courseToUpdate));
     }
 
-    /**
-     * Удаляет учебный курс по его ID.
-     *
-     * @param id ID удаляемого курса.
-     * @throws EntityNotFoundException если курс с указанным ID не найден.
-     */
     @Transactional
     public void deleteCourse(Integer id) {
-        // Проверяем существование, чтобы выбросить осмысленную ошибку, если курса нет
         if (!disciplineCourseRepository.existsById(id)) {
-            throw new EntityNotFoundException("Курс с id=" + id + " не найден, удаление невозможно.");
+            throw new EntityNotFoundException("Курс с id=" + id + " не найден.");
         }
+        // TODO: Добавить проверку, не используется ли курс в CurriculumSlot
         disciplineCourseRepository.deleteById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<DisciplineCourseDto> findById(Integer id) {
+        // TODO: Использовать метод с @EntityGraph для жадной загрузки
+        return disciplineCourseRepository.findById(id).map(disciplineCourseMapper::toDto);
+    }
+
+    // --- СЛУЖЕБНЫЙ МЕТОД ---
+
+    @Transactional(readOnly = true)
+    public DisciplineCourse findEntityById(Integer id) {
+        return disciplineCourseRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Курс с id=" + id + " не найден."));
     }
 }

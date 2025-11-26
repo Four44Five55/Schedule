@@ -1,16 +1,13 @@
 package ru.dto.disciplineCourse;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 
 /**
  * DTO для обновления существующего учебного курса.
  *
- * @param semester Новый номер семестра.
+ * @param studyPeriodId Новый учебный период.
  */
 public record DisciplineCourseUpdateDto(
-        @Min(value = 1, message = "Номер семестра должен быть не меньше 1")
-        @Max(value = 12, message = "Номер семестра должен быть не больше 12")
-        int semester
+        @NotNull Integer studyPeriodId
 ) {
 }

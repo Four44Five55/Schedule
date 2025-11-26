@@ -10,23 +10,31 @@ import ru.dto.group.GroupUpdateDto;
 import ru.entity.Auditorium;
 import ru.entity.Group;
 import ru.mapper.GroupMapper;
-import ru.repository.AuditoriumRepository;
 import ru.repository.GroupRepository;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Сервис для управления Учебными группами.
+ */
 @Service
 @RequiredArgsConstructor
 public class GroupService {
 
     private final GroupRepository groupRepository;
-    private final AuditoriumRepository auditoriumRepository;
+    private final AuditoriumService auditoriumService;
     private final GroupMapper groupMapper;
 
-    // === ПУБЛИЧНЫЕ МЕТОДЫ (API) ===
+    // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
+    /**
+     * Создает новую учебную группу.
+     *
+     * @param createDto DTO с данными для создания.
+     * @return DTO созданной группы.
+     */
     @Transactional
     public GroupDto createGroup(GroupCreateDto createDto) {
         if (groupRepository.existsByName(createDto.name())) {
@@ -37,28 +45,43 @@ public class GroupService {
         newGroup.setName(createDto.name());
         newGroup.setSize(createDto.size());
 
+        // Если указана базовая аудитория, получаем ее через AuditoriumService
         if (createDto.baseAuditoriumId() != null) {
-            Auditorium baseAuditorium = auditoriumRepository.findById(createDto.baseAuditoriumId())
-                    .orElseThrow(() -> new EntityNotFoundException("Аудитория с id=" + createDto.baseAuditoriumId() + " не найдена."));
+            Auditorium baseAuditorium = auditoriumService.findEntityById(createDto.baseAuditoriumId());
             newGroup.setBaseAuditorium(baseAuditorium);
         }
 
-        return groupMapper.toDto(groupRepository.save(newGroup));
+        Group savedGroup = groupRepository.save(newGroup);
+        return groupMapper.toDto(savedGroup);
     }
 
+    /**
+     * Обновляет существующую учебную группу.
+     *
+     * @param groupId   ID обновляемой группы.
+     * @param updateDto DTO с новыми данными.
+     * @return DTO обновленной группы.
+     */
     @Transactional
     public GroupDto updateGroup(Integer groupId, GroupUpdateDto updateDto) {
-        Group groupToUpdate = groupRepository.findById(groupId)
-                .orElseThrow(() -> new EntityNotFoundException("Группа с id=" + groupId + " не найдена."));
+        Group groupToUpdate = findEntityById(groupId);
+
+        // Проверяем уникальность имени, если оно было изменено
+        if (!groupToUpdate.getName().equals(updateDto.name())) {
+            groupRepository.findByName(updateDto.name()).ifPresent(existing -> {
+                throw new IllegalStateException("Группа с названием '" + updateDto.name() + "' уже существует.");
+            });
+        }
 
         groupToUpdate.setName(updateDto.name());
         groupToUpdate.setSize(updateDto.size());
 
+        // Обновляем базовую аудиторию через сервис
         if (updateDto.baseAuditoriumId() != null) {
-            Auditorium baseAuditorium = auditoriumRepository.findById(updateDto.baseAuditoriumId())
-                    .orElseThrow(() -> new EntityNotFoundException("Аудитория с id=" + updateDto.baseAuditoriumId() + " не найдена."));
+            Auditorium baseAuditorium = auditoriumService.findEntityById(updateDto.baseAuditoriumId());
             groupToUpdate.setBaseAuditorium(baseAuditorium);
         } else {
+            // Если ID не передан, значит, связь нужно убрать
             groupToUpdate.setBaseAuditorium(null);
         }
 
@@ -86,21 +109,25 @@ public class GroupService {
         groupRepository.deleteById(groupId);
     }
 
-    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (ДЛЯ ДРУГИХ СЕРВИСОВ) ===
+
+    /**
+     * Находит сущность Group по ID. Для внутреннего использования другими сервисами.
+     */
+    @Transactional(readOnly = true)
+    public Group findEntityById(Integer id) {
+        return groupRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Группа с id=" + id + " не найдена."));
+    }
 
     /**
      * Находит все сущности Group по списку их ID.
-     * Предназначен для использования другими сервисами (например, StudyStreamService).
-     *
-     * @param groupIds Список ID групп.
-     * @return Список найденных сущностей Group.
-     * @throws EntityNotFoundException если хотя бы одна группа не найдена.
+     * Предназначен для использования StudyStreamService.
      */
     @Transactional(readOnly = true)
     public List<Group> findAllEntitiesByIds(List<Integer> groupIds) {
         List<Group> groups = groupRepository.findAllById(groupIds);
         if (groups.size() != groupIds.size()) {
-            // Можно добавить более детальную логику поиска недостающих ID
             throw new EntityNotFoundException("Одна или несколько групп из списка ID не найдены.");
         }
         return groups;
