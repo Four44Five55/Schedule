@@ -33,6 +33,12 @@ public class StudyStream {
     private String name;
 
     /**
+     * Номер семестра, к которому относится данный поток.
+     */
+    @Column(name = "semester", nullable = false)
+    private int semester;
+
+    /**
      * Связь "многие-ко-многим" с сущностью Group.
      * Определяет, какие группы входят в данный поток.
      * Конфигурация хранится в связующей таблице "stream_groups".
@@ -45,9 +51,9 @@ public class StudyStream {
     )
     private Set<Group> groups = new HashSet<>();
 
-    // Конструктор для удобства
-    public StudyStream(String name) {
+    public StudyStream(String name, int semester) {
         this.name = name;
+        this.semester = semester;
     }
 
     /**
