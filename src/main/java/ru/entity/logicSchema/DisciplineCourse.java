@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.entity.Discipline;
+import ru.entity.StudyPeriod;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,17 +26,18 @@ public class DisciplineCourse {
     @JoinColumn(name = "discipline_id")
     private Discipline discipline;
 
-    @Column(nullable = false)
-    private int semester;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "study_period_id")
+    private StudyPeriod studyPeriod;
 
     @OneToMany(mappedBy = "disciplineCourse", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
     private List<CurriculumSlot> curriculumSlots = new ArrayList<>();
 
     // Конструктор для удобства
-    public DisciplineCourse(Discipline discipline, int semester) {
+    public DisciplineCourse(Discipline discipline,StudyPeriod studyPeriod) {
         this.discipline = discipline;
-        this.semester = semester;
+        this.studyPeriod = studyPeriod;
     }
 
     @Override
@@ -55,7 +57,7 @@ public class DisciplineCourse {
     public String toString() {
         return "DisciplineCourse{" +
                 "id=" + id +
-                ", semester=" + semester +
+                ", studyPeriod=" + studyPeriod +
                 ", discipline=" + (discipline != null ? discipline.getName() : "null") +
                 '}';
     }
