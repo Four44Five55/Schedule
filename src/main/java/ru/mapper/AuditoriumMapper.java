@@ -7,7 +7,10 @@ import ru.entity.Auditorium;
 import ru.entity.Building;
 import ru.entity.Location;
 
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
+@Mapper(
+        componentModel = MappingConstants.ComponentModel.SPRING,
+        uses = {AuditoriumPurposeMapper.class, FeatureMapper.class}
+)
 public interface AuditoriumMapper {
 
     AuditoriumDto toDto(Auditorium auditorium);

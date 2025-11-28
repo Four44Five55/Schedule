@@ -28,6 +28,18 @@ public class Auditorium implements IMaterialEntity {
     @Column(nullable = false)
     private int capacity;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "purpose_id")
+    private AuditoriumPurpose purpose;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "auditorium_features",
+            joinColumns = @JoinColumn(name = "auditorium_id"),
+            inverseJoinColumns = @JoinColumn(name = "feature_id")
+    )
+    private Set<Feature> features = new HashSet<>();
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "building_id")
     private Building building;

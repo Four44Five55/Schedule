@@ -8,10 +8,13 @@ import ru.dto.auditorium.AuditoriumCreateDto;
 import ru.dto.auditorium.AuditoriumDto;
 import ru.dto.auditorium.AuditoriumUpdateDto;
 import ru.entity.Auditorium;
+import ru.entity.AuditoriumPurpose;
 import ru.entity.Building;
+import ru.entity.Feature;
 import ru.mapper.AuditoriumMapper;
 import ru.repository.AuditoriumRepository;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -25,6 +28,8 @@ public class AuditoriumService {
 
     private final AuditoriumRepository auditoriumRepository;
     private final BuildingService buildingService;
+    private final AuditoriumPurposeService purposeService;
+    private final FeatureService featureService;
     private final AuditoriumMapper auditoriumMapper;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
@@ -49,6 +54,15 @@ public class AuditoriumService {
         newAuditorium.setName(createDto.name());
         newAuditorium.setCapacity(createDto.capacity());
         newAuditorium.setBuilding(building);
+
+        if (createDto.purposeId() != null) {
+            AuditoriumPurpose purpose = purposeService.findEntityById(createDto.purposeId());
+            newAuditorium.setPurpose(purpose);
+        }
+        if (createDto.featureIds() != null && !createDto.featureIds().isEmpty()) {
+            List<Feature> features = featureService.findAllEntitiesByIds(createDto.featureIds());
+            newAuditorium.setFeatures(new HashSet<>(features));
+        }
 
         return auditoriumMapper.toDto(auditoriumRepository.save(newAuditorium));
     }
@@ -79,6 +93,19 @@ public class AuditoriumService {
 
         auditoriumToUpdate.setName(updateDto.name());
         auditoriumToUpdate.setCapacity(updateDto.capacity());
+
+        if (updateDto.purposeId() != null) {
+            AuditoriumPurpose purpose = purposeService.findEntityById(updateDto.purposeId());
+            auditoriumToUpdate.setPurpose(purpose);
+        } else {
+            auditoriumToUpdate.setPurpose(null);
+        }
+
+        auditoriumToUpdate.getFeatures().clear(); // Очищаем старый набор
+        if (updateDto.featureIds() != null && !updateDto.featureIds().isEmpty()) {
+            List<Feature> newFeatures = featureService.findAllEntitiesByIds(updateDto.featureIds());
+            auditoriumToUpdate.setFeatures(new HashSet<>(newFeatures));
+        }
 
         return auditoriumMapper.toDto(auditoriumRepository.save(auditoriumToUpdate));
     }
