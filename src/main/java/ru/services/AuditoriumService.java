@@ -157,6 +157,15 @@ public class AuditoriumService {
     }
 
     /**
+     * Находит все сущности Auditorium.
+     * Предназначен для использования внутри этого сервиса и другими сервисами.
+     */
+    @Transactional(readOnly = true)
+    public List<Auditorium> getAllEntities() {
+        return auditoriumRepository.findAll();
+    }
+
+    /**
      * Находит все сущности Auditorium по списку их ID.
      * Предназначен для использования другими сервисами (AuditoriumPoolService).
      *

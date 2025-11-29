@@ -121,6 +121,15 @@ public class GroupService {
     }
 
     /**
+     * Находит все сущности Group.
+     * Предназначен для использования внутри этого сервиса и другими сервисами.
+     */
+    @Transactional(readOnly = true)
+    public List<Group> getAllEntities() {
+        return groupRepository.findAll();
+    }
+
+    /**
      * Находит все сущности Group по списку их ID.
      * Предназначен для использования StudyStreamService.
      */
@@ -132,4 +141,6 @@ public class GroupService {
         }
         return groups;
     }
+
+
 }

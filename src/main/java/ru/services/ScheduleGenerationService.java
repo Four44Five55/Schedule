@@ -3,7 +3,10 @@ package ru.services;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.entity.*;
+import ru.entity.Auditorium;
+import ru.entity.Educator;
+import ru.entity.Group;
+import ru.entity.Lesson;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.services.constraints.AllConstraints;
 import ru.services.constraints.ConstraintService;
@@ -14,13 +17,10 @@ import ru.services.solver.model.ScheduleGrid;
 
 import java.util.List;
 
-import ru.entity.Lesson;
-
 @Service
 @RequiredArgsConstructor
 public class ScheduleGenerationService {
 
-    // --- ПРАВИЛЬНЫЕ ЗАВИСИМОСТИ (ТОЛЬКО СЕРВИСЫ) ---
     private final EducatorService educatorService;
     private final GroupService groupService;
     private final AuditoriumService auditoriumService;
@@ -36,8 +36,8 @@ public class ScheduleGenerationService {
 
         // --- 1. ПОДГОТОВКА ДАННЫХ (через сервисы) ---
         List<Educator> allEducators = educatorService.getAllEntities();
-        List<Group> allGroups = groupService.findAllEntities();
-        List<Auditorium> allAuditoriums = auditoriumService.findAllEntities();
+        List<Group> allGroups = groupService.getAllEntities();
+        List<Auditorium> allAuditoriums = auditoriumService.getAllEntities();
         AllConstraints allConstraints = constraintService.loadAllConstraints();
         DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
 
