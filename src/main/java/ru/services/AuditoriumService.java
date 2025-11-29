@@ -48,7 +48,7 @@ public class AuditoriumService {
         }
 
         // Получаем сущность корпуса через BuildingService
-        Building building = buildingService.findEntityById(createDto.buildingId());
+        Building building = buildingService.getEntityById(createDto.buildingId());
 
         Auditorium newAuditorium = new Auditorium();
         newAuditorium.setName(createDto.name());
@@ -56,11 +56,11 @@ public class AuditoriumService {
         newAuditorium.setBuilding(building);
 
         if (createDto.purposeId() != null) {
-            AuditoriumPurpose purpose = purposeService.findEntityById(createDto.purposeId());
+            AuditoriumPurpose purpose = purposeService.getEntityById(createDto.purposeId());
             newAuditorium.setPurpose(purpose);
         }
         if (createDto.featureIds() != null && !createDto.featureIds().isEmpty()) {
-            List<Feature> features = featureService.findAllEntitiesByIds(createDto.featureIds());
+            List<Feature> features = featureService.getAllEntitiesByIds(createDto.featureIds());
             newAuditorium.setFeatures(new HashSet<>(features));
         }
 
@@ -76,7 +76,7 @@ public class AuditoriumService {
      */
     @Transactional
     public AuditoriumDto updateAuditorium(Integer id, AuditoriumUpdateDto updateDto) {
-        Auditorium auditoriumToUpdate = findEntityById(id);
+        Auditorium auditoriumToUpdate = getEntityById(id);
 
         // Проверяем на уникальность, если имя или корпус изменились
         if (!auditoriumToUpdate.getName().equals(updateDto.name()) || !auditoriumToUpdate.getBuilding().getId().equals(updateDto.buildingId())) {
@@ -87,7 +87,7 @@ public class AuditoriumService {
 
         // Если ID корпуса изменился, получаем новую сущность корпуса
         if (!auditoriumToUpdate.getBuilding().getId().equals(updateDto.buildingId())) {
-            Building newBuilding = buildingService.findEntityById(updateDto.buildingId());
+            Building newBuilding = buildingService.getEntityById(updateDto.buildingId());
             auditoriumToUpdate.setBuilding(newBuilding);
         }
 
@@ -95,7 +95,7 @@ public class AuditoriumService {
         auditoriumToUpdate.setCapacity(updateDto.capacity());
 
         if (updateDto.purposeId() != null) {
-            AuditoriumPurpose purpose = purposeService.findEntityById(updateDto.purposeId());
+            AuditoriumPurpose purpose = purposeService.getEntityById(updateDto.purposeId());
             auditoriumToUpdate.setPurpose(purpose);
         } else {
             auditoriumToUpdate.setPurpose(null);
@@ -103,7 +103,7 @@ public class AuditoriumService {
 
         auditoriumToUpdate.getFeatures().clear(); // Очищаем старый набор
         if (updateDto.featureIds() != null && !updateDto.featureIds().isEmpty()) {
-            List<Feature> newFeatures = featureService.findAllEntitiesByIds(updateDto.featureIds());
+            List<Feature> newFeatures = featureService.getAllEntitiesByIds(updateDto.featureIds());
             auditoriumToUpdate.setFeatures(new HashSet<>(newFeatures));
         }
 
@@ -141,7 +141,7 @@ public class AuditoriumService {
         auditoriumRepository.deleteById(id);
     }
 
-    // === СЛУЖЕБНЫЙ МЕТОД (для других сервисов) ===
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     /**
      * Находит сущность Auditorium по ID. Для внутреннего использования другими сервисами (например, GroupService).
@@ -151,7 +151,7 @@ public class AuditoriumService {
      * @throws EntityNotFoundException если аудитория не найдена.
      */
     @Transactional(readOnly = true)
-    public Auditorium findEntityById(Integer id) {
+    public Auditorium getEntityById(Integer id) {
         return auditoriumRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Аудитория с id=" + id + " не найдена."));
     }
@@ -165,7 +165,7 @@ public class AuditoriumService {
      * @throws EntityNotFoundException если хотя бы одна аудитория не найдена.
      */
     @Transactional(readOnly = true)
-    public List<Auditorium> findAllEntitiesByIds(List<Integer> ids) {
+    public List<Auditorium> getAllEntitiesByIds(List<Integer> ids) {
         List<Auditorium> auditoriums = auditoriumRepository.findAllById(ids);
         // Проверяем, что количество найденных сущностей совпадает с количеством запрошенных ID
         if (auditoriums.size() != ids.size()) {

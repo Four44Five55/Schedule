@@ -43,7 +43,7 @@ public class StudyPeriodService {
 
     @Transactional
     public StudyPeriodDto updateStudyPeriod(Integer id, StudyPeriodUpdateDto updateDto) {
-        StudyPeriod periodToUpdate = findEntityById(id);
+        StudyPeriod periodToUpdate = getEntityById(id);
 
         if (updateDto.startDate().isAfter(updateDto.endDate())) {
             throw new IllegalArgumentException("Дата начала не может быть позже даты окончания.");
@@ -88,10 +88,10 @@ public class StudyPeriodService {
         studyPeriodRepository.deleteById(id);
     }
 
-    // --- СЛУЖЕБНЫЙ МЕТОД ---
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     @Transactional(readOnly = true)
-    public StudyPeriod findEntityById(Integer id) {
+    public StudyPeriod getEntityById(Integer id) {
         return studyPeriodRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Учебный период с id=" + id + " не найден."));
     }

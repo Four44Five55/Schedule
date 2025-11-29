@@ -36,7 +36,7 @@ public class AuditoriumPoolService {
         newPool.setDescription(createDto.description());
 
         if (createDto.auditoriumIds() != null && !createDto.auditoriumIds().isEmpty()) {
-            List<Auditorium> auditoriums = auditoriumService.findAllEntitiesByIds(createDto.auditoriumIds());
+            List<Auditorium> auditoriums = auditoriumService.getAllEntitiesByIds(createDto.auditoriumIds());
             newPool.setAuditoriums(new HashSet<>(auditoriums));
         }
 
@@ -54,7 +54,7 @@ public class AuditoriumPoolService {
         // Полностью заменяем состав аудиторий в пуле
         poolToUpdate.getAuditoriums().clear();
         if (updateDto.auditoriumIds() != null && !updateDto.auditoriumIds().isEmpty()) {
-            List<Auditorium> newAuditoriums = auditoriumService.findAllEntitiesByIds(updateDto.auditoriumIds());
+            List<Auditorium> newAuditoriums = auditoriumService.getAllEntitiesByIds(updateDto.auditoriumIds());
             poolToUpdate.setAuditoriums(new HashSet<>(newAuditoriums));
         }
 
@@ -82,9 +82,9 @@ public class AuditoriumPoolService {
         auditoriumPoolRepository.deleteById(poolId);
     }
 
-    // --- Служебный метод ---
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
     @Transactional(readOnly = true)
-    public AuditoriumPool findEntityById(Integer id) {
+    public AuditoriumPool getEntityById(Integer id) {
         return auditoriumPoolRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Пул аудиторий с id=" + id + " не найден."));
     }

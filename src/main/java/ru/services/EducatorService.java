@@ -52,7 +52,7 @@ public class EducatorService {
      */
     @Transactional
     public EducatorDto updateEducator(Integer educatorId, EducatorUpdateDto updateDto) {
-        Educator educatorToUpdate = findEntityById(educatorId);
+        Educator educatorToUpdate = getEntityById(educatorId);
 
         educatorToUpdate.setName(updateDto.name());
         educatorToUpdate.setPreferredDays(updateDto.preferredDays());
@@ -98,7 +98,7 @@ public class EducatorService {
      * Находит сущность Educator по ID. Для внутреннего использования другими сервисами.
      */
     @Transactional(readOnly = true)
-    public Educator findEntityById(Integer id) {
+    public Educator getEntityById(Integer id) {
         return educatorRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Преподаватель с id=" + id + " не найден."));
     }
@@ -108,11 +108,16 @@ public class EducatorService {
      * Предназначен для использования AssignmentService.
      */
     @Transactional(readOnly = true)
-    public List<Educator> findAllEntitiesByIds(List<Integer> ids) {
+    public List<Educator> getAllEntitiesByIds(List<Integer> ids) {
         List<Educator> educators = educatorRepository.findAllById(ids);
         if (educators.size() != ids.size()) {
             throw new EntityNotFoundException("Один или несколько преподавателей из списка ID не найдены.");
         }
         return educators;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Educator> getAllEntities() {
+        return educatorRepository.findAll();
     }
 }

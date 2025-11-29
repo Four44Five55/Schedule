@@ -35,7 +35,7 @@ public class LocationService {
 
     @Transactional
     public LocationDto updateLocation(Integer id, LocationUpdateDto updateDto) {
-        Location location = findEntityById(id);
+        Location location = getEntityById(id);
 
         locationRepository.findByName(updateDto.name()).ifPresent(existing -> {
             if (!existing.getId().equals(id)) {
@@ -71,13 +71,13 @@ public class LocationService {
                 .collect(Collectors.toList());
     }
 
-    // --- СЛУЖЕБНЫЙ МЕТОД ---
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     /**
      * Находит сущность Location по ID. Для внутреннего использования другими сервисами.
      */
     @Transactional(readOnly = true)
-    public Location findEntityById(Integer id) {
+    public Location getEntityById(Integer id) {
         return locationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Локация с id=" + id + " не найдена."));
     }

@@ -34,7 +34,7 @@ public class FeatureService {
 
     @Transactional
     public FeatureDto update(Integer id, FeatureUpdateDto updateDto) {
-        Feature featureToUpdate = findEntityById(id);
+        Feature featureToUpdate = getEntityById(id);
         // TODO: Добавить более сложную проверку на уникальность при обновлении
         featureToUpdate.setName(updateDto.name());
         featureToUpdate.setCode(updateDto.code());
@@ -63,13 +63,13 @@ public class FeatureService {
     // --- СЛУЖЕБНЫЕ МЕТОДЫ ---
 
     @Transactional(readOnly = true)
-    public Feature findEntityById(Integer id) {
+    public Feature getEntityById(Integer id) {
         return featureRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Оснащение с id=" + id + " не найдено."));
     }
 
     @Transactional(readOnly = true)
-    public List<Feature> findAllEntitiesByIds(List<Integer> ids) {
+    public List<Feature> getAllEntitiesByIds(List<Integer> ids) {
         List<Feature> features = featureRepository.findAllById(ids);
         if (features.size() != ids.size()) {
             throw new EntityNotFoundException("Одно или несколько оснащений из списка ID не найдены.");

@@ -30,7 +30,7 @@ public class LessonFactory {
      */
     public List<Lesson> createLessonsForCourse(Integer courseId) {
         // 1. Загружаем все назначения для курса с полной информацией
-        List<Assignment> assignments = assignmentService.findAllEntitiesByCourseId(courseId); // Используем метод сервиса
+        List<Assignment> assignments = assignmentService.getAllEntitiesByCourseId(courseId); // Используем метод сервиса
 
         // 2. Группируем назначения по curriculumSlotId, чтобы найти параллельные занятия
         var assignmentsBySlot = assignments.stream()

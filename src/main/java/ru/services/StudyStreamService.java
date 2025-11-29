@@ -41,7 +41,7 @@ public class StudyStreamService {
         }
 
         // Используем GroupService для получения сущностей
-        List<Group> groups = groupService.findAllEntitiesByIds(createDto.groupIds());
+        List<Group> groups = groupService.getAllEntitiesByIds(createDto.groupIds());
 
         StudyStream newStream = new StudyStream();
         newStream.setName(createDto.name());
@@ -65,7 +65,7 @@ public class StudyStreamService {
                 .orElseThrow(() -> new EntityNotFoundException("Поток с id=" + streamId + " не найден."));
 
         // Используем GroupService для получения сущностей
-        List<Group> newGroups = groupService.findAllEntitiesByIds(updateDto.groupIds());
+        List<Group> newGroups = groupService.getAllEntitiesByIds(updateDto.groupIds());
 
         streamToUpdate.setName(updateDto.name());
         streamToUpdate.setSemester(updateDto.semester());
@@ -98,10 +98,10 @@ public class StudyStreamService {
         studyStreamRepository.deleteById(streamId);
     }
 
-    // --- СЛУЖЕБНЫЙ МЕТОД ---
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     @Transactional(readOnly = true)
-    public StudyStream findEntityById(Integer id) {
+    public StudyStream getEntityById(Integer id) {
         return studyStreamRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Поток с id=" + id + " не найден."));
     }

@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.dto.slotChain.SlotChainCreateDto;
 import ru.dto.slotChain.SlotChainDto;
-import ru.entity.Lesson;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.SlotChain;
 import ru.mapper.SlotChainMapper;
@@ -38,8 +37,8 @@ public class SlotChainService {
 
         // УБИРАЕМ ПРОВЕРКУ, запрещающую длинные цепочки.
 
-        CurriculumSlot slotA = curriculumSlotService.findEntityById(slotAId);
-        CurriculumSlot slotB = curriculumSlotService.findEntityById(slotBId);
+        CurriculumSlot slotA = curriculumSlotService.getEntityById(slotAId);
+        CurriculumSlot slotB = curriculumSlotService.getEntityById(slotBId);
 
         if (!slotA.getDisciplineCourse().getId().equals(slotB.getDisciplineCourse().getId())) {
             throw new IllegalArgumentException("Нельзя сцепить слоты из разных учебных курсов.");

@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.entity.*;
-import ru.repository.*;
+import ru.entity.logicSchema.DisciplineCourse;
 import ru.services.constraints.AllConstraints;
 import ru.services.constraints.ConstraintService;
 import ru.services.factories.LessonFactory;
@@ -14,41 +14,39 @@ import ru.services.solver.model.ScheduleGrid;
 
 import java.util.List;
 
+import ru.entity.Lesson;
+
 @Service
 @RequiredArgsConstructor
 public class ScheduleGenerationService {
 
-    // --- Зависимости для загрузки данных ---
-    private final EducatorRepository educatorRepository;
-    private final GroupRepository groupRepository;
-    private final AuditoriumRepository auditoriumRepository;
+    // --- ПРАВИЛЬНЫЕ ЗАВИСИМОСТИ (ТОЛЬКО СЕРВИСЫ) ---
+    private final EducatorService educatorService;
+    private final GroupService groupService;
+    private final AuditoriumService auditoriumService;
+    private final DisciplineCourseService disciplineCourseService;
     private final ConstraintService constraintService;
     private final LessonFactory lessonFactory;
 
     /**
      * Основной метод, запускающий процесс генерации расписания для одного курса.
-     * @param courseId ID курса (DisciplineCourse), для которого генерируется расписание.
-     * @return Заполненный объект ScheduleGrid.
      */
-    @Transactional(readOnly = true) // Транзакция нужна для загрузки всех LAZY-полей
+    @Transactional(readOnly = true)
     public ScheduleGrid generateForCourse(Integer courseId) {
 
-        // --- 1. ПОДГОТОВКА ДАННЫХ ---
-        // Загружаем все ресурсы, которые могут понадобиться.
-        List<Educator> allEducators = educatorRepository.findAll();
-        List<Group> allGroups = groupRepository.findAll();
-        List<Auditorium> allAuditoriums = auditoriumRepository.findAll();
+        // --- 1. ПОДГОТОВКА ДАННЫХ (через сервисы) ---
+        List<Educator> allEducators = educatorService.getAllEntities();
+        List<Group> allGroups = groupService.findAllEntities();
+        List<Auditorium> allAuditoriums = auditoriumService.findAllEntities();
         AllConstraints allConstraints = constraintService.loadAllConstraints();
+        DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
 
-        // Создаем "заявки на занятия"
         List<Lesson> lessonsToPlace = lessonFactory.createLessonsForCourse(courseId);
 
         // --- 2. ИНИЦИАЛИЗАЦИЯ ЯДРА РЕШАТЕЛЯ ---
-        // Создаем рабочее пространство, передавая ему все загруженные данные.
-        // Даты пока можно захардкодить, потом будем брать их из StudyPeriod.
         ScheduleWorkspace workspace = new ScheduleWorkspace(
-                java.time.LocalDate.of(2025, 9, 1),
-                java.time.LocalDate.of(2026, 1, 31),
+                course.getStudyPeriod().getStartDate(),
+                course.getStudyPeriod().getEndDate(),
                 allEducators,
                 allGroups,
                 allAuditoriums,
@@ -56,9 +54,8 @@ public class ScheduleGenerationService {
         );
 
         // --- 3. ЗАПУСК АЛГОРИТМА ---
-        // Создаем и запускаем адаптер для вашего старого алгоритма.
-        LegacyAlgorithmRunner runner = new LegacyAlgorithmRunner(workspace);
-        runner.distribute(lessonsToPlace); // Метод, который мы напишем на следующем шаге
+        LegacyAlgorithmRunner runner = new LegacyAlgorithmRunner(workspace, lessonsToPlace);
+        runner.run(); // Запускаем адаптированный алгоритм
 
         // --- 4. ВОЗВРАТ РЕЗУЛЬТАТА ---
         return workspace.getGrid();

@@ -107,7 +107,7 @@ public class DisciplineService {
         }
         disciplineRepository.deleteById(id);
     }
-
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
     /**
      * Находит сущность Discipline по ID.
      * Этот метод предназначен для использования ТОЛЬКО другими сервисами.
@@ -117,7 +117,7 @@ public class DisciplineService {
      * @throws EntityNotFoundException если не найдена.
      */
     @Transactional(readOnly = true)
-    Discipline findEntityById(Integer id) { // <-- package-private доступ
+    Discipline getEntityById(Integer id) { // <-- package-private доступ
         return disciplineRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Дисциплина с id=" + id + " не найдена."));
     }

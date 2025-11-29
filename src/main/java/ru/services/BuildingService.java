@@ -27,7 +27,7 @@ public class BuildingService {
     @Transactional
     public BuildingDto createBuilding(BuildingCreateDto createDto) {
         // Используем LocationService для получения сущности Location
-        Location location = locationService.findEntityById(createDto.locationId());
+        Location location = locationService.getEntityById(createDto.locationId());
 
         Building newBuilding = new Building();
         newBuilding.setName(createDto.name());
@@ -38,11 +38,11 @@ public class BuildingService {
 
     @Transactional
     public BuildingDto updateBuilding(Integer id, BuildingUpdateDto updateDto) {
-        Building buildingToUpdate = findEntityById(id);
+        Building buildingToUpdate = getEntityById(id);
 
         // Если ID локации изменился, получаем новую сущность локации через сервис
         if (!buildingToUpdate.getLocation().getId().equals(updateDto.locationId())) {
-            Location newLocation = locationService.findEntityById(updateDto.locationId());
+            Location newLocation = locationService.getEntityById(updateDto.locationId());
             buildingToUpdate.setLocation(newLocation);
         }
 
@@ -73,13 +73,13 @@ public class BuildingService {
         buildingRepository.deleteById(id);
     }
 
-    // --- СЛУЖЕБНЫЙ МЕТОД ---
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     /**
      * Находит сущность Building по ID. Для внутреннего использования другими сервисами.
      */
     @Transactional(readOnly = true)
-    public Building findEntityById(Integer id) {
+    public Building getEntityById(Integer id) {
         return buildingRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Корпус с id=" + id + " не найден."));
     }

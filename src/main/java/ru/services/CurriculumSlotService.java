@@ -31,7 +31,7 @@ public class CurriculumSlotService {
         Integer courseId = createDto.disciplineCourseId();
 
         // 1. Проверяем существование курса через сервис
-        DisciplineCourse course = disciplineCourseService.findEntityById(courseId);
+        DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
 
         // 2. "Раздвигаем" слоты
         curriculumSlotRepository.incrementPositionsFrom(courseId, createDto.position());
@@ -44,19 +44,19 @@ public class CurriculumSlotService {
 
         // 4. Устанавливаем связи через сервисы
         if (createDto.themeLessonId() != null) {
-            ThemeLesson theme = themeLessonService.findEntityById(createDto.themeLessonId());
+            ThemeLesson theme = themeLessonService.getEntityById(createDto.themeLessonId());
             newSlot.setThemeLesson(theme);
         }
         if (createDto.requiredAuditoriumId() != null) {
-            Auditorium aud = auditoriumService.findEntityById(createDto.requiredAuditoriumId());
+            Auditorium aud = auditoriumService.getEntityById(createDto.requiredAuditoriumId());
             newSlot.setRequiredAuditorium(aud);
         }
         if (createDto.priorityAuditoriumId() != null) {
-            Auditorium priorityAud = auditoriumService.findEntityById(createDto.priorityAuditoriumId());
+            Auditorium priorityAud = auditoriumService.getEntityById(createDto.priorityAuditoriumId());
             newSlot.setPriorityAuditorium(priorityAud);
         }
         if (createDto.allowedAuditoriumPoolId() != null) {
-            AuditoriumPool pool = auditoriumPoolService.findEntityById(createDto.allowedAuditoriumPoolId());
+            AuditoriumPool pool = auditoriumPoolService.getEntityById(createDto.allowedAuditoriumPoolId());
             newSlot.setAllowedAuditoriumPool(pool);
         }
 
@@ -65,29 +65,29 @@ public class CurriculumSlotService {
 
     @Transactional
     public CurriculumSlotDto updateSlot(Integer slotId, CurriculumSlotUpdateDto updateDto) {
-        CurriculumSlot slotToUpdate = findEntityById(slotId);
+        CurriculumSlot slotToUpdate = getEntityById(slotId);
 
         slotToUpdate.setKindOfStudy(updateDto.kindOfStudy());
 
         // Обновляем связи через сервисы, обрабатывая null
         slotToUpdate.setThemeLesson(
                 updateDto.themeLessonId() != null
-                        ? themeLessonService.findEntityById(updateDto.themeLessonId())
+                        ? themeLessonService.getEntityById(updateDto.themeLessonId())
                         : null
         );
         slotToUpdate.setRequiredAuditorium(
                 updateDto.requiredAuditoriumId() != null
-                        ? auditoriumService.findEntityById(updateDto.requiredAuditoriumId())
+                        ? auditoriumService.getEntityById(updateDto.requiredAuditoriumId())
                         : null
         );
         slotToUpdate.setPriorityAuditorium(
                 updateDto.priorityAuditoriumId() != null
-                        ? auditoriumService.findEntityById(updateDto.priorityAuditoriumId())
+                        ? auditoriumService.getEntityById(updateDto.priorityAuditoriumId())
                         : null
         );
         slotToUpdate.setAllowedAuditoriumPool(
                 updateDto.allowedAuditoriumPoolId() != null
-                        ? auditoriumPoolService.findEntityById(updateDto.allowedAuditoriumPoolId())
+                        ? auditoriumPoolService.getEntityById(updateDto.allowedAuditoriumPoolId())
                         : null
         );
 
@@ -104,12 +104,13 @@ public class CurriculumSlotService {
     public boolean existsById(Integer id) {
         return curriculumSlotRepository.existsById(id);
     }
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     /**
      * [СЛУЖЕБНЫЙ МЕТОД] Находит сущность CurriculumSlot по ID.
      */
     @Transactional(readOnly = true)
-    public CurriculumSlot findEntityById(Integer id) {
+    public CurriculumSlot getEntityById(Integer id) {
         return curriculumSlotRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + id + " не найден."));
     }

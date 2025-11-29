@@ -33,7 +33,7 @@ public class AuditoriumPurposeService {
 
     @Transactional
     public AuditoriumPurposeDto update(Integer id, AuditoriumPurposeUpdateDto updateDto) {
-        AuditoriumPurpose purposeToUpdate = findEntityById(id);
+        AuditoriumPurpose purposeToUpdate = getEntityById(id);
         if (auditoriumPurposeRepository.existsByName(updateDto.name())) {
             throw new IllegalStateException("Назначение аудитории с названием '" + updateDto.name() + "' уже существует.");
         }
@@ -60,10 +60,9 @@ public class AuditoriumPurposeService {
         return auditoriumPurposeRepository.findById(id).map(auditoriumPurposeMapper::toDto);
     }
 
-    // --- СЛУЖЕБНЫЙ МЕТОД ---
-
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
     @Transactional(readOnly = true)
-    public AuditoriumPurpose findEntityById(Integer id) {
+    public AuditoriumPurpose getEntityById(Integer id) {
         return auditoriumPurposeRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Назначение аудитории с id=" + id + " не найдено."));
     }

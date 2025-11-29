@@ -3,8 +3,6 @@ package ru.services.solver.legacy;
 import lombok.RequiredArgsConstructor;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
-import ru.services.CurriculumSlotService;
-import ru.services.SlotChainService;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
@@ -15,53 +13,41 @@ import java.util.List;
  * Адаптер, который выполняет логику старого алгоритма распределения,
  * используя новое ядро решателя (ScheduleWorkspace).
  */
+
+/**
+ * Адаптер, который выполняет адаптированную логику старого алгоритма распределения.
+ */
 @RequiredArgsConstructor
 public class LegacyAlgorithmRunner {
 
     private final ScheduleWorkspace workspace;
-    private final List<Lesson> allLessons;
-
-    // Зависимости, которые раньше были в хелпере, теперь передаются сюда
-    private final SlotChainService slotChainService;
-    private final CurriculumSlotService curriculumSlotService;
-
-    public LegacyAlgorithmRunner(ScheduleWorkspace workspace, List<Lesson> lessons, SlotChainService slotChainService, CurriculumSlotService curriculumSlotService) {
-        this.workspace = workspace;
-        this.allLessons = lessons;
-        this.slotChainService = slotChainService;
-        this.curriculumSlotService = curriculumSlotService;
-    }
+    private final List<Lesson> lessonsToPlace;
 
     /**
-     * Основной метод, запускающий распределение.
-     * Логика взята из старого DistributionDisciplineUniform, но адаптирована.
+     * Запускает основной цикл распределения.
      */
-    public void distribute(List<Lesson> lessonsToPlace) {
-
-        // Здесь можно вставить вашу старую логику сортировки из ListLessonsHelper,
-        // или любую другую логику итерации по занятиям.
-        // Для примера возьмем простейший вариант: пройтись по всем занятиям и
-        // найти для каждого первое попавшееся свободное место.
+    public void run() {
+        // Здесь можно вставить вашу логику сортировки уроков из LegacyLessonsHelper, если она готова
+        // List<Lesson> sortedLessons = LegacyLessonsHelper.getSortedLessons(...);
 
         List<CellForLesson> allPossibleCells = CellForLessonFactory.getAllOrderedCells();
 
         for (Lesson lesson : lessonsToPlace) {
             boolean placed = false;
+            // Итерируемся по всем возможным ячейкам и ищем первое подходящее место
             for (CellForLesson cell : allPossibleCells) {
 
-                // 1. ИЩЕМ ВАРИАНТ РАЗМЕЩЕНИЯ ЧЕРЕЗ WORKSPACE
                 PlacementOption option = workspace.findPlacementOption(lesson, cell);
 
                 if (option.isPossible()) {
-                    // 2. ЕСЛИ ВАРИАНТ НАЙДЕН - РАЗМЕЩАЕМ ЧЕРЕЗ WORKSPACE
                     workspace.executePlacement(option);
                     placed = true;
-                    System.out.println("Размещено: " + lesson + " в " + cell);
-                    break; // Переходим к следующему занятию
+                    System.out.println("УСПЕХ: Размещено занятие " + lesson + " в ячейку " + cell);
+                    break; // Нашли место, переходим к следующему занятию
                 }
             }
             if (!placed) {
-                System.err.println("НЕ УДАЛОСЬ РАЗМЕСТИТЬ: " + lesson);
+                System.err.println("ПРОВАЛ: Не удалось найти место для занятия " + lesson);
             }
         }
     }

@@ -30,8 +30,8 @@ public class DisciplineCourseService {
     @Transactional
     public DisciplineCourseDto createCourse(DisciplineCourseCreateDto createDto) {
         // 1. Получаем связанные сущности через их сервисы
-        Discipline discipline = disciplineService.findEntityById(createDto.disciplineId());
-        StudyPeriod studyPeriod = studyPeriodService.findEntityById(createDto.studyPeriodId());
+        Discipline discipline = disciplineService.getEntityById(createDto.disciplineId());
+        StudyPeriod studyPeriod = studyPeriodService.getEntityById(createDto.studyPeriodId());
 
         // 2. Проверка на дубликаты по новой логике
         if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodId(discipline.getId(), studyPeriod.getId())) {
@@ -58,9 +58,9 @@ public class DisciplineCourseService {
 
     @Transactional
     public DisciplineCourseDto updateCourse(Integer id, DisciplineCourseUpdateDto updateDto) {
-        DisciplineCourse courseToUpdate = findEntityById(id);
+        DisciplineCourse courseToUpdate = getEntityById(id);
 
-        StudyPeriod newStudyPeriod = studyPeriodService.findEntityById(updateDto.studyPeriodId());
+        StudyPeriod newStudyPeriod = studyPeriodService.getEntityById(updateDto.studyPeriodId());
 
         // Проверяем, что мы не создаем дубликат, если период изменился
         if (!courseToUpdate.getStudyPeriod().getId().equals(newStudyPeriod.getId())) {
@@ -89,10 +89,10 @@ public class DisciplineCourseService {
         return disciplineCourseRepository.findById(id).map(disciplineCourseMapper::toDto);
     }
 
-    // --- СЛУЖЕБНЫЙ МЕТОД ---
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     @Transactional(readOnly = true)
-    public DisciplineCourse findEntityById(Integer id) {
+    public DisciplineCourse getEntityById(Integer id) {
         return disciplineCourseRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Курс с id=" + id + " не найден."));
     }

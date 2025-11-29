@@ -39,7 +39,7 @@ public class ThemeLessonService {
             throw new IllegalStateException("Тема с номером '" + createDto.themeNumber() + "' уже существует для данной дисциплины.");
         }
 
-        Discipline discipline = disciplineService.findEntityById(createDto.disciplineId());
+        Discipline discipline = disciplineService.getEntityById(createDto.disciplineId());
 
         ThemeLesson newTheme = new ThemeLesson();
         newTheme.setThemeNumber(createDto.themeNumber());
@@ -83,7 +83,7 @@ public class ThemeLessonService {
      */
     @Transactional
     public ThemeLessonDto updateTheme(Integer id, ThemeLessonUpdateDto updateDto) {
-        ThemeLesson themeToUpdate = findEntityById(id);
+        ThemeLesson themeToUpdate = getEntityById(id);
 
         // Проверяем, не создаем ли мы дубликат при смене номера или дисциплины
         if (!themeToUpdate.getDiscipline().getId().equals(updateDto.disciplineId()) ||
@@ -96,7 +96,7 @@ public class ThemeLessonService {
 
         // Если ID дисциплины изменился, получаем новую сущность
         if (!themeToUpdate.getDiscipline().getId().equals(updateDto.disciplineId())) {
-            Discipline newDiscipline = disciplineService.findEntityById(updateDto.disciplineId());
+            Discipline newDiscipline = disciplineService.getEntityById(updateDto.disciplineId());
             themeToUpdate.setDiscipline(newDiscipline);
         }
 
@@ -120,7 +120,7 @@ public class ThemeLessonService {
         themeLessonRepository.deleteById(id);
     }
 
-    // === СЛУЖЕБНЫЙ МЕТОД ===
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     /**
      * Находит сущность ThemeLesson по ID. Для внутреннего использования другими сервисами.
@@ -130,7 +130,7 @@ public class ThemeLessonService {
      * @throws EntityNotFoundException если тема не найдена.
      */
     @Transactional(readOnly = true)
-    public ThemeLesson findEntityById(Integer id) {
+    public ThemeLesson getEntityById(Integer id) {
         return themeLessonRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Тема с id=" + id + " не найдена."));
     }

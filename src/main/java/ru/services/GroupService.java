@@ -47,7 +47,7 @@ public class GroupService {
 
         // Если указана базовая аудитория, получаем ее через AuditoriumService
         if (createDto.baseAuditoriumId() != null) {
-            Auditorium baseAuditorium = auditoriumService.findEntityById(createDto.baseAuditoriumId());
+            Auditorium baseAuditorium = auditoriumService.getEntityById(createDto.baseAuditoriumId());
             newGroup.setBaseAuditorium(baseAuditorium);
         }
 
@@ -64,7 +64,7 @@ public class GroupService {
      */
     @Transactional
     public GroupDto updateGroup(Integer groupId, GroupUpdateDto updateDto) {
-        Group groupToUpdate = findEntityById(groupId);
+        Group groupToUpdate = getEntityById(groupId);
 
         // Проверяем уникальность имени, если оно было изменено
         if (!groupToUpdate.getName().equals(updateDto.name())) {
@@ -78,7 +78,7 @@ public class GroupService {
 
         // Обновляем базовую аудиторию через сервис
         if (updateDto.baseAuditoriumId() != null) {
-            Auditorium baseAuditorium = auditoriumService.findEntityById(updateDto.baseAuditoriumId());
+            Auditorium baseAuditorium = auditoriumService.getEntityById(updateDto.baseAuditoriumId());
             groupToUpdate.setBaseAuditorium(baseAuditorium);
         } else {
             // Если ID не передан, значит, связь нужно убрать
@@ -115,7 +115,7 @@ public class GroupService {
      * Находит сущность Group по ID. Для внутреннего использования другими сервисами.
      */
     @Transactional(readOnly = true)
-    public Group findEntityById(Integer id) {
+    public Group getEntityById(Integer id) {
         return groupRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Группа с id=" + id + " не найдена."));
     }
@@ -125,7 +125,7 @@ public class GroupService {
      * Предназначен для использования StudyStreamService.
      */
     @Transactional(readOnly = true)
-    public List<Group> findAllEntitiesByIds(List<Integer> groupIds) {
+    public List<Group> getAllEntitiesByIds(List<Integer> groupIds) {
         List<Group> groups = groupRepository.findAllById(groupIds);
         if (groups.size() != groupIds.size()) {
             throw new EntityNotFoundException("Одна или несколько групп из списка ID не найдены.");

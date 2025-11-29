@@ -35,14 +35,14 @@ public class AssignmentService {
     @Transactional
     public List<AssignmentDto> createAssignments(AssignmentCreateDto createDto) {
         // 1. Находим родительский слот через его сервис
-        CurriculumSlot slot = curriculumSlotService.findEntityById(createDto.curriculumSlotId());
+        CurriculumSlot slot = curriculumSlotService.getEntityById(createDto.curriculumSlotId());
 
         List<Assignment> createdAssignments = new ArrayList<>();
 
         for (AssignmentCreateDto.AssignmentDetail detail : createDto.assignments()) {
             // 2. Находим связанные сущности через их сервисы
-            StudyStream stream = studyStreamService.findEntityById(detail.studyStreamId());
-            List<Educator> educators = educatorService.findAllEntitiesByIds(detail.educatorIds());
+            StudyStream stream = studyStreamService.getEntityById(detail.studyStreamId());
+            List<Educator> educators = educatorService.getAllEntitiesByIds(detail.educatorIds());
 
             // 3. Создаем и наполняем новую сущность Assignment
             Assignment newAssignment = new Assignment();
@@ -62,8 +62,8 @@ public class AssignmentService {
                 .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + assignmentId + " не найден."));
 
         // Находим новые связанные сущности через сервисы
-        StudyStream stream = studyStreamService.findEntityById(updateDto.studyStreamId());
-        List<Educator> educators = educatorService.findAllEntitiesByIds(updateDto.educatorIds());
+        StudyStream stream = studyStreamService.getEntityById(updateDto.studyStreamId());
+        List<Educator> educators = educatorService.getAllEntitiesByIds(updateDto.educatorIds());
 
         // Обновляем поля
         assignment.setStudyStream(stream);
@@ -73,9 +73,6 @@ public class AssignmentService {
         return assignmentMapper.toDto(updatedAssignment);
     }
 
-    // Остальные методы (delete, findById, findAll...) остаются без изменений,
-    // так как они работают только со своим репозиторием.
-    // ...
     @Transactional
     public void deleteAssignment(Integer assignmentId) {
         if (!assignmentRepository.existsById(assignmentId)) {
@@ -94,9 +91,10 @@ public class AssignmentService {
         List<Assignment> assignments = assignmentRepository.findAllByCourseIdWithDetails(courseId);
         return assignmentMapper.toDtoList(assignments);
     }
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
 
     @Transactional(readOnly = true)
-    public List<Assignment> findAllEntitiesByCourseId(Integer courseId) {
+    public List<Assignment> getAllEntitiesByCourseId(Integer courseId) {
         return assignmentRepository.findAllByCourseIdWithDetails(courseId);
     }
 }

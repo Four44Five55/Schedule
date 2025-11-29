@@ -22,11 +22,11 @@ import java.util.stream.IntStream;
  */
 public final class LegacyLessonsHelper {
 
-    // Приватный конструктор, т.к. это утилитный класс
+   /* // Приватный конструктор, т.к. это утилитный класс
     private LegacyLessonsHelper() {
     }
 
-    /**
+    *//**
      * Адаптированная версия changeOrderLessons.
      * Сортирует занятия: сначала группирует "сцепки", затем пытается перемешать лекции и практики.
      *
@@ -34,7 +34,7 @@ public final class LegacyLessonsHelper {
      * @param slotChainService      Сервис для работы со "сцепками".
      * @param curriculumSlotService Сервис для получения информации о слотах (нужен для getPreviousLecture).
      * @return Новый, отсортированный список занятий.
-     */
+     *//*
     public static List<Lesson> getSortedLessons(
             List<Lesson> lessons,
             SlotChainService slotChainService,
@@ -52,9 +52,9 @@ public final class LegacyLessonsHelper {
         return mixLecturesAndPractices(chainSortedLessons, curriculumSlotService);
     }
 
-    /**
+    *//**
      * Группирует занятия, связанные через SlotChain, вместе.
-     */
+     *//*
     private static List<Lesson> groupChainedLessons(List<Lesson> lessons, SlotChainService slotChainService) {
         List<Lesson> result = new ArrayList<>();
         Set<Lesson> visited = new HashSet<>();
@@ -81,9 +81,9 @@ public final class LegacyLessonsHelper {
         return result;
     }
 
-    /**
+    *//**
      * Адаптированная логика вашего метода changeOrderLessons.
-     */
+     *//*
     private static List<Lesson> mixLecturesAndPractices(List<Lesson> lessons, CurriculumSlotService curriculumSlotService) {
         // Эта логика очень сложна и специфична. Я переношу ее как есть,
         // но заменяю зависимости. В реальном проекте ее стоило бы упростить.
@@ -155,7 +155,7 @@ public final class LegacyLessonsHelper {
     // Все остальные статические методы, если они были, можно скопировать сюда так же.
     // Например, distributeLessons, mapToDatesUniform и т.д.
 
-    /**
+    *//**
      * Полное распределение занятий с учетом:
      * 1. Начальных лекций (N-1 дней для первых лекций)
      * 2. Стандартных правил (1 лекция + 2 практики)
@@ -165,7 +165,7 @@ public final class LegacyLessonsHelper {
      * @param availableDates Доступные даты для распределения
      * @return Map с распределением по датам
      * @throws IllegalArgumentException если дат недостаточно
-     */
+     *//*
 
     public static Map<LocalDate, List<Lesson>> distributeLessons(
             List<Lesson> lessons,
@@ -186,9 +186,9 @@ public final class LegacyLessonsHelper {
         return mapToDatesUniform(dayMap, availableDates);
     }
 
-    /**
+    *//**
      * Более простая версия равномерного распределения
-     */
+     *//*
     private static Map<LocalDate, List<Lesson>> mapToDatesUniform(
             Map<Integer, List<Lesson>> dayMap,
             List<LocalDate> availableDates
@@ -215,12 +215,12 @@ public final class LegacyLessonsHelper {
         return result;
     }
 
-    /**
+    *//**
      * Распределяет занятия по дням с учетом:
      * 1. Первые (N-1) лекций распределяются по одной в день
      * 2. Последняя начальная лекция (N-я) распределяется вместе с практическими занятиями
      * 3. Остальные занятия по стандартным правилам
-     */
+     *//*
     private static Map<Integer, List<Lesson>> distributeToLogicalDays(List<Lesson> lessons) {
         Map<Integer, List<Lesson>> schedule = new LinkedHashMap<>();
         if (lessons == null || lessons.isEmpty()) {
@@ -268,13 +268,13 @@ public final class LegacyLessonsHelper {
         return schedule;
     }
 
-    /**
+    *//**
      * Проверяет, есть ли семинары между первой группой лекций и следующей лекцией после неё.
      *
      * @param lessons список занятий
      * @return true, если между первой группой лекций и следующей лекцией есть хотя бы один семинар,
      * false в противном случае (включая случаи, когда нет первой группы лекций или нет лекций после неё)
-     */
+     *//*
     public static boolean hasSeminarsBetweenFirstLecturesAndNextLecture(List<Lesson> lessons) {
         int firstLecturesCount = getAmountFirstLectures(lessons);
 
@@ -301,10 +301,10 @@ public final class LegacyLessonsHelper {
                 .anyMatch(l -> l.getKindOfStudy().equals(KindOfStudy.SEMINAR));
     }
 
-    /**
+    *//**
      * Распределяет оставшиеся занятия (включая последнюю начальную лекцию)
      * по правилам: 1 лекция + до 2 практик в день
-     */
+     *//*
     private static void distributeRemainingLessons(
             List<Lesson> remainingLessons,
             Map<Integer, List<Lesson>> schedule,
@@ -343,8 +343,8 @@ public final class LegacyLessonsHelper {
         }
     }
 
-    /**
-     * Завершает заполнение текущего дня (если есть занятия)*/
+    *//**
+     * Завершает заполнение текущего дня (если есть занятия)*//*
 
     private static void completeCurrentDay(
             Map<Integer, List<Lesson>> schedule,
@@ -357,12 +357,12 @@ public final class LegacyLessonsHelper {
     }
 
 
-    /**
+    *//**
      * Метод сортирует список занятий для исключения следующих друг за другом лекций, при этом распределяя практические
      * занятия между лекциями так, чтобы в неделе была одна лекция и равномерное количество практик
      *
      * @param lessons список лекций
-     * @return отсортированный список*/
+     * @return отсортированный список*//*
 
     //TODO изменить метод для возврата отсортированного списка
     public List<Lesson> changeOrderLessons(List<Lesson> lessons) {
@@ -446,8 +446,8 @@ public final class LegacyLessonsHelper {
         return resultLessons;
     }
 
-    /**
-     * Метод сортирует список занятий в соответствии с логикой и неразрывно проходящих занятий для комбинации групп*/
+    *//**
+     * Метод сортирует список занятий в соответствии с логикой и неразрывно проходящих занятий для комбинации групп*//*
 
     //TODO помещять ли этот метод в фабрику занятий? LessonFactory
     public List<Lesson> sortedLessonAboutChain(List<Lesson> lessons) {
@@ -476,8 +476,8 @@ public final class LegacyLessonsHelper {
 
 
 
-    /**
-     * Считает количество необходимых дней для распределения списка занятий, по правилу 1 лекция+2 практики, или две практики*/
+    *//**
+     * Считает количество необходимых дней для распределения списка занятий, по правилу 1 лекция+2 практики, или две практики*//*
 
     public static int calculateDaysForListLessons(List<Lesson> lessons) {
         if (lessons == null || lessons.isEmpty()) {
@@ -516,12 +516,12 @@ public final class LegacyLessonsHelper {
 
     }
 
-    /**
+    *//**
      * Создание списка с индексами местоположения дней с занятиями
      *
      * @param totalAvailableDays Общее количество доступных дней
      * @param requiredDays       Количество необходимых дней
-     * @return list*/
+     * @return list*//*
 
     public static List<Integer> distributeLessonsEvenly(int totalAvailableDays, int requiredDays) {
         List<Integer> distribution = new ArrayList<>();
@@ -551,11 +551,11 @@ public final class LegacyLessonsHelper {
         return distribution;
     }
 
-    /**
+    *//**
      * Возвращает количество дней в списке с ячейками
      *
      * @param cells список ячеек
-     * @return int*/
+     * @return int*//*
 
     public static int countUniqueDates(List<CellForLesson> cells) {
         if (cells == null) {
@@ -571,9 +571,9 @@ public final class LegacyLessonsHelper {
     }
 
 
-    /**
+    *//**
      * Метод распределения экзамена
-     */
+     *//*
     //TODO реализовать распределение экзамена в сессию, на данный момент метод удаляет экзамены из списка занятий
     public static List<Lesson> distributeExam(List<Lesson> lessons) {
         List<Lesson> distribution = lessons.stream()
@@ -584,13 +584,13 @@ public final class LegacyLessonsHelper {
 
     }
 
-    /**
+    *//**
      * Получает все занятия преподавателя на указанную дату
      *
      * @param educator преподаватель
      * @param date дата
      * @param scheduleGrid сетка расписания
-     * @return список занятий преподавателя на указанную дату, отсортированный по времени пары*/
+     * @return список занятий преподавателя на указанную дату, отсортированный по времени пары*//*
 
     public static List<Lesson> getEducatorLessonsForDate(Educator educator, LocalDate date, ScheduleGrid scheduleGrid) {
         if (educator == null || date == null || scheduleGrid == null) {
@@ -610,6 +610,6 @@ public final class LegacyLessonsHelper {
                 }))
                 .map(lesson -> (Lesson) lesson)
                 .collect(Collectors.toList());
-    }
+    }*/
 
 }
