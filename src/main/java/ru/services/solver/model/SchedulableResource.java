@@ -8,6 +8,7 @@ import ru.enums.KindOfConstraints;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Базовый класс для любого ресурса, участвующего в расписании (например, группа или аудитория).
@@ -102,4 +103,34 @@ public class SchedulableResource {
         return name;
     }
 
+    /**
+     * Возвращает занятие, которое занимает данный слот у этого ресурса.
+     *
+     * @param cell ячейка времени.
+     * @return {@link Lesson}, если ресурс занят, иначе {@code null}.
+     */
+    public Lesson getLessonInCell(CellForLesson cell) {
+        return schedule.get(cell);
+    }
+
+    /**
+     * Проверяет, есть ли у ресурса постоянное ограничение в данном слоте.
+     *
+     * @param cell ячейка времени.
+     * @return {@code true}, если ограничение существует.
+     */
+    public boolean hasConstraint(CellForLesson cell) {
+        return hardConstraints.getConstraintsGridMap().containsKey(cell);
+    }
+
+    /**
+     * Возвращает тип постоянного ограничения в данном слоте.
+     *
+     * @param cell ячейка времени.
+     * @return {@link Optional} с типом ограничения, или пустой, если ограничения нет.
+     */
+    public Optional<KindOfConstraints> getConstraint(CellForLesson cell) {
+        return Optional.ofNullable(hardConstraints.getConstraintsGridMap().get(cell));
+    }
 }
+

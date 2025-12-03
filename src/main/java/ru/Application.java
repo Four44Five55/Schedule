@@ -1,30 +1,31 @@
 package ru;
 
-import org.apache.commons.compress.utils.Lists;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ConfigurableApplicationContext;
-import ru.abstracts.AbstractMaterialEntity;
-import ru.entity.*;
-import ru.entity.logicSchema.CurriculumSlot;
-import ru.enums.KindOfConstraints;
-import ru.enums.TimeSlotPair;
-import ru.inter.IGrid;
+import org.springframework.context.annotation.Bean;
 import ru.services.*;
-import ru.services.distribution.DistributionDisciplineUniform;
-import ru.services.distribution.UnifiedScheduleManager;
-import ru.utils.DateUtils;
+import ru.services.solver.ScheduleWorkspace;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) throws SQLException {
-      SpringApplication.run(Application.class, args);
+        SpringApplication.run(Application.class, args);
+ /*       ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
+        EducatorService educatorService = context.getBean(EducatorService.class);
+        GroupService groupService = context.getBean(GroupService.class);
+        AuditoriumService auditoriumService = context.getBean(AuditoriumService.class);
+        DisciplineCourseService disciplineCourseService = context.getBean(DisciplineCourseService.class);
+        ConstraintService constraintService = context.getBean(ConstraintService.class);
+        LessonFactory lessonFactory = context.getBean(LessonFactory.class);
 
+        ScheduleGenerationService service = new ScheduleGenerationService(educatorService, groupService, auditoriumService, disciplineCourseService, constraintService, lessonFactory);
+        service.generateForCourse(701);
+        System.out.println();
+        context.close();*/
          /*  ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
 
 
@@ -277,4 +278,43 @@ public class Application {
         }*/
     }
 
+    /**
+     * Координирует генерацию расписания и последующий экспорт в Excel для всех сущностей.
+     */
+    @Bean
+    public CommandLineRunner commandLineRunner(ScheduleGenerationService generationService,
+                                               ExcelExportService exportService,
+                                               EducatorService educatorService,
+                                               GroupService groupService,
+                                               AuditoriumService auditoriumService) {
+        return args -> {
+            System.out.println("Запускаем генерацию расписания...");
+            ScheduleWorkspace generatedWorkspace = generationService.generateForCourse(701);
+            System.out.println("Генерация расписания завершена.");
+            if (generatedWorkspace  == null) {
+                System.err.println("Не удалось сгенерировать расписание. Экспорт отменен.");
+                return; // Выходим, если расписание не создано
+            }
+
+            // --- ЭТАП 2: ЭКСПОРТ РАСПИСАНИЙ В EXCEL ---
+            System.out.println("\nЗапускаем экспорт расписаний в Excel...");
+
+            // Экспорт для каждого преподавателя
+            educatorService.getAllEntities().forEach(educator ->
+                    exportService.exportScheduleForEntity(generatedWorkspace, educator, educator.getName(), "Общее расписание")
+            );
+
+            // Экспорт для каждой группы
+            groupService.getAllEntities().forEach(group ->
+                    exportService.exportScheduleForEntity(generatedWorkspace, group, group.getName(), "Общее расписание")
+            );
+
+            // Экспорт для каждой аудитории
+            auditoriumService.getAllEntities().forEach(auditorium ->
+                    exportService.exportScheduleForEntity(generatedWorkspace, auditorium, auditorium.getName(), "Общее расписание")
+            );
+
+            System.out.println("\nРабота приложения завершена. Результаты находятся в папке 'output'.");
+        };
+    }
 }

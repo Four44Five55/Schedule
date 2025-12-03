@@ -323,13 +323,18 @@ ORDER BY sort_order;
 -- changeset four4five5:3
 -- comment: Создание представления для уроков дисциплины
 CREATE OR REPLACE VIEW view_discipline_lessons AS
-SELECT d.abbreviation        AS "Дис",
-       cs.id                 AS cs_id,
-       kos.abbreviation_name AS "Вид",
-       tl.theme_number       AS "№_Т",
-       tl.title              AS "Тема"
+SELECT d.abbreviation        AS "Дисциплина",
+       cs.position           AS "Поз.",
+       kos.abbreviation_name AS "Тип",
+       tl.theme_number       AS "№ Темы",
+       tl.title              AS "Тема занятия"
 FROM curriculum_slot cs
-         JOIN discipline d ON cs.discipline_course_id = d.id
-         JOIN kind_of_study kos ON cs.kind_of_study = kos.enum_name
+         -- 1. Сначала связываем занятие с КУРСОМ
+         JOIN discipline_course dc ON cs.discipline_course_id = dc.id
+    -- 2. Затем связываем КУРС с ДИСЦИПЛИНОЙ
+         JOIN discipline d ON dc.discipline_id = d.id
+    -- Остальные связи были правильными
+         JOIN kind_of_study kos ON cs.kind_of_study::text = kos.enum_name::text
          LEFT JOIN theme_lesson tl ON cs.theme_lesson_id = tl.id
-WHERE d.id = 5; -- id=5 захардкожен
+WHERE d.id = 401 -- Фильтруем по ID дисциплины "Философия"
+ORDER BY cs.position; -- Сортируем занятия в правильном порядке

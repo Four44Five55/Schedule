@@ -5,6 +5,7 @@ import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Group;
 import ru.entity.constraints.ConstraintData;
+import ru.inter.IMaterialEntity;
 import ru.services.constraints.AllConstraints;
 import ru.services.solver.model.EducatorResource;
 import ru.services.solver.model.SchedulableResource;
@@ -101,6 +102,26 @@ public final class ResourceAvailabilityManager {
         return resourceMap;
     }
 
+    /**
+     * Возвращает "умную карточку" ресурса для любой сущности, реализующей IMaterialEntity.
+     * Этот метод необходим для унифицированного доступа к ресурсам из сервиса экспорта.
+     *
+     * @param entity Сущность (Educator, Group или Auditorium).
+     * @return Соответствующий SchedulableResource.
+     * @throws IllegalArgumentException если передан неизвестный тип сущности.
+     */
+    public SchedulableResource getResource(IMaterialEntity entity) {
+        if (entity instanceof Educator) {
+            return educators.get(entity.getId());
+        } else if (entity instanceof Group) {
+            return groups.get(entity.getId());
+        } else if (entity instanceof Auditorium) {
+            return auditoriums.get(entity.getId());
+        } else {
+            // Безопасное поведение: если появится новый тип, мы сразу об этом узнаем.
+            throw new IllegalArgumentException("Неизвестный тип сущности для поиска ресурса: " + entity.getClass().getName());
+        }
+    }
     /**
      * Возвращает "умную карточку" для преподавателя по его ID.
      */

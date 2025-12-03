@@ -32,7 +32,7 @@ public class ScheduleGenerationService {
      * Основной метод, запускающий процесс генерации расписания для одного курса.
      */
     @Transactional(readOnly = true)
-    public ScheduleGrid generateForCourse(Integer courseId) {
+    public ScheduleWorkspace  generateForCourse(Integer courseId) {
 
         // --- 1. ПОДГОТОВКА ДАННЫХ (через сервисы) ---
         List<Educator> allEducators = educatorService.getAllEntities();
@@ -58,6 +58,6 @@ public class ScheduleGenerationService {
         runner.run(); // Запускаем адаптированный алгоритм
 
         // --- 4. ВОЗВРАТ РЕЗУЛЬТАТА ---
-        return workspace.getGrid();
+        return workspace;
     }
 }

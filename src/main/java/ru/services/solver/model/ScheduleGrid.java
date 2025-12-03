@@ -3,6 +3,7 @@ package ru.services.solver.model;
 import ru.abstracts.AbstractGrid;
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
+import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -29,6 +30,8 @@ public class ScheduleGrid extends AbstractGrid {
      */
     public ScheduleGrid() {
         super();
+        fillBlankCellLessonForSchedule();
+
     }
 
     /**
@@ -39,8 +42,18 @@ public class ScheduleGrid extends AbstractGrid {
      */
     public ScheduleGrid(LocalDate startDate, LocalDate endDate) {
         super(startDate, endDate);
+        fillBlankCellLessonForSchedule();
     }
 
+    /**
+     * Заполняет расписание занятий днями(дата и пара)
+     */
+    private void fillBlankCellLessonForSchedule() {
+        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(this.getStartDate(), this.getEndDate());
+        for (CellForLesson cellForLesson : cellForLessons) {
+            scheduleGridMap.put(cellForLesson, new ArrayList<>());
+        }
+    }
 
     /**
      * Получает неизменяемый список занятий в указанной ячейке.

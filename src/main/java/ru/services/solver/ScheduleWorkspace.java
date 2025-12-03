@@ -1,18 +1,14 @@
 package ru.services.solver;
 
+import lombok.Getter;
 import ru.entity.*;
-import ru.entity.logicSchema.StudyStream;
 import ru.services.constraints.AllConstraints;
 import ru.services.solver.availability.ResourceAvailabilityManager;
-import ru.services.solver.model.ScheduleGrid;
 import ru.services.solver.model.SchedulableResource;
-import ru.services.solver.PlacementOption;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -24,7 +20,9 @@ import java.util.stream.Collectors;
  */
 public final class ScheduleWorkspace {
 
+    @Getter
     private final ScheduleGrid grid;
+    @Getter
     private final ResourceAvailabilityManager resourceManager;
 
     /**
@@ -133,10 +131,6 @@ public final class ScheduleWorkspace {
         allParticipants.forEach(p -> p.free(cell));
     }
 
-    public ScheduleGrid getGrid() {
-        return grid;
-    }
-
 
     // =======================================================================
     // Приватные вспомогательные методы
@@ -182,7 +176,22 @@ public final class ScheduleWorkspace {
         }
 
         // 4. Резервный вариант (нежелателен)
-        return Collections.emptyList();
+        //TODO Преобразовать логику присвоения аудитории
+        Set<Group> groups = lesson.getStudyStream().getGroups();
+        if (groups == null || groups.isEmpty()) {
+            throw new IllegalArgumentException("Занятие должно содержать хотя бы одну группу.");
+        }
+        if (groups.size() == 1) {
+            return List.of(groups.stream()
+                    .findFirst()
+                    .map(Group::getBaseAuditorium)
+                    .orElseThrow(() -> new IllegalStateException("Не удалось получить группу из набора.")));
+        } else {
+            return List.of(groups.stream()
+                    .map(Group::getBaseAuditorium)
+                    .max(Comparator.comparing(Auditorium::getCapacity))
+                    .orElseThrow(() -> new IllegalStateException("Не удалось получить группу из набора.")));
+        }
     }
 
     private int calculatePlacementScore(List<SchedulableResource> participants, CellForLesson cell) {
