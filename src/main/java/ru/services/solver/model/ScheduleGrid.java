@@ -31,7 +31,6 @@ public class ScheduleGrid extends AbstractGrid {
     public ScheduleGrid() {
         super();
         fillBlankCellLessonForSchedule();
-
     }
 
     /**
@@ -49,7 +48,7 @@ public class ScheduleGrid extends AbstractGrid {
      * Заполняет расписание занятий днями(дата и пара)
      */
     private void fillBlankCellLessonForSchedule() {
-        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(this.getStartDate(), this.getEndDate());
+        List<CellForLesson> cellForLessons = CellForLessonFactory.getAllCells();
         for (CellForLesson cellForLesson : cellForLessons) {
             scheduleGridMap.put(cellForLesson, new ArrayList<>());
         }

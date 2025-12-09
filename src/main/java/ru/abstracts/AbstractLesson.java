@@ -22,9 +22,7 @@ import java.util.*;
 @NoArgsConstructor
 public abstract class AbstractLesson {
 
-    // --- Ссылки на "академическую" часть (из учебного плана) ---
-
-    /**
+     /**
      * Ссылка на курс (Дисциплина + Семестр), к которому относится это занятие.
      */
     protected DisciplineCourse disciplineCourse;
@@ -34,7 +32,6 @@ public abstract class AbstractLesson {
      */
     protected CurriculumSlot curriculumSlot;
 
-    // --- Участники и ресурсы, назначенные на это занятие ---
 
     /**
      * Преподаватели, ведущие это занятие. Может быть несколько для параллельных подгрупп или совместных лекций.
@@ -58,7 +55,6 @@ public abstract class AbstractLesson {
     protected Auditorium priorityAuditorium;
     protected AuditoriumPool allowedAuditoriumPool;
 
-    // --- Мета-информация для алгоритма ---
 
     /**
      * Уникальный ID для группы параллельных занятий.
@@ -83,24 +79,16 @@ public abstract class AbstractLesson {
         return false;
     }
 
-    /**
-     * Два занятия считаются равными, если они относятся к одному и тому же слоту учебного плана.
-     * Это позволяет нам однозначно идентифицировать "замысел" занятия.
-     */
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         AbstractLesson that = (AbstractLesson) o;
-        // Если curriculumSlot не null и их ID равны, то это одно и то же "занятие по плану"
-        return curriculumSlot != null && curriculumSlot.getId() != null &&
-                Objects.equals(curriculumSlot.getId(), that.curriculumSlot.getId());
+        return Objects.equals(curriculumSlot, that.curriculumSlot) && Objects.equals(educators, that.educators) && Objects.equals(studyStream, that.studyStream);
     }
 
     @Override
     public int hashCode() {
-        // Хеш-код должен зависеть от того же поля, что и equals
-        return Objects.hash(curriculumSlot != null ? curriculumSlot.getId() : 0);
+        return Objects.hash(curriculumSlot, educators, studyStream);
     }
 
     @Override

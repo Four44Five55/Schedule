@@ -6,4 +6,9 @@ public interface IGrid {
     static final LocalDate START_DATE = LocalDate.of(2026, 2, 9);
     static final LocalDate END_DATE = LocalDate.of(2026, 8, 31);
 
+    LocalDate getStartDate();
+
+    LocalDate getEndDate();
+
+
 }

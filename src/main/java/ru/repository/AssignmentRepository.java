@@ -25,8 +25,8 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
      */
     @EntityGraph(attributePaths = {
             "curriculumSlot",           // Подгружаем связанный слот
-            "curriculumSlot.themeLesson",   // <-- ДОБАВЛЕНО: Подгружаем тему из слота
-            "curriculumSlot.kindOfStudy",   // <-- РЕКОМЕНДАЦИЯ: Подгрузить и тип занятия
+            "curriculumSlot.themeLesson",   // Подгружаем тему из слота
+            "curriculumSlot.kindOfStudy",   // Подгрузить и тип занятия
             "studyStream",              // Подгружаем связанный поток
             "studyStream.groups",       // Подгружаем группы внутри потока
             "educators"                 // Подгружаем преподавателей, назначенных на это занятие

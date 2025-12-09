@@ -10,10 +10,10 @@ import ru.entity.Lesson;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.services.constraints.AllConstraints;
 import ru.services.constraints.ConstraintService;
+import ru.services.factories.CellForLessonFactory;
 import ru.services.factories.LessonFactory;
 import ru.services.solver.ScheduleWorkspace;
 import ru.services.solver.legacy.LegacyAlgorithmRunner;
-import ru.services.solver.model.ScheduleGrid;
 
 import java.util.List;
 
@@ -27,19 +27,27 @@ public class ScheduleGenerationService {
     private final DisciplineCourseService disciplineCourseService;
     private final ConstraintService constraintService;
     private final LessonFactory lessonFactory;
+    private final CurriculumSlotService curriculumSlotService;
+    private final SlotChainService slotChainService;
+    private final LessonSortingService lessonSorterService;
 
     /**
      * Основной метод, запускающий процесс генерации расписания для одного курса.
      */
     @Transactional(readOnly = true)
-    public ScheduleWorkspace  generateForCourse(Integer courseId) {
+    public ScheduleWorkspace generateForCourse(Integer courseId) {
+        DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
+        //создание кеша всех ячеек для периода
+        CellForLessonFactory.initializeCellCache(
+                course.getStudyPeriod().getStartDate(),
+                course.getStudyPeriod().getEndDate()
+        );
 
-        // --- 1. ПОДГОТОВКА ДАННЫХ (через сервисы) ---
         List<Educator> allEducators = educatorService.getAllEntities();
         List<Group> allGroups = groupService.getAllEntities();
         List<Auditorium> allAuditoriums = auditoriumService.getAllEntities();
         AllConstraints allConstraints = constraintService.loadAllConstraints();
-        DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
+
 
         List<Lesson> lessonsToPlace = lessonFactory.createLessonsForCourse(courseId);
 
@@ -54,7 +62,7 @@ public class ScheduleGenerationService {
         );
 
         // --- 3. ЗАПУСК АЛГОРИТМА ---
-        LegacyAlgorithmRunner runner = new LegacyAlgorithmRunner(workspace, lessonsToPlace);
+        LegacyAlgorithmRunner runner = new LegacyAlgorithmRunner(workspace, lessonsToPlace, lessonSorterService);
         runner.run(); // Запускаем адаптированный алгоритм
 
         // --- 4. ВОЗВРАТ РЕЗУЛЬТАТА ---

@@ -3,6 +3,7 @@ package ru.services.solver.legacy;
 import lombok.RequiredArgsConstructor;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
+import ru.services.LessonSortingService;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
@@ -22,17 +23,17 @@ public class LegacyAlgorithmRunner {
 
     private final ScheduleWorkspace workspace;
     private final List<Lesson> lessonsToPlace;
+    private final LessonSortingService lessonSorterService;
 
     /**
      * Запускает основной цикл распределения.
      */
     public void run() {
-        // Здесь можно вставить вашу логику сортировки уроков из LegacyLessonsHelper, если она готова
-        // List<Lesson> sortedLessons = LegacyLessonsHelper.getSortedLessons(...);
+        List<Lesson> sortedLessons = lessonSorterService.getSortedLessons(lessonsToPlace);
 
-        List<CellForLesson> allPossibleCells = CellForLessonFactory.getAllOrderedCells();
+        List<CellForLesson> allPossibleCells = CellForLessonFactory.getAllCells();
 
-        for (Lesson lesson : lessonsToPlace) {
+        for (Lesson lesson : sortedLessons) {
             boolean placed = false;
             // Итерируемся по всем возможным ячейкам и ищем первое подходящее место
             for (CellForLesson cell : allPossibleCells) {

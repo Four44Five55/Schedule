@@ -8,12 +8,15 @@ import ru.dto.curriculumSlot.CurriculumSlotCreateDto;
 import ru.dto.curriculumSlot.CurriculumSlotDto;
 import ru.dto.curriculumSlot.CurriculumSlotUpdateDto;
 import ru.entity.Auditorium;
+import ru.entity.Lesson;
 import ru.entity.logicSchema.AuditoriumPool;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.entity.logicSchema.ThemeLesson;
 import ru.mapper.CurriculumSlotMapper;
 import ru.repository.CurriculumSlotRepository;
+
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -113,5 +116,13 @@ public class CurriculumSlotService {
     public CurriculumSlot getEntityById(Integer id) {
         return curriculumSlotRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + id + " не найден."));
+    }
+    /**
+     * [СЛУЖЕБНЫЙ МЕТОД] Находит предыдущую лекцию.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CurriculumSlot> getPreviousLectureInCourse(Lesson lesson) {
+        return curriculumSlotRepository.findPreviousLectureInCourse(lesson.getDisciplineCourse().getId(), lesson.getCurriculumSlot().getPosition());
+
     }
 }

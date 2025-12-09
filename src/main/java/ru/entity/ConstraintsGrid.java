@@ -1,8 +1,8 @@
 package ru.entity;
 
 import ru.abstracts.AbstractGrid;
-import ru.services.factories.CellForLessonFactory;
 import ru.enums.KindOfConstraints;
+import ru.services.factories.CellForLessonFactory;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -48,7 +48,7 @@ public class ConstraintsGrid extends AbstractGrid {
      * @param constraint тип ограничения
      */
     public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
-        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
+        List<CellForLesson> cellForLessons = CellForLessonFactory.getCellsInRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
         }
@@ -64,7 +64,7 @@ public class ConstraintsGrid extends AbstractGrid {
      */
     public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate,
                                              KindOfConstraints constraint, DayOfWeek dayOfWeek) {
-        List<CellForLesson> cellForLessons = CellForLessonFactory.createCellsForDateRange(startDate, endDate);
+        List<CellForLesson> cellForLessons = CellForLessonFactory.getCellsInRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             if (cellForLesson.getDate().getDayOfWeek() == dayOfWeek) {
                 constraintsGridMap.put(cellForLesson, constraint);

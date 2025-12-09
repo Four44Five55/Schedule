@@ -90,7 +90,7 @@ public class ExcelExportService {
                     continue; // Пропускаем запрещённые слоты
                 }
 
-                CellForLesson cell = CellForLessonFactory.getCellByDateAndSlot(checkedDate, timeSlotPair);
+                CellForLesson cell = CellForLessonFactory.getCell(checkedDate, timeSlotPair);
                 SchedulableResource resource = workspace.getResourceManager().getResource(entity);
                 // ИСПРАВЛЕНА ОШИБКА: убрана дублирующая строка
                 Lesson lesson = resource.getLessonInCell(cell);
