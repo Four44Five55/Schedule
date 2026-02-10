@@ -19,7 +19,7 @@ public class Lesson extends AbstractLesson {
         String position = (curriculumSlot != null)
                 ? curriculumSlot.getPosition().toString()
                 : "N/A";
-        String themeLesson = (curriculumSlot != null)
+        String themeLesson = (curriculumSlot != null && curriculumSlot.getThemeLesson() != null)
                 ? curriculumSlot.getThemeLesson().getThemeNumber()
                 : "N/A";
         String groupsName;

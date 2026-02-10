@@ -132,5 +132,12 @@ public class SchedulableResource {
     public Optional<KindOfConstraints> getConstraint(CellForLesson cell) {
         return Optional.ofNullable(hardConstraints.getConstraintsGridMap().get(cell));
     }
+
+    /**
+     * Очищает текущее расписание занятий ресурса.
+     */
+    public void clearSchedule() {
+        this.schedule.clear();
+    }
 }
 

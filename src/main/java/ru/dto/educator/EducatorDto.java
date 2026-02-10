@@ -11,10 +11,12 @@ import ru.enums.TimeSlotPair;
  * @param name               ФИО преподавателя.
  * @param preferredDays      Набор предпочитаемых дней недели.
  * @param preferredTimeSlots Набор предпочитаемых пар.
+ * @param compactSchedule    Флаг компактности расписания.
  */
 public record EducatorDto(
         Integer id,
         String name,
         Set<DayOfWeek> preferredDays,
-        Set<TimeSlotPair> preferredTimeSlots
+        Set<TimeSlotPair> preferredTimeSlots,
+        boolean compactSchedule
 ) {}

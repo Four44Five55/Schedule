@@ -22,6 +22,81 @@ public class LessonSortingService {
     private final SlotChainService slotChainService;
 
     /**
+     * @param lessons    список занятий
+     * @param sequential если true - дисциплины идут одна за другой (модульно),
+     *                   если false - перемешиваются (параллельно).
+     */
+    public List<Lesson> changeOrderLessons(List<Lesson> lessons, boolean sequential) {
+        if (lessons == null || lessons.isEmpty()) return new ArrayList<>();
+
+        // 1. Группируем по ID курса
+        Map<Integer, List<Lesson>> lessonsByCourse = lessons.stream()
+                .collect(Collectors.groupingBy(l -> l.getDisciplineCourse().getId()));
+
+        // 2. Сортируем внутри каждой группы (Лекция -> Практики)
+        // Используем TreeMap или список для сохранения порядка курсов, если нужно
+        List<List<Lesson>> sortedGroups = new ArrayList<>();
+
+        // Чтобы порядок курсов был детерминированным (например, по ID курса по возрастанию),
+        // нужно отсортировать ключи карты.
+        List<Integer> courseIds = new ArrayList<>(lessonsByCourse.keySet());
+        Collections.sort(courseIds); // Сначала курс с меньшим ID, потом с большим
+
+        for (Integer courseId : courseIds) {
+            List<Lesson> rawGroup = lessonsByCourse.get(courseId);
+            // Применяем сложную логику расстановки лекций/практик для конкретного предмета
+            sortedGroups.add(sortSingleDiscipline(new ArrayList<>(rawGroup)));
+        }
+
+        // 3. Объединяем в зависимости от стратегии
+        if (sequential) {
+            //последовательно
+            return mergeSequential(sortedGroups);
+        } else {
+            //параллельно
+            return mergeInterleaved(sortedGroups);
+        }
+    }
+
+
+    /**
+     * ВАРИАНТ 2: Последовательное слияние.
+     * Сначала все занятия первого курса, потом все занятия второго.
+     * [A1, A2, A3] + [B1, B2] -> [A1, A2, A3, B1, B2]
+     */
+    private List<Lesson> mergeSequential(List<List<Lesson>> groups) {
+        List<Lesson> result = new ArrayList<>();
+        for (List<Lesson> group : groups) {
+            result.addAll(group);
+        }
+        return result;
+    }
+
+    /**
+     * ВАРИАНТ 1: Параллельное слияние (Round Robin).
+     * [A1, A2, A3] + [B1, B2] -> [A1, B1, A2, B2, A3]
+     */
+    private List<Lesson> mergeInterleaved(List<List<Lesson>> groups) {
+        List<Lesson> result = new ArrayList<>();
+        // Превращаем списки в итераторы
+        List<Iterator<Lesson>> iterators = groups.stream()
+                .map(List::iterator)
+                .collect(Collectors.toList());
+
+        boolean hasElements = true;
+        while (hasElements) {
+            hasElements = false;
+            for (Iterator<Lesson> it : iterators) {
+                if (it.hasNext()) {
+                    result.add(it.next());
+                    hasElements = true;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * Адаптированная версия changeOrderLessons.
      * Сортирует занятия: сначала группирует "сцепки", затем пытается перемешать лекции и практики.
      *
@@ -38,8 +113,11 @@ public class LessonSortingService {
         // 2. Затем применяем вашу сложную логику перемешивания лекций и практик
 
         //return mixLecturesAndPractices(chainSortedLessons, curriculumSlotService);
-        return changeOrderLessons(chainSortedLessons);
+        //return changeOrderLessons(chainSortedLessons);
+        return chainSortedLessons;
     }
+    /**
+     * */
 
     /**
      * Группирует занятия, связанные через SlotChain, вместе.
@@ -337,7 +415,7 @@ public class LessonSortingService {
      */
 
     //TODO изменить метод для возврата отсортированного списка
-    public List<Lesson> changeOrderLessons(List<Lesson> lessons) {
+    public List<Lesson> sortSingleDiscipline(List<Lesson> lessons) {
 
         //if (lessons == null) return;
 
@@ -388,6 +466,7 @@ public class LessonSortingService {
                     practicesBetweenLectures++;
                     //Если выбрана практика, которая проводится позднее не распределенной лекции, то выставляется лекция
                 } else {
+
                     lecture = lectureIter.next();
                     resultLessons.add(lecture);
                     successAddPractice = false;
@@ -407,6 +486,7 @@ public class LessonSortingService {
                     }
 
                 }
+
             }
         }
 
@@ -434,7 +514,7 @@ public class LessonSortingService {
             List<Integer> targetSlotIds = slotChainService.getFullChain(lesson.getCurriculumSlot().getId());
             List<Lesson> chainFroLesson = lessons.stream()
                     .filter(lesson1 -> targetSlotIds.contains(lesson1.getCurriculumSlot().getId()))
-                    .collect(Collectors.toList());
+                    .toList();
             if (!chainFroLesson.isEmpty()) {
                 sortedLessons.addAll(chainFroLesson);
                 visitedLessons.addAll(chainFroLesson);
@@ -445,7 +525,7 @@ public class LessonSortingService {
 
         }
 
-
+        System.out.printf("");
         return sortedLessons;
     }
 

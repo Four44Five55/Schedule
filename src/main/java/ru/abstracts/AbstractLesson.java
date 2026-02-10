@@ -50,9 +50,11 @@ public abstract class AbstractLesson {
     protected List<Auditorium> assignedAuditoriums = new ArrayList<>();
 
     // --- Требования к ресурсам (копируются из CurriculumSlot для удобства) ---
-
+    // жестко требуемая аудитория
     protected Auditorium requiredAuditorium;
+    //  приоритетная аудитория
     protected Auditorium priorityAuditorium;
+    //  пул аудиторий
     protected AuditoriumPool allowedAuditoriumPool;
 
 

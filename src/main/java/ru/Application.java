@@ -6,15 +6,15 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import ru.services.*;
 import ru.services.solver.ScheduleWorkspace;
-import ru.services.solver.model.ScheduleGrid;
 
 import java.sql.SQLException;
+import java.util.List;
 
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) throws SQLException {
         SpringApplication.run(Application.class, args);
-     }
+    }
 
     /**
      * Координирует генерацию расписания и последующий экспорт в Excel для всех сущностей.
@@ -27,9 +27,11 @@ public class Application {
                                                AuditoriumService auditoriumService) {
         return args -> {
             System.out.println("Запускаем генерацию расписания...");
-            ScheduleWorkspace generatedWorkspace = generationService.generateForCourse(701);
+            List<Integer> courses = List.of(704, 705, 701, 702,707, 703, 706, 708,  709, 710);
+
+            ScheduleWorkspace generatedWorkspace = generationService.generateForCourseList(courses);
             System.out.println("Генерация расписания завершена.");
-            if (generatedWorkspace  == null) {
+            if (generatedWorkspace == null) {
                 System.err.println("Не удалось сгенерировать расписание. Экспорт отменен.");
                 return; // Выходим, если расписание не создано
             }

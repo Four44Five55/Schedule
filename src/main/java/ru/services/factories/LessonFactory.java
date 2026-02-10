@@ -61,8 +61,8 @@ public class LessonFactory {
                 lesson.setAllowedAuditoriumPool(assignment.getCurriculumSlot().getAllowedAuditoriumPool());
 
                 // Устанавливаем ID параллельной группы
-                lesson.setParallelGroupId(parallelGroupId);
-
+                //lesson.setParallelGroupId(parallelGroupId);
+                lesson.setParallelGroupId(null);
                 allLessons.add(lesson);
             }
         }

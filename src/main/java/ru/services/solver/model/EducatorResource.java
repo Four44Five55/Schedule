@@ -51,7 +51,7 @@ public final class EducatorResource extends SchedulableResource {
         }
 
         if (!priority.getSlotPairs().isEmpty() && !priority.getSlotPairs().contains(cell.getTimeSlotPair())) {
-            score -= 5;  // Условный штраф за нежелательную пару
+            score -= 5; // Условный штраф за нежелательную пару
         }
 
         return score;

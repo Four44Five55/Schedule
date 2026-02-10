@@ -87,12 +87,35 @@ public class ScheduleGrid extends AbstractGrid {
             }
         }
     }
-
+    /**
+     * Находит ячейку (слот), в которой размещено указанное занятие.
+     * Выполняет полный перебор сетки, поэтому операция может быть медленной O(N).
+     *
+     * @param lesson занятие, которое ищем.
+     * @return Ячейка, в которой стоит занятие, или null, если не найдено.
+     */
+    public CellForLesson getCellForLesson(AbstractLesson lesson) {
+        for (Map.Entry<CellForLesson, List<AbstractLesson>> entry : scheduleGridMap.entrySet()) {
+            if (entry.getValue().contains(lesson)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
     /**
      * Возвращает всю карту расписания для итерации или отладки.
      */
     public Map<CellForLesson, List<AbstractLesson>> getGridMap() {
         return Collections.unmodifiableMap(scheduleGridMap);
     }
-
+    /**
+     * Очищает всю сетку расписания (все назначения).
+     * Важно: Ключи (ячейки) остаются, но списки занятий внутри них очищаются.
+     * Это безопаснее, чем удалять ключи, так как мы инициализируем их в конструкторе.
+     */
+    public void clear() {
+        for (List<AbstractLesson> lessons : scheduleGridMap.values()) {
+            lessons.clear();
+        }
+    }
 }

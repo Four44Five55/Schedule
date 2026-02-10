@@ -92,7 +92,6 @@ public class ExcelExportService {
 
                 CellForLesson cell = CellForLessonFactory.getCell(checkedDate, timeSlotPair);
                 SchedulableResource resource = workspace.getResourceManager().getResource(entity);
-                // ИСПРАВЛЕНА ОШИБКА: убрана дублирующая строка
                 Lesson lesson = resource.getLessonInCell(cell);
 
                 if (lesson != null) {
@@ -121,14 +120,22 @@ public class ExcelExportService {
         }
 
         // Авторазмер колонок
-        int widthInUnits = (int) (45 * 256 / 7.0);
+/*        int widthInUnits = (int) (45 * 256 / 7.0);
         for (int i = 0; i < column + 1; i++) {
             sheet.setColumnWidth(i, widthInUnits);
-        }
+        }*/
     }
 
     private List<String> getListDataLessonForEntity(IMaterialEntity entity, AbstractLesson lesson) {
         List<String> listData = new ArrayList<>();
+        String themeInfo;
+        if (lesson.getCurriculumSlot().getThemeLesson() == null) {
+            themeInfo = lesson.getKindOfStudy().getAbbreviationName(); // "ЭКЗ" или "Л" (если забыли тему)
+        } else {
+            themeInfo = lesson.getKindOfStudy().getAbbreviationName() +
+                    lesson.getCurriculumSlot().getThemeLesson().getThemeNumber(); // "Л1.1"
+        }
+
         if (entity instanceof Educator) {
             listData.add(lesson.getDisciplineCourse().getDiscipline().getAbbreviation());//Дисциплина
             listData.add(lesson.getStudyStream().getGroups().stream()
@@ -140,14 +147,14 @@ public class ExcelExportService {
                     .collect(Collectors.joining(", ")));//Аудитория проведения занятия
 
         } else if (entity instanceof Group) {
-            listData.add(lesson.getKindOfStudy().getAbbreviationName() + lesson.getCurriculumSlot().getThemeLesson().getThemeNumber());//Тема занятия
+            listData.add(themeInfo);//Тема занятия
             listData.add(lesson.getDisciplineCourse().getDiscipline().getAbbreviation());//Дисциплина
             listData.add(lesson.getAssignedAuditoriums().stream()
                     .map(Auditorium::getName)
                     .distinct()
                     .collect(Collectors.joining(", ")));//Аудитория проведения занятия
         } else if (entity instanceof Auditorium) {
-            listData.add(lesson.getKindOfStudy().getAbbreviationName() + lesson.getCurriculumSlot().getThemeLesson().getThemeNumber());//Тема занятия
+            listData.add(themeInfo);//Тема занятия
             listData.add(lesson.getStudyStream().getGroups().stream()
                     .map(Group::getName)
                     .collect(Collectors.joining(", ")));//Список групп занятия

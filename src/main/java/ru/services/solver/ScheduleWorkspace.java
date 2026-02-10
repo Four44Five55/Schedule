@@ -116,7 +116,11 @@ public final class ScheduleWorkspace {
     /**
      * Атомарно удаляет размещенное занятие из расписания.
      */
-    public void removePlacement(Lesson lesson, CellForLesson cell) {
+    public void removePlacement(Lesson lesson) {
+
+        CellForLesson cell = grid.getCellForLesson(lesson);
+
+        if (cell == null) return;
         // 1. Удаляем из основной сетки
         grid.remove(cell, lesson);
 
@@ -131,7 +135,49 @@ public final class ScheduleWorkspace {
         allParticipants.forEach(p -> p.free(cell));
     }
 
+    /**
+     * Принудительно размещает занятие в указанный слот и аудитории.
+     * Обновляет и общую сетку, и ресурсы.
+     * Используется для фиксации результатов алгоритма.
+     */
+    public void forcePlacement(Lesson lesson, CellForLesson cell, List<Auditorium> auditoriums) {
+        // 1. Обновляем само занятие
+        if (auditoriums != null) {
+            // Фильтруем null (если аудитория не была найдена)
+            List<Auditorium> validAuditoriums = new ArrayList<>();
+            for (Auditorium aud : auditoriums) {
+                if (aud != null) validAuditoriums.add(aud);
+            }
+            lesson.setAssignedAuditoriums(validAuditoriums);
+        } else {
+            lesson.setAssignedAuditoriums(new ArrayList<>());
+        }
 
+        // 2. Добавляем в общую сетку
+        grid.add(cell, lesson);
+
+        // 3. Обновляем ресурсы (тут используется уже существующая приватная логика или getStaticParticipants)
+        List<SchedulableResource> participants = getStaticParticipants(lesson);
+
+        // Добавляем динамические ресурсы (аудитории)
+        for (Auditorium aud : lesson.getAssignedAuditoriums()) {
+            participants.add(resourceManager.getAuditoriumResource(aud.getId()));
+        }
+
+        // Проставляем занятость
+        participants.forEach(p -> p.occupy(cell, lesson));
+    }
+
+    /**
+     * Находит ячейку, в которой размещено занятие.
+     * Делегирует поиск сетке расписания.
+     *
+     * @param lesson искомое занятие.
+     * @return Ячейка или null.
+     */
+    public CellForLesson getCellForLesson(Lesson lesson) {
+        return grid.getCellForLesson(lesson);
+    }
     // =======================================================================
     // Приватные вспомогательные методы
     // =======================================================================
@@ -199,5 +245,17 @@ public final class ScheduleWorkspace {
         return participants.stream()
                 .mapToInt(p -> p.getPreferenceScore(cell))
                 .sum();
+    }
+
+    /**
+     * Полностью очищает текущее расписание и освобождает все ресурсы.
+     * Используется при генерации популяции, чтобы использовать один Workspace многократно.
+     */
+    public void clear() {
+// 1. Очищаем сетку через её публичный метод
+        grid.clear();
+
+        // 2. Очищаем ресурсы
+        resourceManager.clearAllResources();
     }
 }

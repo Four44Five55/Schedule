@@ -54,6 +54,14 @@ public class Educator implements IMaterialEntity {
     @Enumerated(EnumType.STRING)
     private Set<TimeSlotPair> preferredTimeSlots = new HashSet<>();
 
+    /**
+     * Флаг компактности расписания.
+     * Если true - занятия для разных групп стараются размещать в минимальное количество дней.
+     * Если false - используется стандартная логика распределения.
+     */
+    @Column(name = "compact_schedule", nullable = false)
+    private boolean compactSchedule = false;
+
     // Конструктор для удобства
     public Educator(String name) {
         this.name = name;
@@ -74,6 +82,10 @@ public class Educator implements IMaterialEntity {
 
     public void removePreferredTimeSlot(TimeSlotPair slot) {
         this.preferredTimeSlots.remove(slot);
+    }
+
+    public boolean isSaturdayLover() {
+        return this.getPreferredDays().contains(ru.enums.DayOfWeek.SATURDAY);
     }
 
     @Override

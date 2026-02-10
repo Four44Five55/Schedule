@@ -122,6 +122,7 @@ public final class ResourceAvailabilityManager {
             throw new IllegalArgumentException("Неизвестный тип сущности для поиска ресурса: " + entity.getClass().getName());
         }
     }
+
     /**
      * Возвращает "умную карточку" для преподавателя по его ID.
      */
@@ -141,5 +142,15 @@ public final class ResourceAvailabilityManager {
      */
     public SchedulableResource getAuditoriumResource(Integer id) {
         return auditoriums.get(id);
+    }
+
+    /**
+     * Очищает динамическое расписание (занятость) у всех ресурсов.
+     * Постоянные ограничения (Hard Constraints) сохраняются.
+     */
+    public void clearAllResources() {
+        educators.values().forEach(SchedulableResource::clearSchedule);
+        groups.values().forEach(SchedulableResource::clearSchedule);
+        auditoriums.values().forEach(SchedulableResource::clearSchedule);
     }
 }

@@ -11,6 +11,7 @@ public record EducatorUpdateDto(
         @NotBlank @Size(max = 255)
         String name,
         Set<DayOfWeek> preferredDays,
-        Set<TimeSlotPair> preferredTimeSlots
+        Set<TimeSlotPair> preferredTimeSlots,
+        boolean compactSchedule
 ) {
 }
