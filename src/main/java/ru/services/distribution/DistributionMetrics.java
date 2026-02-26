@@ -1,14 +1,11 @@
-package ru.services.distribution.metrics;
+package ru.services.distribution;
 
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
-import ru.services.distribution.core.DistributionContext;
 import ru.services.solver.ScheduleWorkspace;
 
 import java.time.LocalDate;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Вычисляет метрики для распределения.

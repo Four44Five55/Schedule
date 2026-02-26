@@ -1,4 +1,4 @@
-package ru.services.distribution.core;
+package ru.services.distribution;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.entity.Educator;

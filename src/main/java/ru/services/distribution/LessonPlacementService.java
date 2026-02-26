@@ -1,13 +1,10 @@
-package ru.services.distribution.placement;
+package ru.services.distribution;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Group;
 import ru.entity.Lesson;
-import ru.services.distribution.core.DistributionContext;
-import ru.services.distribution.validator.PlacementValidator;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 

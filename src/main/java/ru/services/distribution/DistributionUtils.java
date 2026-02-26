@@ -1,11 +1,9 @@
-package ru.services.distribution.utils;
+package ru.services.distribution;
 
 import ru.entity.Group;
 import ru.entity.Lesson;
-import ru.services.distribution.core.DistributionContext;
 import ru.services.solver.ScheduleWorkspace;
 
-import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;

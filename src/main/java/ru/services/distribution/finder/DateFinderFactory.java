@@ -1,7 +1,7 @@
 package ru.services.distribution.finder;
 
 import ru.entity.Educator;
-import ru.services.distribution.core.DistributionContext;
+import ru.services.distribution.DistributionContext;
 
 /**
  * Фабрика для выбора стратегии поиска дат.

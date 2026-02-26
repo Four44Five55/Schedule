@@ -1,4 +1,4 @@
-package ru.services.distribution.core;
+package ru.services.distribution;
 
 import lombok.Getter;
 import ru.entity.Educator;

@@ -1,19 +1,13 @@
-package ru.services.distribution.lecture;
+package ru.services.distribution;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
-import ru.services.LessonSortingService;
-import ru.services.distribution.core.DistributionContext;
-import ru.services.distribution.core.EducatorPrioritizer;
-import ru.services.distribution.placement.ChainPlacementHandler;
-import ru.services.distribution.placement.LessonPlacementService;
 import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 

@@ -6,13 +6,6 @@ import ru.entity.Lesson;
 import ru.services.CurriculumSlotService;
 import ru.services.LessonSortingService;
 import ru.services.SlotChainService;
-import ru.services.distribution.core.DistributionContext;
-import ru.services.distribution.core.EducatorPrioritizer;
-import ru.services.distribution.lecture.LectureDistributionHandler;
-import ru.services.distribution.placement.ChainPlacementHandler;
-import ru.services.distribution.placement.LessonPlacementService;
-import ru.services.distribution.practice.PracticeDistributionHandler;
-import ru.services.distribution.practice.PracticeSwapService;
 import ru.services.solver.ScheduleWorkspace;
 
 import java.time.LocalDate;

@@ -4,7 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
-import ru.services.distribution.core.DistributionContext;
+import ru.services.distribution.DistributionContext;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 
