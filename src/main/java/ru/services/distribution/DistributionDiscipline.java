@@ -81,12 +81,17 @@ public class DistributionDiscipline {
         // ЭТАП 2: ПРАКТИКИ (Заполнение)
         distributePracticesPhase(semesterEnd);
     }
+
     //TODO пофиксить проблему равномерности распределения лекций, после последнейлекци не хвататет времени провести все ПЗ
     private void distributeLecturesPhase(LocalDate semesterEnd) {
         // Сортируем преподавателей по приоритету распределения
         List<Educator> sortedEducators = sortEducatorsByPriority(educators, lessons);
 
         for (Educator educator : sortedEducators) {
+            //УДАЛИТЬ УСЛОВИЕ ИФ
+            if (educator.getId() != 301) {
+                continue;
+            }
             // 1. Подготовка списка занятий преподавателя
             List<Lesson> educatorLessons = lessons.stream()
                     .filter(l -> l.getEducators().contains(educator))
@@ -97,13 +102,17 @@ public class DistributionDiscipline {
             distributeLessonsForEducator(educator, educatorLessons, semesterEnd);
 
             // 3. Откат Практик (Cleaning)
-            rollbackPractices(educator);
+            //rollbackPractices(educator);
         }
     }
 
     private void distributePracticesPhase(LocalDate semesterEnd) {
         // Распределяем оставшиеся практики рядом с уже размещёнными лекциями
         for (Educator educator : educators) {
+            //УДАЛИТЬ УСЛОВИЕ ИФ
+            if (educator.getId() != 301) {
+                continue;
+            }
             distributePracticesForEducator(educator, semesterEnd);
         }
 
@@ -243,7 +252,7 @@ public class DistributionDiscipline {
             List<Lesson> chain = getChainForLesson(practice, practices);
 
             // 4.2. Проверяем: является ли эта практика первой в цепочке
-            boolean isFirstInChain = chain.isEmpty() || chain.get(0).equals(practice);
+            boolean isFirstInChain = chain.isEmpty() || chain.getFirst().equals(practice);
             if (!isFirstInChain) {
                 // Это не первая практика в цепочке — пропускаем, она будет обработана вместе с первой
                 log.debug("Практика ID={} не первая в цепочке (пропуск)", practice.getCurriculumSlot().getId());
@@ -432,10 +441,10 @@ public class DistributionDiscipline {
      * Находит минимально допустимую дату для СЕМИНАРА.
      * Ищет последнюю лекцию с той же темой и добавляет 3 дня.
      *
-     * @param seminar          семинар для размещения
-     * @param educator         преподаватель
-     * @param educatorLessons  все занятия преподавателя (отсортированные)
-     * @param seminarIndex     позиция семинара в списке
+     * @param seminar         семинар для размещения
+     * @param educator        преподаватель
+     * @param educatorLessons все занятия преподавателя (отсортированные)
+     * @param seminarIndex    позиция семинара в списке
      * @return минимальная дата (лекция + 3 дня) или null, если лекция не найдена
      */
     private LocalDate findMinDateForSeminar(Lesson seminar, Educator educator,
@@ -858,7 +867,7 @@ public class DistributionDiscipline {
                 .toList();
 
         int chainSize = chain.size();
-        Lesson firstLesson = chain.get(0);
+        Lesson firstLesson = chain.getFirst();
 
         if (allDates.isEmpty()) {
             log.warn("Нет доступных дат для цепочки из {} занятий (первая ID={}) в диапазоне [{} - {}]",
@@ -890,7 +899,7 @@ public class DistributionDiscipline {
      * в которых уже есть занятия этого преподавателя.
      */
     private LocalDate findDateInSlidingWindowForChain(List<Lesson> chain, List<LocalDate> allDates,
-                                                       Set<LocalDate> lectureDates, int windowSize) {
+                                                      Set<LocalDate> lectureDates, int windowSize) {
         // Получаем первого преподавателя из цепочки
         Educator educator = chain.get(0).getEducators().stream().findFirst().orElse(null);
         boolean useCompactness = educator != null && educator.isCompactSchedule();
@@ -1127,9 +1136,24 @@ public class DistributionDiscipline {
         List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(targetDate);
         dayCells.sort(Comparator.comparing(CellForLesson::getTimeSlotPair));
 
+        // DEBUG: выводим информацию перед размещением
+        String themeNumber = practice.getCurriculumSlot().getThemeLesson() != null
+                ? practice.getCurriculumSlot().getThemeLesson().getThemeNumber()
+                : "N/A";
+        log.info("DEBUG: placePracticeInDate - практика: {}/{}, дата: {}, цепочка: {} занятий, dayCells: {}",
+                practice.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
+                themeNumber,
+                targetDate,
+                chain.size(),
+                dayCells.stream().map(c -> c.getTimeSlotPair().toString()).toList());
+
         // Пытаемся разместить цепочку
         if (tryPlaceChainInDay(chain, dayCells, false)) {
-            // Успех
+            // Успех - проверяем, куда попали
+            CellForLesson placedCell = workspace.getCellForLesson(practice);
+            if (placedCell != null) {
+                log.info("DEBUG: практика размещена на слоте: {}", placedCell.getTimeSlotPair());
+            }
         } else {
             log.warn("Не удалось разместить цепочку в дату {}", targetDate);
         }
@@ -1335,6 +1359,8 @@ public class DistributionDiscipline {
 
         // 5. Главный цикл распределения
         for (Integer dateIdx : targetDateIndices) {
+            log.info("Дата распределения: {}", workspace.getGrid().getStartDate().plusDays(dateIdx));
+
             if (lessonIndex >= sortedLessons.size()) break;
 
             // Идеальная дата
@@ -1375,6 +1401,16 @@ public class DistributionDiscipline {
                     continue;
                 }
 
+                if (chain.getFirst().getKindOfStudy() != ru.enums.KindOfStudy.LECTURE) {
+/*                    for (Lesson l : chain) {
+                         practicesToday++;
+                    }*/
+                    practicesToday += chain.size();
+                    lessonIndex += chain.size();
+                    break;
+                }
+
+
                 // Пытаемся разместить цепочку (или одиночный урок)
                 if (tryPlaceChainInDay(chain, dayCells, lecturesToday == 0)) {
                     // УСПЕХ
@@ -1404,19 +1440,24 @@ public class DistributionDiscipline {
 
             for (int i = lessonIndex; i < sortedLessons.size(); i++) {
                 Lesson l = sortedLessons.get(i);
-                log.warn("  -> Урок [{}]: {} | Группы: {} | Позиция в плане: {}",
-                        i, l.getKindOfStudy(), l.getStudyStream().getName(), l.getCurriculumSlot().getPosition());
-
+                String themeNumber = l.getCurriculumSlot().getThemeLesson() != null
+                        ? l.getCurriculumSlot().getThemeLesson().getThemeNumber()
+                        : "N/A";
+                log.warn("х Зан. НЕ размещено: {}/{}, {}, позиция в списке ={}, позиция в плане={}",
+                        l.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
+                        themeNumber,
+                        l.getStudyStream().getGroups(),
+                        i, l.getCurriculumSlot().getPosition() );
                 if (l.getRequiredAuditorium() != null) {
                     log.warn("     ! Требует аудиторию: {}", l.getRequiredAuditorium().getName());
                 }
 
                 // Проверка доступности (почему не влезло?)
                 // Попробуем "ткнуть" в первый попавшийся слот, чтобы увидеть причину отказа
-                CellForLesson testCell = CellForLessonFactory.getAllCells().get(0);
+                CellForLesson testCell = CellForLessonFactory.getAllCells().getFirst();
                 PlacementOption option = workspace.findPlacementOption(l, testCell);
                 if (!option.isPossible()) {
-                    log.warn("     ! Причина отказа (тест на 1-м слоте): {}", option.failureReason());
+                    log.warn("     ! Причина отказа: {}", option.failureReason());
                 }
             }
             log.warn("===============================================================\n");
@@ -1498,6 +1539,8 @@ public class DistributionDiscipline {
                 boolean isLecture = lesson.getKindOfStudy() == ru.enums.KindOfStudy.LECTURE;
                 if (!isLecture && dayHasNoLecturesYet && cell.getTimeSlotPair() == ru.enums.TimeSlotPair.FIRST) {
                     // Если это цепочка Практика+Практика, и мы пытаемся поставить первую на утро - отказ
+                    log.info("DEBUG: Правило 'не на 1-ю пару' СРАБОТАЛО: dayHasNoLecturesYet={}, lesson={}",
+                            dayHasNoLecturesYet, lesson.getKindOfStudy());
                     fit = false;
                     break;
                 }
