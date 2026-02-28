@@ -18,9 +18,9 @@ import java.util.Set;
 public class DistributionContext {
     private final ScheduleWorkspace workspace;
     private List<Lesson> lessons;
-    private final List<Educator> educators;
+    private List<Educator> educators;
     private final List<Lesson> distributedLessons;
-    private final Set<Lesson> distributedLessonsSet; // для быстрой проверки O(1)
+    private final Set<Lesson> distributedLessonsSet;
 
     private DistributionContext(ScheduleWorkspace workspace,
                                 List<Lesson> lessons,
@@ -46,6 +46,13 @@ public class DistributionContext {
      */
     public void setLessons(List<Lesson> lessons) {
         this.lessons = new ArrayList<>(lessons);
+    }
+
+    /**
+     * Обновляет список преподавателей (используется для сортировки по приоритету).
+     */
+    public void setEducators(List<Educator> educators) {
+        this.educators = new ArrayList<>(educators);
     }
 
     /**

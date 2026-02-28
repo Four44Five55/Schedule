@@ -1,6 +1,8 @@
 package ru.services.distribution;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import ru.entity.Educator;
 import ru.entity.Group;
 import ru.entity.Lesson;
@@ -15,12 +17,10 @@ import java.util.stream.Collectors;
  * Приоритет 2: общее количество занятий (по убыванию)
  */
 @Slf4j
+@Service
+@RequiredArgsConstructor
 public class EducatorPrioritizer {
     private final LessonSortingService lessonSortingService;
-
-    public EducatorPrioritizer(LessonSortingService lessonSortingService) {
-        this.lessonSortingService = lessonSortingService;
-    }
 
     /**
      * Сортирует преподавателей по приоритету распределения.

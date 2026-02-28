@@ -1,48 +1,30 @@
 package ru.services.distribution;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
-import ru.services.LessonSortingService;
-import ru.services.SlotChainService;
-import ru.services.distribution.finder.DateFinder;
-import ru.services.distribution.finder.DateFinderFactory;
 import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Обрабатывает фазу 2 — распределение практик.
- * Вынесены методы из DistributionDiscipline:
- * - distributePracticesPhase()
- * - distributePracticesForEducator()
- * - placePracticeInDate()
- * - rollbackPractices()
+ * Упрощённая версия с прямой логикой размещения.
  */
 @Slf4j
 public class PracticeDistributionHandler {
     private final DistributionContext context;
-    private final LessonSortingService lessonSortingService;
-    private final SlotChainService slotChainService;
-    private final LessonPlacementService placementService;
+    private final LessonPlacementService placement;
     private final ChainPlacementHandler chainHandler;
-    private final PracticeSwapService swapService;
 
     public PracticeDistributionHandler(DistributionContext context,
-                                       LessonSortingService lessonSortingService,
-                                       SlotChainService slotChainService,
-                                       LessonPlacementService placementService,
-                                       ChainPlacementHandler chainHandler,
-                                       PracticeSwapService swapService) {
+                                       LessonPlacementService placement,
+                                       ChainPlacementHandler chainHandler) {
         this.context = context;
-        this.lessonSortingService = lessonSortingService;
-        this.slotChainService = slotChainService;
-        this.placementService = placementService;
+        this.placement = placement;
         this.chainHandler = chainHandler;
-        this.swapService = swapService;
     }
 
     /**
@@ -50,188 +32,145 @@ public class PracticeDistributionHandler {
      */
     public void distributePractices(LocalDate semesterEnd) {
         for (Educator educator : context.getEducators()) {
-            distributePracticesForEducator(educator, semesterEnd);
+            if (educator.getId() == 301) {
+                distributeForEducator(educator, semesterEnd);
+            }
         }
     }
 
     /**
-     * Распределение практик для преподавателя.
+     * Распределяет практики для указанного преподавателя.
      */
-    public void distributePracticesForEducator(Educator educator, LocalDate semesterEnd) {
-        log.info("=== НАЧАЛО: Распределение практик для преподавателя: {} ===", educator.getName());
+    public void distributeForEducator(Educator educator, LocalDate semesterEnd) {
+        log.info("=== Распределение практик для: {} ===", educator.getName());
 
-        List<Lesson> practices = context.getLessons().stream()
-                .filter(l -> l.getEducators().contains(educator))
-                .filter(l -> l.getKindOfStudy() != ru.enums.KindOfStudy.LECTURE)
-                .collect(Collectors.toList());
-
+        List<Lesson> practices = placement.getPracticesForEducator(educator);
         if (practices.isEmpty()) {
+            log.info("Нет практик для распределения");
             return;
         }
 
-        log.info("Всего практик для распределения: {}", practices.size());
-
-        long alreadyInSet = practices.stream().filter(context::isLessonDistributed).count();
-        if (alreadyInSet > 0) {
-            log.warn("ВНИМАНИЕ: {} из {} практик УЖЕ находятся в distributedLessonsSet",
-                    alreadyInSet, practices.size());
+        List<LocalDate> availableDates = getAvailableDates(semesterEnd, practices);
+        if (availableDates.isEmpty()) {
+            log.error("Нет доступных дат для практик {}", educator.getName());
+            return;
         }
 
-        List<Lesson> sortedPractices = lessonSortingService.getSortedLessons(practices);
+        Set<LocalDate> lectureDates = placement.getLectureDates(educator);
+        log.info("Лекционные даты (приоритетные): {}", lectureDates);
 
-        Set<LocalDate> lectureDates = getDatesWithLecturesForEducator(educator);
-        log.debug("Даты с лекциями (приоритетные): {}", lectureDates);
+        log.info("Доступных дней: {}, практик: {}", availableDates.size(), practices.size());
 
         int placedCount = 0;
         int skippedCount = 0;
-        int failedCount = 0;
 
-        for (Lesson practice : sortedPractices) {
-            if (context.isLessonDistributed(practice)) {
+        int index = 0;
+        while (index < practices.size()) {
+            Lesson current = practices.get(index);
+
+            // Пропускаем уже размещённые
+            if (context.isLessonDistributed(current)) {
                 skippedCount++;
+                index++;
                 continue;
             }
 
-            List<Lesson> chain = chainHandler.getChainForLesson(practice, practices);
+            // Получаем цепочку
+            List<Lesson> chain = chainHandler.getChainForLesson(current, practices);
 
-            boolean isFirstInChain = chain.isEmpty() || chain.getFirst().equals(practice);
-            if (!isFirstInChain) {
-                log.debug("Практика ID={} не первая в цепочке (пропуск)", practice.getCurriculumSlot().getId());
+            // Пропускаем если не первое в цепочке
+            if (chain.size() > 1 && !chain.get(0).equals(current)) {
                 skippedCount++;
+                index++;
                 continue;
             }
 
-            LocalDate minDate = placementService.findMinDate(practice, educator);
-
-            if (minDate == null) {
-                log.warn("minDate is null для практики ID={}. Пропуск.", practice.getCurriculumSlot().getId());
-                failedCount += chain.size();
-                continue;
-            }
-            if (minDate.isAfter(semesterEnd)) {
-                log.warn("minDate ({}) после конца семестра ({}). Практика ID={} не может быть размещена!",
-                        minDate, semesterEnd, practice.getCurriculumSlot().getId());
-                failedCount += chain.size();
+            // Ищем дату с приоритетом лекционных дат
+            LocalDate date = findDateWithPriority(chain, availableDates, lectureDates);
+            if (date == null) {
+                log.warn("Не найдена дата для практики: {}", current.getCurriculumSlot().getId());
+                index++;
                 continue;
             }
 
-            LocalDate targetDate;
-            int chainSize = chain.size();
-            boolean isChain = chainSize > 1;
-
-            // Получаем все доступные даты
-            List<LocalDate> allDates = CellForLessonFactory.getAllCells().stream()
-                    .map(CellForLesson::getDate)
-                    .distinct()
-                    .filter(d -> !d.isBefore(minDate))
-                    .filter(d -> !d.isAfter(semesterEnd))
-                    .sorted()
-                    .toList();
-
-            // Используем DateFinder для поиска даты
-            DateFinder dateFinder = DateFinderFactory.createFinder(educator, context);
-            targetDate = dateFinder.findDate(practice, minDate, allDates, educator, lectureDates, semesterEnd);
-
-            if (targetDate != null) {
-                placePracticeInDate(practice, educator, practices, targetDate);
-                placedCount += chainSize;
-                CellForLesson cell = context.getWorkspace().getCellForLesson(practice);
-                String themeNumber = practice.getCurriculumSlot().getThemeLesson() != null
-                        ? practice.getCurriculumSlot().getThemeLesson().getThemeNumber()
-                        : "N/A";
-                log.info("✓ {} размещена: {}/{} {} №-{} дата {},{} размер цепочки: {}",
-                        isChain ? "Цепочка" : "Практика",
-                        practice.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
-                        themeNumber,
-                        practice.getStudyStream().getGroups(),
-                        practice.getCurriculumSlot().getPosition(),
-                        targetDate,
-                        cell != null ? cell.getTimeSlotPair() : "NULL",
-                        chainSize);
+            // Размещаем цепочку
+            if (chainHandler.tryPlaceChain(chain, date)) {
+                placedCount += chain.size();
+                index += chain.size();
+                log.info("✓ Практика (цепочка из {}) размещена на {}", chain.size(), date);
             } else {
-                log.warn("✗ Не удалось найти дату для {} ID={}. Пробуем swap...",
-                        isChain ? "цепочки" : "практики",
-                        practice.getCurriculumSlot().getId());
-
-                if (!swapService.trySwap(practice, educator, practices, minDate, semesterEnd, lectureDates)) {
-                    log.error("CRITICAL: Не удалось разместить {}: {} | Группы: {} | minDate: {} | semesterEnd: {}",
-                            isChain ? "цепочку" : "практику",
-                            practice.getKindOfStudy(),
-                            practice.getStudyStream().getName(),
-                            minDate,
-                            semesterEnd);
-                    failedCount += chainSize;
-                } else {
-                    log.info("✓ {} размещена через swap: {}", isChain ? "Цепочка" : "Практика", practice.getCurriculumSlot().getId());
-                    placedCount += chainSize;
-                }
+                log.warn("✗ Не удалось разместить цепочку на {}", date);
+                index++;
             }
         }
 
-        log.info("=== РЕЗУЛЬТАТ для {}: " +
-                        "Всего практик={}, " +
-                        "Размещено сейчас={}, " +
-                        "Уже были размещены (пропущено)={}, " +
-                        "Не удалось разместить={} ===",
-                educator.getName(),
-                sortedPractices.size(),
-                placedCount,
-                skippedCount,
-                failedCount);
-    }
+        log.info("=== Результат практик для {}: размещено={}, пропущено={}, неразмещено={} ===",
+                educator.getName(), placedCount, skippedCount, practices.size() - placedCount - skippedCount);
 
-    /**
-     * Размещает практику в указанную дату.
-     */
-    private void placePracticeInDate(Lesson practice, Educator educator, List<Lesson> educatorLessons, LocalDate targetDate) {
-        List<Lesson> chain = chainHandler.getChainForLesson(practice, educatorLessons);
-
-        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(targetDate);
-        dayCells.sort(Comparator.comparing(CellForLesson::getTimeSlotPair));
-
-        if (chainHandler.tryPlaceChainInDay(chain, dayCells, false)) {
-            CellForLesson placedCell = context.getWorkspace().getCellForLesson(practice);
-            if (placedCell != null) {
-                log.info("DEBUG: практика размещена на слоте: {}", placedCell.getTimeSlotPair());
-            }
-        } else {
-            log.warn("Не удалось разместить цепочку в дату {}", targetDate);
+        // Лог неразмещённых
+        if (placedCount + skippedCount < practices.size()) {
+            logUnplacedPractices(educator, practices);
         }
     }
 
     /**
-     * Возвращает даты, в которые у преподавателя уже есть лекции.
+     * Ищет дату для размещения цепочки с приоритетом лекционных дат.
      */
-    private Set<LocalDate> getDatesWithLecturesForEducator(Educator educator) {
-        Set<LocalDate> dates = new HashSet<>();
-        for (Lesson lesson : context.getDistributedLessons()) {
-            if (lesson.getEducators().contains(educator) &&
-                    lesson.getKindOfStudy() == ru.enums.KindOfStudy.LECTURE) {
-
-                CellForLesson cell = context.getWorkspace().getCellForLesson(lesson);
-                if (cell != null) {
-                    dates.add(cell.getDate());
-                }
+    private LocalDate findDateWithPriority(List<Lesson> chain, List<LocalDate> availableDates, Set<LocalDate> priorityDates) {
+        // Сначала проверяем приоритетные даты (лекционные)
+        for (LocalDate date : availableDates) {
+            if (priorityDates.contains(date) && chainHandler.canPlaceChain(chain, date)) {
+                return date;
             }
         }
-        return dates;
+
+        // Если не нашли в приоритетных — ищем в любых доступных
+        for (LocalDate date : availableDates) {
+            if (chainHandler.canPlaceChain(chain, date)) {
+                return date;
+            }
+        }
+        return null;
     }
 
     /**
-     * Откатывает распределённые практики преподавателя.
+     * Получает список доступных дат для практик.
      */
-    public void rollbackPractices(Educator educator) {
-        List<Lesson> toRemove = new ArrayList<>();
-
-        for (Lesson lesson : context.getDistributedLessons()) {
-            if (lesson.getEducators().contains(educator) && lesson.getKindOfStudy() != ru.enums.KindOfStudy.LECTURE) {
-                context.getWorkspace().removePlacement(lesson);
-                toRemove.add(lesson);
-            }
+    private List<LocalDate> getAvailableDates(LocalDate semesterEnd, List<Lesson> practices) {
+        if (practices.isEmpty()) {
+            return List.of();
         }
 
-        for (Lesson lesson : toRemove) {
-            context.removeDistributedLesson(lesson);
+        Lesson prototype = practices.getFirst();
+        return CellForLessonFactory.getAllCells().stream()
+                .map(cell -> cell.getDate())
+                .distinct()
+                .filter(d -> !d.isAfter(semesterEnd))
+                .filter(d -> chainHandler.canPlaceSingle(prototype, d))
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * Логирует неразмещённые практики.
+     */
+    private void logUnplacedPractices(Educator educator, List<Lesson> practices) {
+        List<Lesson> unplaced = practices.stream()
+                .filter(l -> !context.isLessonDistributed(l))
+                .toList();
+
+        if (!unplaced.isEmpty()) {
+            log.warn("=== Неразпределённые практики для {} ===", educator.getName());
+            for (Lesson l : unplaced) {
+                String theme = l.getCurriculumSlot().getThemeLesson() != null
+                        ? l.getCurriculumSlot().getThemeLesson().getThemeNumber()
+                        : "N/A";
+                log.warn("  {}/{}, тема: {}, группы: {}",
+                        l.getKindOfStudy().getAbbreviationName(),
+                        l.getCurriculumSlot().getPosition(),
+                        theme,
+                        l.getStudyStream().getGroups());
+            }
         }
     }
 }

@@ -29,10 +29,9 @@ public class ScheduleGenerationService {
     private final DisciplineCourseService disciplineCourseService;
     private final ConstraintService constraintService;
     private final LessonFactory lessonFactory;
-    private final CurriculumSlotService curriculumSlotService;
-    private final SlotChainService slotChainService;
     private final LessonSortingService lessonSorterService;
     private final GeneticAlgorithmRunner geneticAlgorithmRunner;
+    private final DistributionDiscipline distributionDiscipline;
 
     /**
      * Основной метод, запускающий процесс генерации расписания для одного курса.
@@ -64,9 +63,7 @@ public class ScheduleGenerationService {
                 allConstraints
         );
         List<Lesson> sortedLessons = lessonSorterService.getSortedLessons(lessonsToPlace);
-        DistributionDiscipline discipline = new DistributionDiscipline(workspace, sortedLessons, allEducators,
-                slotChainService, curriculumSlotService, lessonSorterService);
-        discipline.distributeLessons();
+        distributionDiscipline.distribute(workspace, sortedLessons, allEducators);
 
 
 /*        // --- 3. ЗАПУСК АЛГОРИТМА ---
@@ -87,7 +84,7 @@ public class ScheduleGenerationService {
     @Transactional(readOnly = true)
     public ScheduleWorkspace generateForCourseList(List<Integer> courseIds) {
         // 1. Инициализация (берем период первого курса)
-        DisciplineCourse firstCourse = disciplineCourseService.getEntityById(courseIds.get(0));
+        DisciplineCourse firstCourse = disciplineCourseService.getEntityById(courseIds.getFirst());
         CellForLessonFactory.initializeCellCache(
                 firstCourse.getStudyPeriod().getStartDate(),
                 firstCourse.getStudyPeriod().getEndDate()
@@ -113,47 +110,8 @@ public class ScheduleGenerationService {
         }
 
         // 4. Запускаем распределение
-        DistributionDiscipline distributor = new DistributionDiscipline(
-                workspace,
-                allLessons,
-                educatorService.getAllEntities(),
-                slotChainService,
-                curriculumSlotService,
-                lessonSorterService
-        );
-        distributor.distributeLessons();
+        distributionDiscipline.distribute(workspace, allLessons, educatorService.getAllEntities());
 
         return workspace;
     }
-
-    /**
-     * Переносит данные из Генома в Workspace для экспорта.
-     * Обновляет и общую сетку, и состояние каждого ресурса.
-     */
-    private void applyGenomeToWorkspace(Genome genome, ScheduleWorkspace workspace) {
-        // workspace.getGrid().clear(); // Опционально
-
-        for (Gene gene : genome.getGenes()) {
-            if (gene.getAssignedSlot() != null) {
-                List<Lesson> lessons = gene.getLessons();
-                List<Auditorium> geneAuditoriums = gene.getAssignedAuditoriums();
-                CellForLesson slot = gene.getAssignedSlot();
-
-                for (int i = 0; i < lessons.size(); i++) {
-                    Lesson lesson = lessons.get(i);
-
-                    // Извлекаем аудиторию для конкретного урока из списка аудиторий гена
-                    List<Auditorium> lessonAuditoriums = new ArrayList<>();
-                    if (geneAuditoriums != null && i < geneAuditoriums.size()) {
-                        Auditorium aud = geneAuditoriums.get(i);
-                        if (aud != null) lessonAuditoriums.add(aud);
-                    }
-
-                    // ВЫЗЫВАЕМ АТОМАРНУЮ ОПЕРАЦИЮ
-                    workspace.forcePlacement(lesson, slot, lessonAuditoriums);
-                }
-            }
-        }
-    }
-
 }

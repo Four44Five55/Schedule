@@ -1,10 +1,11 @@
 package ru.services.distribution;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 import ru.entity.Educator;
 import ru.entity.Lesson;
 import ru.services.CurriculumSlotService;
-import ru.services.LessonSortingService;
 import ru.services.SlotChainService;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -14,39 +15,61 @@ import java.util.List;
 
 /**
  * Оркестратор двухфазного распределения занятий.
- * После рефакторинга делегирует всю работу специализированным компонентам.
+ * Spring-сервис с динамическим созданием обработчиков.
  */
 @Slf4j
+@Service
 public class DistributionDiscipline {
-    private final DistributionContext context;
-    private final LectureDistributionHandler lectureHandler;
-    private final PracticeDistributionHandler practiceHandler;
-    private final LessonSortingService lessonSortingService;
+    private final EducatorPrioritizer educatorPrioritizer;
+    private final SlotChainService slotChainService;
+    private final CurriculumSlotService curriculumSlotService;
+
+    private DistributionContext context;
+    private LectureDistributionHandler lectureHandler;
+    private PracticeDistributionHandler practiceHandler;
 
     /**
-     * Создаёт оркестратор распределения с необходимыми зависимостями.
+     * Конструктор для Spring DI.
      */
-    public DistributionDiscipline(ScheduleWorkspace workspace,
-                                  List<Lesson> lessons,
-                                  List<Educator> educators,
+    @Autowired
+    public DistributionDiscipline(EducatorPrioritizer educatorPrioritizer,
                                   SlotChainService slotChainService,
-                                  CurriculumSlotService curriculumSlotService,
-                                  LessonSortingService lessonSortingService) {
-        this.lessonSortingService = lessonSortingService;
+                                  CurriculumSlotService curriculumSlotService) {
+        this.educatorPrioritizer = educatorPrioritizer;
+        this.slotChainService = slotChainService;
+        this.curriculumSlotService = curriculumSlotService;
+    }
 
+    /**
+     * Инициализирует оркестратор с необходимыми параметрами.
+     */
+    private void initialize(ScheduleWorkspace workspace,
+                            List<Lesson> lessons,
+                            List<Educator> educators) {
         // Создаём контекст распределения
         this.context = DistributionContext.of(workspace, lessons, educators);
 
+        // Сортируем преподавателей по приоритету и обновляем контекст
+        List<Educator> sortedEducators = educatorPrioritizer.sortByPriority(educators, lessons);
+        this.context.setEducators(sortedEducators);
+
         // Создаём компоненты
-        EducatorPrioritizer prioritizer = new EducatorPrioritizer(lessonSortingService);
         LessonPlacementService placementService = new LessonPlacementService(workspace, context);
         ChainPlacementHandler chainHandler = new ChainPlacementHandler(slotChainService, context);
-        PracticeSwapService swapService = new PracticeSwapService(context, slotChainService, chainHandler);
 
         // Создаём обработчики фаз
-        this.lectureHandler = new LectureDistributionHandler(context, prioritizer, placementService, chainHandler);
-        this.practiceHandler = new PracticeDistributionHandler(context, lessonSortingService,
-                slotChainService, placementService, chainHandler, swapService);
+        this.lectureHandler = new LectureDistributionHandler(context, placementService);
+        this.practiceHandler = new PracticeDistributionHandler(context, placementService, chainHandler);
+    }
+
+    /**
+     * Factory-метод для создания и запуска распределения.
+     */
+    public void distribute(ScheduleWorkspace workspace,
+                           List<Lesson> lessons,
+                           List<Educator> educators) {
+        initialize(workspace, lessons, educators);
+        distributeLessons();
     }
 
     /**
@@ -73,9 +96,18 @@ public class DistributionDiscipline {
         context.setLessons(regularLessons);
         LocalDate semesterEnd = LocalDate.of(2026, 8, 16);
 
+        log.info("=== НАЧАЛО Распределения. Всего занятий: {} ===", regularLessons.size());
+
+
         // 3. Двухфазное распределение
+        log.info("=== ФАЗА 1: Распределение лекций ===");
         lectureHandler.distributeLectures(semesterEnd);
+
+        log.info("=== ФАЗА 2: Распределение практик ===");
         practiceHandler.distributePractices(semesterEnd);
+
+        // 4. Итоги
+        logResults();
     }
 
     /**
@@ -83,7 +115,39 @@ public class DistributionDiscipline {
      * Используется для обратной совместимости.
      */
     public void distributeLessonsForEducator(Educator educator, List<Lesson> educatorLessons, LocalDate semesterEnd) {
-        lectureHandler.distributeLecturesForEducator(educator, semesterEnd);
+        lectureHandler.distributeForEducator(educator, semesterEnd);
+        practiceHandler.distributeForEducator(educator, semesterEnd);
+    }
+
+    /**
+     * Выводит итоги распределения.
+     */
+    private void logResults() {
+        int total = context.getLessons().size();
+        int placed = context.getDistributedLessons().size();
+        int unplaced = total - placed;
+
+        log.info("=== ИТОГИ Распределения ===");
+        log.info("Всего занятий: {}", total);
+        log.info("Размещено: {}", placed);
+        log.info("Не размещено: {}", unplaced);
+
+        if (unplaced > 0) {
+            log.warn("=== НЕРАЗМЕЩЁННЫЕ занятия ===");
+            for (Lesson lesson : context.getLessons()) {
+                if (!context.isLessonDistributed(lesson)) {
+                    String theme = lesson.getCurriculumSlot().getThemeLesson() != null
+                            ? lesson.getCurriculumSlot().getThemeLesson().getThemeNumber()
+                            : "N/A";
+                    log.warn("  {}/{}, тема: {}, преподаватель: {}, группы: {}",
+                            lesson.getKindOfStudy().getAbbreviationName(),
+                            lesson.getCurriculumSlot().getPosition(),
+                            theme,
+                            lesson.getEducators(),
+                            lesson.getStudyStream().getGroups());
+                }
+            }
+        }
     }
 
     // ========== Getters для обратной совместимости ==========
