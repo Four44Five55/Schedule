@@ -1,13 +1,13 @@
 package ru.services.distribution;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
-import ru.services.factories.CellForLessonFactory;
+import ru.services.LessonSortingService;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Обрабатывает фазу 1 — распределение лекций.
@@ -16,11 +16,16 @@ import java.util.List;
 public class LectureDistributionHandler {
     private final DistributionContext context;
     private final LessonPlacementService placement;
+    private final LessonSortingService lessonSortingService;
+    private final LessonDateFinder dateFinder;
 
     public LectureDistributionHandler(DistributionContext context,
-                                      LessonPlacementService placement) {
+                                      LessonPlacementService placement,
+                                      LessonSortingService sorting) {
         this.context = context;
         this.placement = placement;
+        this.lessonSortingService = sorting;
+        this.dateFinder = new LessonDateFinder(context, placement);
     }
 
     /**
@@ -40,19 +45,23 @@ public class LectureDistributionHandler {
     public void distributeForEducator(Educator educator, LocalDate semesterEnd) {
         log.info("=== Распределение для преподавателя: {} ===", educator.getName());
 
-        List<Lesson> lessons = placement.getLessonsForEducator(educator);
+        List<Lesson> tempLessons = placement.getLessonsForEducator(educator);
+        List<Lesson> lessons = lessonSortingService.getSortedLessons(tempLessons);
+
         if (lessons.isEmpty()) {
             log.info("Нет занятий для распределения");
             return;
         }
 
-        List<LocalDate> availableDates = getAvailableDates(semesterEnd, lessons);
+        List<LocalDate> availableDates = dateFinder.getAvailableDates(lessons, semesterEnd);
         if (availableDates.isEmpty()) {
             log.error("Нет доступных дат для {}", educator.getName());
             return;
         }
 
-        log.info("Доступных дней: {}, занятий: {}", availableDates.size(), lessons.size());
+        Map<Lesson, LocalDate> lessonToDateMap = dateFinder.calculatePotentialDates(lessons, availableDates);
+        log.info("Доступных дней: {}, занятий: {}, назначено дат: {}",
+                availableDates.size(), lessons.size(), lessonToDateMap.size());
 
         int placedCount = 0;
         int alreadyPlacedCount = 0;
@@ -65,11 +74,11 @@ public class LectureDistributionHandler {
                 continue;
             }
 
-            // Ищем дату для занятия
-            LocalDate date = findDateForLesson(lesson, availableDates);
+            // Получаем дату из мапа
+            LocalDate date = lessonToDateMap.get(lesson);
             if (date == null) {
                 notPlacedCount++;
-                log.warn("✗ Не найдена дата для: {}/{}",
+                log.warn("✗ Не назначена дата для: {}/{}",
                         lesson.getDisciplineCourse().getDiscipline().getAbbreviation(),
                         lesson.getCurriculumSlot().getThemeLesson().getThemeNumber());
                 continue;
@@ -79,15 +88,17 @@ public class LectureDistributionHandler {
             if (placement.place(lesson, date)) {
                 placedCount++;
                 context.addDistributedLesson(lesson);
-                log.info("  {}/{}, тема: {}, преподаватель: {}, группы: {}",
+                log.info("  ✓ {}/{}, тема: {}, дата: {}",
                         lesson.getKindOfStudy().getAbbreviationName(),
                         lesson.getCurriculumSlot().getPosition(),
                         lesson.getCurriculumSlot().getThemeLesson().getThemeNumber(),
-                        lesson.getEducators(),
-                        lesson.getStudyStream().getGroups());
+                        date);
             } else {
                 notPlacedCount++;
-                log.warn("✗ Не удалось разместить занятие на {}", date);
+                log.warn("✗ Не удалось разместить {}/{} на {}",
+                        lesson.getKindOfStudy().getAbbreviationName(),
+                        lesson.getCurriculumSlot().getPosition(),
+                        date);
             }
         }
 
@@ -98,42 +109,6 @@ public class LectureDistributionHandler {
         if (placedCount + alreadyPlacedCount < lessons.size()) {
             logUnplacedLessons(educator, lessons);
         }
-    }
-
-    /**
-     * Ищет дату для размещения занятия.
-     */
-    private LocalDate findDateForLesson(Lesson lesson, List<LocalDate> dates) {
-        // Сначала проверяем первую дату в списке
-        if (!dates.isEmpty() && placement.canPlace(lesson, dates.getFirst())) {
-            return dates.getFirst();
-        }
-
-        // Ищем любую доступную дату
-        for (LocalDate date : dates) {
-            if (placement.canPlace(lesson, date)) {
-                return date;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Получает список доступных дат для занятий.
-     */
-    private List<LocalDate> getAvailableDates(LocalDate semesterEnd, List<Lesson> lessons) {
-        if (lessons.isEmpty()) {
-            return List.of();
-        }
-
-        Lesson prototype = lessons.getFirst();
-        return CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
-                .filter(d -> !d.isAfter(semesterEnd))
-                .filter(d -> placement.canPlace(prototype, d))
-                .sorted()
-                .toList();
     }
 
     /**

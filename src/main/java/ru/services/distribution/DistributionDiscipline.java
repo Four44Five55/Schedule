@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import ru.entity.Educator;
 import ru.entity.Lesson;
 import ru.services.CurriculumSlotService;
+import ru.services.LessonSortingService;
 import ru.services.SlotChainService;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -22,6 +23,7 @@ import java.util.List;
 public class DistributionDiscipline {
     private final EducatorPrioritizer educatorPrioritizer;
     private final SlotChainService slotChainService;
+    private final LessonSortingService lessonSortingService;
     private final CurriculumSlotService curriculumSlotService;
 
     private DistributionContext context;
@@ -33,10 +35,11 @@ public class DistributionDiscipline {
      */
     @Autowired
     public DistributionDiscipline(EducatorPrioritizer educatorPrioritizer,
-                                  SlotChainService slotChainService,
+                                  SlotChainService slotChainService, LessonSortingService lessonSortingService,
                                   CurriculumSlotService curriculumSlotService) {
         this.educatorPrioritizer = educatorPrioritizer;
         this.slotChainService = slotChainService;
+        this.lessonSortingService = lessonSortingService;
         this.curriculumSlotService = curriculumSlotService;
     }
 
@@ -58,7 +61,7 @@ public class DistributionDiscipline {
         ChainPlacementHandler chainHandler = new ChainPlacementHandler(slotChainService, context);
 
         // Создаём обработчики фаз
-        this.lectureHandler = new LectureDistributionHandler(context, placementService);
+        this.lectureHandler = new LectureDistributionHandler(context, placementService, lessonSortingService);
         this.practiceHandler = new PracticeDistributionHandler(context, placementService, chainHandler);
     }
 
@@ -97,7 +100,6 @@ public class DistributionDiscipline {
         LocalDate semesterEnd = LocalDate.of(2026, 8, 16);
 
         log.info("=== НАЧАЛО Распределения. Всего занятий: {} ===", regularLessons.size());
-
 
         // 3. Двухфазное распределение
         log.info("=== ФАЗА 1: Распределение лекций ===");

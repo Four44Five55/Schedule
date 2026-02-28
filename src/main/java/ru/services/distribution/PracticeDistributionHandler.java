@@ -3,7 +3,6 @@ package ru.services.distribution;
 import lombok.extern.slf4j.Slf4j;
 import ru.entity.Educator;
 import ru.entity.Lesson;
-import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -11,13 +10,13 @@ import java.util.Set;
 
 /**
  * Обрабатывает фазу 2 — распределение практик.
- * Упрощённая версия с прямой логикой размещения.
  */
 @Slf4j
 public class PracticeDistributionHandler {
     private final DistributionContext context;
     private final LessonPlacementService placement;
     private final ChainPlacementHandler chainHandler;
+    private final LessonDateFinder dateFinder;
 
     public PracticeDistributionHandler(DistributionContext context,
                                        LessonPlacementService placement,
@@ -25,6 +24,7 @@ public class PracticeDistributionHandler {
         this.context = context;
         this.placement = placement;
         this.chainHandler = chainHandler;
+        this.dateFinder = new LessonDateFinder(context, placement);
     }
 
     /**
@@ -50,7 +50,7 @@ public class PracticeDistributionHandler {
             return;
         }
 
-        List<LocalDate> availableDates = getAvailableDates(semesterEnd, practices);
+        List<LocalDate> availableDates = dateFinder.getAvailableDates(practices, semesterEnd);
         if (availableDates.isEmpty()) {
             log.error("Нет доступных дат для практик {}", educator.getName());
             return;
@@ -131,24 +131,6 @@ public class PracticeDistributionHandler {
             }
         }
         return null;
-    }
-
-    /**
-     * Получает список доступных дат для практик.
-     */
-    private List<LocalDate> getAvailableDates(LocalDate semesterEnd, List<Lesson> practices) {
-        if (practices.isEmpty()) {
-            return List.of();
-        }
-
-        Lesson prototype = practices.getFirst();
-        return CellForLessonFactory.getAllCells().stream()
-                .map(cell -> cell.getDate())
-                .distinct()
-                .filter(d -> !d.isAfter(semesterEnd))
-                .filter(d -> chainHandler.canPlaceSingle(prototype, d))
-                .sorted()
-                .toList();
     }
 
     /**

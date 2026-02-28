@@ -116,8 +116,6 @@ public class LessonSortingService {
         //return changeOrderLessons(chainSortedLessons);
         return chainSortedLessons;
     }
-    /**
-     * */
 
     /**
      * Группирует занятия, связанные через SlotChain, вместе.
@@ -169,7 +167,7 @@ public class LessonSortingService {
 
 
     // =======================================================================
-    // СТАТИЧЕСКИЕ НЕЗАВИСИМЫЕ МЕТОДЫ (просто скопированы)
+    // СТАТИЧЕСКИЕ НЕЗАВИСИМЫЕ МЕТОДЫ
     // =======================================================================
 
     public int getLectureFrequency(List<Lesson> lessons) {
