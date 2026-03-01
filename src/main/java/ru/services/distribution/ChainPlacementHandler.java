@@ -49,7 +49,7 @@ public class ChainPlacementHandler {
                 .sorted(Comparator.comparingInt(l -> l.getCurriculumSlot().getPosition()))
                 .collect(Collectors.toList());
 
-        if (!chain.isEmpty() && !chain.get(0).equals(startLesson)) {
+        if (!chain.isEmpty() && !chain.getFirst().equals(startLesson)) {
             return Collections.singletonList(startLesson);
         }
 
@@ -62,7 +62,7 @@ public class ChainPlacementHandler {
     public boolean tryPlaceChain(List<Lesson> chain, LocalDate date) {
         if (chain.isEmpty()) return true;
         if (chain.size() == 1) {
-            return tryPlaceSingle(chain.get(0), date);
+            return tryPlaceSingle(chain.getFirst(), date);
         }
 
         List<CellForLesson> dayCells = getDayCells(date);
@@ -109,7 +109,7 @@ public class ChainPlacementHandler {
     public boolean canPlaceChain(List<Lesson> chain, LocalDate date) {
         if (chain.isEmpty()) return true;
         if (chain.size() == 1) {
-            return canPlaceSingle(chain.get(0), date);
+            return canPlaceSingle(chain.getFirst(), date);
         }
 
         List<CellForLesson> dayCells = getDayCells(date);

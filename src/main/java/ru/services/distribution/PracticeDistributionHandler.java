@@ -79,7 +79,7 @@ public class PracticeDistributionHandler {
             List<Lesson> chain = chainHandler.getChainForLesson(current, practices);
 
             // Пропускаем если не первое в цепочке
-            if (chain.size() > 1 && !chain.get(0).equals(current)) {
+            if (chain.size() > 1 && !chain.getFirst().equals(current)) {
                 skippedCount++;
                 index++;
                 continue;
