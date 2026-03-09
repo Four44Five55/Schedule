@@ -62,7 +62,8 @@ public class DistributionDiscipline {
 
         // Создаём обработчики фаз
         this.lectureHandler = new LectureDistributionHandler(context, placementService, lessonSortingService);
-        this.practiceHandler = new PracticeDistributionHandler(context, placementService, chainHandler);
+        this.practiceHandler = new PracticeDistributionHandler(
+                context, placementService, chainHandler, lessonSortingService);
     }
 
     /**

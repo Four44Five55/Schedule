@@ -4,12 +4,15 @@ import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
+import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -103,6 +106,54 @@ public class LessonPlacementService {
     }
 
     /**
+     * Определяет итоговые skipPairs для конкретной даты.
+     * Если в этот день уже размещена лекция для участников занятия —
+     * добавляет FIRST в skipPairs (1-я пара запрещена).
+     * После фазы 1 все лекции уже размещены, поэтому проверка корректна.
+     *
+     * @param lesson        занятие для размещения
+     * @param date          целевая дата
+     * @param baseSkipPairs базовые ограничения из стратегии
+     * @return итоговые skipPairs с учётом наличия лекции в этот день
+     */
+    public Set<TimeSlotPair> resolveSkipPairs(Lesson lesson,
+                                              LocalDate date,
+                                              Set<TimeSlotPair> baseSkipPairs) {
+        if (hasLectureOnDate(lesson, date)) {
+            Set<TimeSlotPair> result = new HashSet<>(baseSkipPairs);
+            result.add(TimeSlotPair.FIRST);
+            return Collections.unmodifiableSet(result);
+        }
+        return baseSkipPairs;
+    }
+
+    /**
+     * Проверяет, есть ли лекция в указанный день у участников занятия.
+     */
+    private boolean hasLectureOnDate(Lesson lesson, LocalDate date) {
+        return context.getDistributedLessons().stream()
+                .filter(l -> l.getKindOfStudy() == KindOfStudy.LECTURE)
+                .filter(l -> {
+                    CellForLesson cell = context.getWorkspace().getCellForLesson(l);
+                    return cell != null && cell.getDate().equals(date);
+                })
+                .anyMatch(l -> sharesParticipants(l, lesson));
+    }
+
+    /**
+     * Проверяет пересечение участников двух занятий.
+     */
+    private boolean sharesParticipants(Lesson a, Lesson b) {
+        boolean sharedEducator = a.getEducators().stream()
+                .anyMatch(e -> b.getEducators().contains(e));
+        if (sharedEducator) return true;
+
+        if (a.getStudyStream() == null || b.getStudyStream() == null) return false;
+        return a.getStudyStream().getGroups().stream()
+                .anyMatch(g -> b.getStudyStream().getGroups().contains(g));
+    }
+
+    /**
      * Размещает занятие в первую доступную ячейку указанной даты.
      */
     public boolean placeInDay(Lesson lesson, LocalDate date) {
@@ -190,6 +241,7 @@ public class LessonPlacementService {
 
     /**
      * Получает даты уже размещённых лекций преподавателя.
+     *
      * @deprecated Используйте {@link #getOccupiedDates(Educator)} для учёта всех занятий
      */
     @Deprecated

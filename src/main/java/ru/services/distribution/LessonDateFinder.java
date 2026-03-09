@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
 import ru.enums.KindOfStudy;
+import ru.enums.TimeSlotPair;
 import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
@@ -17,7 +18,9 @@ import java.util.*;
 @Slf4j
 @RequiredArgsConstructor
 public class LessonDateFinder {
-    /** Запас дней от конца диапазона для резервных дат */
+    /**
+     * Запас дней от конца диапазона для резервных дат
+     */
     private static final int DAYS_END_BUFFER = 4;
 
     private final DistributionContext context;
@@ -245,7 +248,37 @@ public class LessonDateFinder {
         return lesson.getKindOfStudy() == KindOfStudy.LECTURE;
     }
 
-    // === Остальные методы (не менялись) ===
+    /**
+     * Получает доступные даты с явным набором skipPairs.
+     * Используется стратегией для анализа и размещения.
+     */
+    public List<LocalDate> getAvailableDates(Lesson lesson,
+                                             LocalDate semesterEnd,
+                                             Set<TimeSlotPair> skipPairs) {
+        return CellForLessonFactory.getAllCells().stream()
+                .map(CellForLesson::getDate)
+                .distinct()
+                .filter(d -> !d.isAfter(semesterEnd))
+                .filter(d -> placement.canPlace(lesson, d, skipPairs))
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * Считает количество уникальных дней когда хотя бы одно занятие
+     * из списка может быть размещено с указанными ограничениями.
+     * Используется селектором стратегии.
+     */
+    public int countAvailableDays(List<Lesson> practices,
+                                  LocalDate semesterEnd,
+                                  Set<TimeSlotPair> skipPairs) {
+        if (practices.isEmpty()) return 0;
+
+        // Берём первое занятие как репрезентативное —
+        // у всех практик одного преподавателя ограничения схожи
+        Lesson representative = practices.getFirst();
+        return getAvailableDates(representative, semesterEnd, skipPairs).size();
+    }
 
     public List<LocalDate> filterAvailableDates(Lesson lesson, List<LocalDate> dates) {
         return dates.stream()

@@ -34,10 +34,10 @@ public class LectureDistributionHandler {
      */
     public void distributeLectures(LocalDate semesterEnd) {
         for (Educator educator : context.getEducators()) {
-            if (educator.getId() == 304) {
+/*            if (educator.getId() == 304) {
                 distributeForEducator(educator, semesterEnd);
-            }
-            /*distributeForEducator(educator, semesterEnd);*/
+            }*/
+            distributeForEducator(educator, semesterEnd);
         }
     }
 
