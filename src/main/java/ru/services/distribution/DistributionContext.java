@@ -5,9 +5,12 @@ import ru.entity.Educator;
 import ru.entity.Lesson;
 import ru.services.solver.ScheduleWorkspace;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -22,6 +25,9 @@ public class DistributionContext {
     private final List<Lesson> distributedLessons;
     private final Set<Lesson> distributedLessonsSet;
 
+    // Маппинг занятия → целевая дата (рассчитывается в фазе 1 для равномерности)
+    private Map<Lesson, LocalDate> lessonToDateMap;
+
     private DistributionContext(ScheduleWorkspace workspace,
                                 List<Lesson> lessons,
                                 List<Educator> educators) {
@@ -30,6 +36,7 @@ public class DistributionContext {
         this.educators = new ArrayList<>(educators);
         this.distributedLessons = new ArrayList<>();
         this.distributedLessonsSet = new HashSet<>();
+        this.lessonToDateMap = new HashMap<>();
     }
 
     /**
@@ -76,5 +83,28 @@ public class DistributionContext {
      */
     public boolean isLessonDistributed(Lesson lesson) {
         return distributedLessonsSet.contains(lesson);
+    }
+
+    /**
+     * Сохраняет маппинг занятий на даты (рассчитанный в фазе 1).
+     */
+    public void mergeIntoLessonToDateMap(Map<Lesson, LocalDate> map) {
+        if (map != null) {
+            this.lessonToDateMap.putAll(map);
+        }
+    }
+
+    /**
+     * Получает назначенную дату для занятия.
+     */
+    public LocalDate getDateForLesson(Lesson lesson) {
+        return lessonToDateMap.get(lesson);
+    }
+
+    /**
+     * Проверяет, что для занятия назначена дата.
+     */
+    public boolean hasDateForLesson(Lesson lesson) {
+        return lessonToDateMap.containsKey(lesson);
     }
 }

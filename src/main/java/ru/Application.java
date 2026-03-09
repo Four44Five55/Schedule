@@ -27,7 +27,7 @@ public class Application {
                                                AuditoriumService auditoriumService) {
         return args -> {
             System.out.println("Запускаем генерацию расписания...");
-            List<Integer> courses = List.of(704, 705, 701, 702,707, 703, 706, 708,  709, 710);
+            List<Integer> courses = List.of(704, 705, 701, 702, 707, 703, 706, 708, 709, 710);
 
             ScheduleWorkspace generatedWorkspace = generationService.generateForCourseList(courses);
             System.out.println("Генерация расписания завершена.");

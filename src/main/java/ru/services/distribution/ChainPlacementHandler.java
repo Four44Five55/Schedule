@@ -3,6 +3,7 @@ package ru.services.distribution;
 import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
+import ru.enums.TimeSlotPair;
 import ru.services.SlotChainService;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
@@ -12,21 +13,27 @@ import java.time.LocalDate;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import static ru.services.distribution.LessonPlacementService.shouldSkipCell;
 
 /**
  * Обрабатывает размещение цепочек занятий.
- * Упрощённая версия с сохранением логики работы с цепочками.
  */
 @Slf4j
 public class ChainPlacementHandler {
     private final SlotChainService slotChainService;
     private final DistributionContext context;
     private final ScheduleWorkspace workspace;
+    private final LessonPlacementService placement;
 
-    public ChainPlacementHandler(SlotChainService slotChainService, DistributionContext context) {
+    public ChainPlacementHandler(SlotChainService slotChainService,
+                                  DistributionContext context,
+                                  LessonPlacementService placement) {
         this.slotChainService = slotChainService;
         this.context = context;
+        this.placement = placement;
         this.workspace = context.getWorkspace();
     }
 
@@ -60,19 +67,26 @@ public class ChainPlacementHandler {
      * Пытается разместить цепочку занятий в указанную дату.
      */
     public boolean tryPlaceChain(List<Lesson> chain, LocalDate date) {
+        return tryPlaceChain(chain, date, LessonPlacementService.DEFAULT_SKIP);
+    }
+
+    /**
+     * Пытается разместить цепочку занятий в указанную дату с ограничениями по парам.
+     */
+    public boolean tryPlaceChain(List<Lesson> chain, LocalDate date, Set<TimeSlotPair> skipPairs) {
         if (chain.isEmpty()) return true;
         if (chain.size() == 1) {
-            return tryPlaceSingle(chain.getFirst(), date);
+            return placement.place(chain.getFirst(), date, skipPairs);
         }
 
-        List<CellForLesson> dayCells = getDayCells(date);
+        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
         dayCells.sort(Comparator.comparing(CellForLesson::getTimeSlotPair));
 
         int chainSize = chain.size();
 
         // Скользящее окно: ищем место для всей цепочки
         for (int i = 0; i <= dayCells.size() - chainSize; i++) {
-            if (canPlaceChainAt(chain, dayCells, i)) {
+            if (canPlaceChainAt(chain, dayCells, i, skipPairs)) {
                 placeChainAt(chain, dayCells, i);
                 log.debug("Цепочка из {} занятий размещена на {}", chainSize, date);
                 return true;
@@ -84,57 +98,27 @@ public class ChainPlacementHandler {
     }
 
     /**
-     * Размещение одиночного занятия (не цепочки).
-     */
-    public boolean tryPlaceSingle(Lesson lesson, LocalDate date) {
-        List<CellForLesson> dayCells = getDayCells(date);
-
-        for (CellForLesson cell : dayCells) {
-            if (shouldSkipCell(cell)) continue;
-
-            PlacementOption option = workspace.findPlacementOption(lesson, cell);
-            if (option.isPossible()) {
-                workspace.executePlacement(option);
-                context.addDistributedLesson(lesson);
-                log.debug("Занятие размещено: {} на {}", lesson.getCurriculumSlot().getId(), date);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Проверяет, можно ли разместить цепочку в указанный день.
      */
     public boolean canPlaceChain(List<Lesson> chain, LocalDate date) {
+        return canPlaceChain(chain, date, LessonPlacementService.DEFAULT_SKIP);
+    }
+
+    /**
+     * Проверяет, можно ли разместить цепочку в указанный день с ограничениями по парам.
+     */
+    public boolean canPlaceChain(List<Lesson> chain, LocalDate date, Set<TimeSlotPair> skipPairs) {
         if (chain.isEmpty()) return true;
         if (chain.size() == 1) {
-            return canPlaceSingle(chain.getFirst(), date);
+            return placement.canPlace(chain.getFirst(), date, skipPairs);
         }
 
-        List<CellForLesson> dayCells = getDayCells(date);
+        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
         dayCells.sort(Comparator.comparing(CellForLesson::getTimeSlotPair));
 
         int chainSize = chain.size();
         for (int i = 0; i <= dayCells.size() - chainSize; i++) {
-            if (canPlaceChainAt(chain, dayCells, i)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Проверяет, можно ли разместить одиночное занятие в указанный день.
-     */
-    public boolean canPlaceSingle(Lesson lesson, LocalDate date) {
-        List<CellForLesson> dayCells = getDayCells(date);
-
-        for (CellForLesson cell : dayCells) {
-            if (shouldSkipCell(cell)) continue;
-
-            PlacementOption option = workspace.findPlacementOption(lesson, cell);
-            if (option.isPossible()) {
+            if (canPlaceChainAt(chain, dayCells, i, skipPairs)) {
                 return true;
             }
         }
@@ -143,15 +127,7 @@ public class ChainPlacementHandler {
 
     // ========== Приватные методы ==========
 
-    private List<CellForLesson> getDayCells(LocalDate date) {
-        return CellForLessonFactory.getCellsForDate(date);
-    }
-
-    private boolean shouldSkipCell(CellForLesson cell) {
-        return cell.getTimeSlotPair() == ru.enums.TimeSlotPair.FOURTH;
-    }
-
-    private boolean canPlaceChainAt(List<Lesson> chain, List<CellForLesson> cells, int offset) {
+    private boolean canPlaceChainAt(List<Lesson> chain, List<CellForLesson> cells, int offset, Set<TimeSlotPair> skipPairs) {
         for (int j = 0; j < chain.size(); j++) {
             Lesson lesson = chain.get(j);
             CellForLesson cell = cells.get(offset + j);
@@ -165,8 +141,8 @@ public class ChainPlacementHandler {
                 }
             }
 
-            // Пропуск 4-й пары
-            if (shouldSkipCell(cell)) {
+            // Пропуск запрещённых пар
+            if (shouldSkipCell(cell, skipPairs)) {
                 return false;
             }
 

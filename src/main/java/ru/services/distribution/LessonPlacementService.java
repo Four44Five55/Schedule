@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Lesson;
+import ru.enums.TimeSlotPair;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
@@ -31,10 +32,21 @@ public class LessonPlacementService {
      * Проверяет, можно ли разместить занятие в указанную дату.
      */
     public boolean canPlace(Lesson lesson, LocalDate date) {
+        return canPlace(lesson, date, DEFAULT_SKIP);
+    }
+
+    /**
+     * Проверяет, можно ли разместить занятие в указанную дату с ограничениями по парам.
+     *
+     * @param lesson    занятие
+     * @param date      дата
+     * @param skipPairs пары, которые нужно пропустить
+     */
+    public boolean canPlace(Lesson lesson, LocalDate date, Set<TimeSlotPair> skipPairs) {
         List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
 
         for (CellForLesson cell : dayCells) {
-            if (shouldSkipCell(cell)) continue;
+            if (shouldSkipCell(cell, skipPairs)) continue;
 
             PlacementOption option = workspace.findPlacementOption(lesson, cell);
             if (option.isPossible()) {
@@ -46,24 +58,47 @@ public class LessonPlacementService {
 
     /**
      * Размещает занятие в указанную дату.
+     *
      * @return true если размещение успешно
      */
     public boolean place(Lesson lesson, LocalDate date) {
+        return place(lesson, date, DEFAULT_SKIP);
+    }
+
+    /**
+     * Размещает занятие в указанную дату с ограничениями по парам.
+     *
+     * @param lesson    занятие
+     * @param date      дата
+     * @param skipPairs пары, которые нужно пропустить
+     * @return true если размещение успешно
+     */
+    public boolean place(Lesson lesson, LocalDate date, Set<TimeSlotPair> skipPairs) {
         List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
 
         for (CellForLesson cell : dayCells) {
-            if (shouldSkipCell(cell)) continue;
+            if (shouldSkipCell(cell, skipPairs)) continue;
 
             PlacementOption option = workspace.findPlacementOption(lesson, cell);
             if (option.isPossible()) {
                 workspace.executePlacement(option);
                 context.addDistributedLesson(lesson);
-                log.info("Размещено: {} на {}", lesson.getCurriculumSlot().getId(), date);
+/*
+                String theme = lesson.getCurriculumSlot().getThemeLesson() == null ? "N/A" : lesson.getCurriculumSlot().getThemeLesson().getThemeNumber();
+                log.info("✓ {} - {}/{}  размещено на {}", lesson.getDisciplineCourse().getDiscipline().getAbbreviation(),
+                        lesson.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
+                        theme,
+                        date);
+*/
+
                 return true;
             }
         }
-
-        log.warn("Не удалось разместить: {} на {}", lesson.getCurriculumSlot().getId(), date);
+/*        String theme = lesson.getCurriculumSlot().getThemeLesson() == null ? "N/A" : lesson.getCurriculumSlot().getThemeLesson().getThemeNumber();
+        log.warn("✗ {} - {}/{}  НЕ размещено на {}", lesson.getDisciplineCourse().getDiscipline().getAbbreviation(),
+                lesson.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
+                theme,
+                date);*/
         return false;
     }
 
@@ -86,11 +121,42 @@ public class LessonPlacementService {
         return null;
     }
 
+    // ========== Константы ограничений ==========
+
+    /**
+     * Стандартное ограничение: пропускаем только 4-ю пару.
+     */
+    public static final Set<TimeSlotPair> DEFAULT_SKIP = Set.of(TimeSlotPair.FOURTH);
+
+    /**
+     * Ограничение для практик: пропускаем 1-ю и 4-ю пары.
+     */
+    public static final Set<TimeSlotPair> PRACTICE_SKIP = Set.of(TimeSlotPair.FIRST, TimeSlotPair.FOURTH);
+
+    /**
+     * Ограничение для лекций: пропускаем только 4-ю пару.
+     */
+    public static final Set<TimeSlotPair> LECTURE_SKIP = Set.of(TimeSlotPair.FOURTH);
+
+    /**
+     * Проверяет, следует ли пропустить ячейку на основе ограничений.
+     *
+     * @param cell      ячейка для проверки
+     * @param skipPairs набор пар, которые нужно пропустить
+     * @return true если ячейку нужно пропустить
+     */
+    public static boolean shouldSkipCell(CellForLesson cell, Set<TimeSlotPair> skipPairs) {
+        return skipPairs.contains(cell.getTimeSlotPair());
+    }
+
     /**
      * Проверяет, следует ли пропустить ячейку (4-я пара).
+     *
+     * @deprecated Используйте {@link #shouldSkipCell(CellForLesson, Set)}
      */
+    @Deprecated
     private boolean shouldSkipCell(CellForLesson cell) {
-        return cell.getTimeSlotPair() == ru.enums.TimeSlotPair.FOURTH;
+        return shouldSkipCell(cell, DEFAULT_SKIP);
     }
 
     /**
@@ -124,11 +190,30 @@ public class LessonPlacementService {
 
     /**
      * Получает даты уже размещённых лекций преподавателя.
+     * @deprecated Используйте {@link #getOccupiedDates(Educator)} для учёта всех занятий
      */
+    @Deprecated
     public Set<LocalDate> getLectureDates(Educator educator) {
         return context.getDistributedLessons().stream()
                 .filter(l -> l.getEducators().contains(educator))
                 .filter(l -> l.getKindOfStudy() == ru.enums.KindOfStudy.LECTURE)
+                .map(l -> workspace.getCellForLesson(l))
+                .filter(cell -> cell != null)
+                .map(CellForLesson::getDate)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Получает даты всех уже размещённых занятий преподавателя.
+     * Используется для приоритизации дат при размещении практик —
+     * занятия предпочитается размещать в дни, когда у преподавателя уже есть занятия.
+     *
+     * @param educator преподаватель
+     * @return множество дат, в которые у преподавателя есть занятия
+     */
+    public Set<LocalDate> getOccupiedDates(Educator educator) {
+        return context.getDistributedLessons().stream()
+                .filter(l -> l.getEducators().contains(educator))
                 .map(l -> workspace.getCellForLesson(l))
                 .filter(cell -> cell != null)
                 .map(CellForLesson::getDate)

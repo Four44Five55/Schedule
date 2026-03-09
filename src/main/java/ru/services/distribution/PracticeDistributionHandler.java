@@ -5,6 +5,7 @@ import ru.entity.Educator;
 import ru.entity.Lesson;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -32,10 +33,14 @@ public class PracticeDistributionHandler {
      */
     public void distributePractices(LocalDate semesterEnd) {
         for (Educator educator : context.getEducators()) {
-            if (educator.getId() == 301) {
+            if (educator.getId()==304){
                 distributeForEducator(educator, semesterEnd);
             }
+
         }
+       /* for (Educator educator : context.getEducators()) {
+            distributeForEducator(educator, semesterEnd);
+        }*/
     }
 
     /**
@@ -50,16 +55,11 @@ public class PracticeDistributionHandler {
             return;
         }
 
-        List<LocalDate> availableDates = dateFinder.getAvailableDates(practices, semesterEnd);
-        if (availableDates.isEmpty()) {
-            log.error("Нет доступных дат для практик {}", educator.getName());
-            return;
-        }
+        // Получаем все даты, когда у преподавателя уже есть занятия (приоритетные)
+        Set<LocalDate> occupiedDates = placement.getOccupiedDates(educator);
+        log.info("Занятые даты (приоритетные): {}", occupiedDates);
 
-        Set<LocalDate> lectureDates = placement.getLectureDates(educator);
-        log.info("Лекционные даты (приоритетные): {}", lectureDates);
-
-        log.info("Доступных дней: {}, практик: {}", availableDates.size(), practices.size());
+        log.info("Практик: {}", practices.size());
 
         int placedCount = 0;
         int skippedCount = 0;
@@ -85,22 +85,16 @@ public class PracticeDistributionHandler {
                 continue;
             }
 
-            // Ищем дату с приоритетом лекционных дат
-            LocalDate date = findDateWithPriority(chain, availableDates, lectureDates);
-            if (date == null) {
-                log.warn("Не найдена дата для практики: {}", current.getCurriculumSlot().getId());
-                index++;
-                continue;
-            }
+            // Пытаемся разместить цепочку с fallback-логикой
+            PlacementResult result = tryPlaceChainWithFallback(chain, occupiedDates, semesterEnd);
 
-            // Размещаем цепочку
-            if (chainHandler.tryPlaceChain(chain, date)) {
+            if (result.placed()) {
                 placedCount += chain.size();
                 index += chain.size();
-                log.info("✓ Практика (цепочка из {}) размещена на {}", chain.size(), date);
+                logPlacementSuccess(chain, result.usedDate(), result.dateSource());
             } else {
-                log.warn("✗ Не удалось разместить цепочку на {}", date);
                 index++;
+                logPlacementFailure(chain);
             }
         }
 
@@ -114,23 +108,93 @@ public class PracticeDistributionHandler {
     }
 
     /**
-     * Ищет дату для размещения цепочки с приоритетом лекционных дат.
+     * Пытается разместить цепочку с fallback-логикой.
+     * <p>
+     * Порядок попыток:
+     * 1. Дата из мапы (назначенная в фазе 1)
+     * 2. Приоритетные даты (занятые даты преподавателя)
+     * 3. Все доступные даты
+     *
+     * @param chain         цепочка занятий
+     * @param occupiedDates приоритетные даты (дни с другими занятиями)
+     * @param semesterEnd   конец семестра
+     * @return результат размещения
      */
-    private LocalDate findDateWithPriority(List<Lesson> chain, List<LocalDate> availableDates, Set<LocalDate> priorityDates) {
-        // Сначала проверяем приоритетные даты (лекционные)
-        for (LocalDate date : availableDates) {
-            if (priorityDates.contains(date) && chainHandler.canPlaceChain(chain, date)) {
-                return date;
+    private PlacementResult tryPlaceChainWithFallback(List<Lesson> chain,
+                                                       Set<LocalDate> occupiedDates,
+                                                       LocalDate semesterEnd) {
+        if (chain.isEmpty()) {
+            return new PlacementResult(false, null, "empty chain");
+        }
+
+        Lesson firstLesson = chain.getFirst();
+
+        // 1. Пробуем назначенную дату из фазы 1
+        LocalDate assignedDate = context.getDateForLesson(firstLesson);
+        if (assignedDate != null) {
+            if (chainHandler.tryPlaceChain(chain, assignedDate, LessonPlacementService.PRACTICE_SKIP)) {
+                return new PlacementResult(true, assignedDate, "назначенная (фаза 1)");
             }
         }
 
-        // Если не нашли в приоритетных — ищем в любых доступных
-        for (LocalDate date : availableDates) {
-            if (chainHandler.canPlaceChain(chain, date)) {
-                return date;
+        // 2. Пробуем приоритетные даты (занятые даты преподавателя)
+        if (!occupiedDates.isEmpty()) {
+            List<LocalDate> priorityDates = new ArrayList<>(occupiedDates);
+            // Сортируем для детерминированности
+            priorityDates.sort(LocalDate::compareTo);
+
+            for (LocalDate date : priorityDates) {
+                if (chainHandler.tryPlaceChain(chain, date, LessonPlacementService.PRACTICE_SKIP)) {
+                    return new PlacementResult(true, date, "занятая дата (приоритет)");
+                }
             }
         }
-        return null;
+
+        // 3. Пробуем все доступные даты
+        List<LocalDate> availableDates = dateFinder.getAvailableDates(firstLesson, semesterEnd);
+        for (LocalDate date : availableDates) {
+            // Пропускаем уже проверенные приоритетные даты
+            if (occupiedDates.contains(date)) {
+                continue;
+            }
+            if (chainHandler.tryPlaceChain(chain, date, LessonPlacementService.PRACTICE_SKIP)) {
+                return new PlacementResult(true, date, "доступная дата");
+            }
+        }
+
+        return new PlacementResult(false, null, "нет доступной даты");
+    }
+
+    /**
+     * Логирует успешное размещение цепочки.
+     */
+    private void logPlacementSuccess(List<Lesson> chain, LocalDate date, String source) {
+        for (int i = 0; i < chain.size(); i++) {
+            Lesson lesson = chain.get(i);
+            String theme = lesson.getCurriculumSlot().getThemeLesson() == null
+                    ? "N/A" : lesson.getCurriculumSlot().getThemeLesson().getThemeNumber();
+            log.info("✓ {} - {}/{} тема: {} ({} из {}) размещена на {} [{}]",
+                    lesson.getDisciplineCourse().getDiscipline().getAbbreviation(),
+                    lesson.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
+                    lesson.getCurriculumSlot().getPosition(),
+                    theme, i + 1, chain.size(), date, source);
+        }
+    }
+
+    /**
+     * Логирует неудачное размещение цепочки.
+     */
+    private void logPlacementFailure(List<Lesson> chain) {
+        for (int i = 0; i < chain.size(); i++) {
+            Lesson lesson = chain.get(i);
+            String theme = lesson.getCurriculumSlot().getThemeLesson() == null
+                    ? "N/A" : lesson.getCurriculumSlot().getThemeLesson().getThemeNumber();
+            log.info("✗ {} - {}/{} тема: {} ({} из {}) НЕ размещена",
+                    lesson.getDisciplineCourse().getDiscipline().getAbbreviation(),
+                    lesson.getCurriculumSlot().getKindOfStudy().getAbbreviationName(),
+                    lesson.getCurriculumSlot().getPosition(),
+                    theme, i + 1, chain.size());
+        }
     }
 
     /**
@@ -155,4 +219,13 @@ public class PracticeDistributionHandler {
             }
         }
     }
+
+    /**
+     * Результат попытки размещения цепочки.
+     */
+    private record PlacementResult(
+            boolean placed,         // true если размещено успешно
+            LocalDate usedDate,     // использованная дата (null если не размещено)
+            String dateSource       // источник даты для логирования
+    ) {}
 }
