@@ -11,10 +11,7 @@ import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
 import java.time.LocalDate;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -152,7 +149,33 @@ public class LessonPlacementService {
         return a.getStudyStream().getGroups().stream()
                 .anyMatch(g -> b.getStudyStream().getGroups().contains(g));
     }
+    public String explainWhyCannotPlace(Lesson lesson, LocalDate date, Set<TimeSlotPair> skipPairs) {
+        // Проверяем каждый ресурс отдельно
+        List<String> reasons = new ArrayList<>();
 
+        List<CellForLesson> cells = CellForLessonFactory.getCellsForDate(date).stream()
+                .filter(c -> !skipPairs.contains(c.getTimeSlotPair()))
+                .toList();
+
+        if (cells.isEmpty()) {
+            return "нет пар в этот день (все в skipPairs)";
+        }
+
+        boolean educatorFree = cells.stream().anyMatch(c ->
+                lesson.getEducators().stream().allMatch(e ->
+                        context.getWorkspace().getResourceManager()
+                                .getEducatorResource(e.getId()).isFree(c)));
+
+        boolean groupFree = cells.stream().anyMatch(c ->
+                lesson.getStudyStream().getGroups().stream().allMatch(g ->
+                        context.getWorkspace().getResourceManager()
+                                .getGroupResource(g.getId()).isFree(c)));
+
+        if (!educatorFree) reasons.add("преподаватель занят на всех парах");
+        if (!groupFree) reasons.add("группа занята на всех парах");
+
+        return reasons.isEmpty() ? "аудитория недоступна" : String.join(", ", reasons);
+    }
     /**
      * Размещает занятие в первую доступную ячейку указанной даты.
      */

@@ -3,6 +3,8 @@ package ru.services.distribution;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import ru.entity.CellForLesson;
+import ru.entity.Educator;
+import ru.entity.Group;
 import ru.entity.Lesson;
 import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
@@ -255,13 +257,38 @@ public class LessonDateFinder {
     public List<LocalDate> getAvailableDates(Lesson lesson,
                                              LocalDate semesterEnd,
                                              Set<TimeSlotPair> skipPairs) {
-        return CellForLessonFactory.getAllCells().stream()
+        /*return CellForLessonFactory.getAllCells().stream()
                 .map(CellForLesson::getDate)
                 .distinct()
                 .filter(d -> !d.isAfter(semesterEnd))
                 .filter(d -> placement.canPlace(lesson, d, skipPairs))
                 .sorted()
+                .toList();*/
+
+        List<LocalDate> allDates = CellForLessonFactory.getAllCells().stream()
+                .map(CellForLesson::getDate)
+                .distinct()
+                .filter(d -> !d.isAfter(semesterEnd))
+                .sorted()
                 .toList();
+
+        List<LocalDate> available = new ArrayList<>();
+
+        for (LocalDate date : allDates) {
+            if (placement.canPlace(lesson, date, skipPairs)) {
+                available.add(date);
+            } else {
+                // ВРЕМЕННО — логируем почему конкретная дата недоступна
+                log.debug("❌ {} [{}] дата {} недоступна: {}",
+                        lesson.getDisciplineCourse().getDiscipline().getAbbreviation(),
+                        lesson.getStudyStream().getGroups(),
+                        date,
+                        placement.explainWhyCannotPlace(lesson, date, skipPairs)
+                );
+            }
+        }
+
+        return available;
     }
 
     /**
@@ -302,6 +329,106 @@ public class LessonDateFinder {
         }
 
         return result;
+    }
+
+    public int scoreDateForCompactness(Lesson lesson, LocalDate date) {
+        return buildScoreCache(lesson, List.of(date))
+                .getOrDefault(date, 0);
+    }
+    /**
+     * Строит кэш оценок компактности для списка дат-кандидатов.
+     * Учитывает только занятость преподавателя — один проход по distributedLessons.
+     * Эффективен для узкого окна дат (±3 дня).
+     */
+    public Map<LocalDate, Integer> buildScoreCache(Lesson lesson,
+                                                   List<LocalDate> candidates) {
+        Set<LocalDate> candidateSet = new HashSet<>(candidates);
+        Set<Educator> educators = new HashSet<>(lesson.getEducators());
+
+        Map<LocalDate, Integer> scores = new HashMap<>();
+        candidates.forEach(d -> scores.put(d, 0));
+
+        for (Lesson distributed : context.getDistributedLessons()) {
+            CellForLesson cell = context.getWorkspace().getCellForLesson(distributed);
+            if (cell == null) continue;
+
+            LocalDate date = cell.getDate();
+            if (!candidateSet.contains(date)) continue;
+
+            boolean sharesEducator = distributed.getEducators().stream()
+                    .anyMatch(educators::contains);
+
+            if (sharesEducator) {
+                scores.merge(date, 1, Integer::sum);
+            }
+        }
+
+        return scores;
+    }
+
+    /**
+     * Находит лучшую дату в окне ±windowDays от целевой.
+     * Не возвращает дату раньше minDate (для соблюдения хронологии позиций).
+     */
+    public LocalDate findBestDateInWindow(Lesson lesson,
+                                          LocalDate targetDate,
+                                          LocalDate semesterEnd,
+                                          Set<TimeSlotPair> skipPairs,
+                                          int windowDays,
+                                          LocalDate minDate) {
+        final LocalDate windowStart = (minDate != null && minDate.isAfter(targetDate.minusDays(windowDays)))
+                ? minDate : targetDate.minusDays(windowDays);
+        LocalDate windowEnd = targetDate.plusDays(windowDays);
+
+        List<LocalDate> candidates = CellForLessonFactory.getAllCells().stream()
+                .map(CellForLesson::getDate)
+                .distinct()
+                .filter(d -> !d.isBefore(windowStart))
+                .filter(d -> !d.isAfter(windowEnd))
+                .filter(d -> !d.isAfter(semesterEnd))
+                .filter(d -> placement.canPlace(lesson, d, skipPairs))
+                .sorted()
+                .toList();
+
+        if (candidates.isEmpty()) return targetDate;
+
+        Map<LocalDate, Integer> scores = buildScoreCache(lesson, candidates);
+
+        // 1. Предпочитаем день где у преподавателя есть занятия (компактность)
+        Optional<LocalDate> withEducator = candidates.stream()
+                .filter(d -> scores.getOrDefault(d, 0) > 0)
+                .max(Comparator.comparingInt(d -> scores.getOrDefault(d, 0)));
+
+        if (withEducator.isPresent()) return withEducator.get();
+
+        // 2. Нет дней с занятиями препода в окне — берём targetDate если доступна
+        if (candidates.contains(targetDate)) return targetDate;
+
+        // 3. Иначе первую доступную в окне
+        return candidates.getFirst();
+    }
+    private int countLessonsOnDateForGroup(Lesson lesson, LocalDate date) {
+        Set<Group> groups = lesson.getStudyStream().getGroups();
+        return (int) context.getDistributedLessons().stream()
+                .filter(l -> {
+                    CellForLesson cell = context.getWorkspace().getCellForLesson(l);
+                    return cell != null && cell.getDate().equals(date);
+                })
+                .filter(l -> l.getStudyStream() != null &&
+                        l.getStudyStream().getGroups().stream()
+                                .anyMatch(groups::contains))
+                .count();
+    }
+
+    private int countLessonsOnDateForEducator(Lesson lesson, LocalDate date) {
+        Set<Educator> educators = new HashSet<>(lesson.getEducators());
+        return (int) context.getDistributedLessons().stream()
+                .filter(l -> {
+                    CellForLesson cell = context.getWorkspace().getCellForLesson(l);
+                    return cell != null && cell.getDate().equals(date);
+                })
+                .filter(l -> l.getEducators().stream().anyMatch(educators::contains))
+                .count();
     }
 
     public LocalDate findBestDate(Lesson lesson, List<LocalDate> allDates, Set<LocalDate> priorityDates) {
