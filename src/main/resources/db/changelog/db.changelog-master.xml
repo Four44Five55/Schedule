@@ -8,4 +8,7 @@
     <!-- Подключаем наш SQL-файл с начальной схемой -->
     <include file="001-initial-schema.sql" relativeToChangelogFile="true"/>
 
+    <!-- Добавление поля compact_schedule в таблицу educator -->
+    <include file="002-add-educator-compact-schedule.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

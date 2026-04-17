@@ -30,6 +30,12 @@ dependencies {
     implementation 'org.hibernate.orm:hibernate-community-dialects:6.3.1.Final'
 
 
+    // MapStruct
+    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+
+    implementation("jakarta.validation:jakarta.validation-api:4.0.0-M1")
 
     runtimeOnly 'org.postgresql:postgresql'
 

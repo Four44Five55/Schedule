@@ -15,16 +15,13 @@ abstract public class AbstractDiscipline {
     protected String name;
     @Column(name = "abbreviation")
     protected String abbreviation;
-    @Column(name = "semester")
-    protected Integer semester;
 
     public AbstractDiscipline() {
     }
 
-    public AbstractDiscipline(String name, String abbreviation, Integer semester) {
+    public AbstractDiscipline(String name, String abbreviation) {
         this.name = name;
         this.abbreviation = abbreviation;
-        this.semester = semester;
     }
 
     @Override

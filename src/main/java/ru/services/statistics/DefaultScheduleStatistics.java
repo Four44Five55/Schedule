@@ -2,17 +2,15 @@ package ru.services.statistics;
 
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
-import ru.entity.Discipline;
-import ru.entity.ScheduleGrid;
+import ru.services.solver.model.ScheduleGrid;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Реализация статистики расписания по умолчанию с учетом перестановок.
  */
-public class DefaultScheduleStatistics implements ScheduleStatistics {
-    // Хранит общее количество запланированных занятий
+public abstract class DefaultScheduleStatistics implements ScheduleStatistics {
+ /*   // Хранит общее количество запланированных занятий
     private final Map<String, Integer> totalLessons = new HashMap<>();
     // Хранит количество занятий, добавленных НАПРЯМУЮ (в свой исходный слот)
     private final Map<String, Integer> directlyAddedLessons = new HashMap<>();
@@ -27,10 +25,10 @@ public class DefaultScheduleStatistics implements ScheduleStatistics {
         this.disciplineSchedules = disciplineSchedules;
     }
 
-    /**
+    *//**
      * Регистрирует, что для дисциплины было добавлено занятие через перестановку.
      * @param disciplineName Название дисциплины, чье занятие было добавлено.
-     */
+     *//*
     @Override
     public void recordSwap(String disciplineName) {
         swappedLessons.merge(disciplineName, 1, Integer::sum);
@@ -46,9 +44,9 @@ public class DefaultScheduleStatistics implements ScheduleStatistics {
         directlyAddedLessons.put(disciplineName, addedDirectly);
     }
 
-    /**
+    *//**
      * Возвращает ОБЩЕЕ количество добавленных занятий (напрямую + через перестановку).
-     */
+     *//*
     @Override
     public int getAddedLessons(String disciplineName) {
         int directly = directlyAddedLessons.getOrDefault(disciplineName, 0);
@@ -61,19 +59,19 @@ public class DefaultScheduleStatistics implements ScheduleStatistics {
         return totalLessons.getOrDefault(disciplineName, 0);
     }
 
-    /**
+    *//**
      * Исправленный метод: считает не уникальные объекты, а все размещения.
-     */
+     *//*
     private int countTotalLessonPlacements(ScheduleGrid originalSchedule) {
         return (int) originalSchedule.getScheduleGridMap().values().stream()
                 .mapToLong(List::size)
                 .sum();
     }
 
-    /**
+    *//**
      * Новый метод: считает только те занятия, которые оказались в итоговом расписании
      * в той же самой ячейке, что и в исходном.
-     */
+     *//*
     private int countDirectlyAddedLessons(ScheduleGrid originalSchedule) {
         long count = 0;
         for (Map.Entry<CellForLesson, List<AbstractLesson>> entry : originalSchedule.getScheduleGridMap().entrySet()) {
@@ -134,5 +132,5 @@ public class DefaultScheduleStatistics implements ScheduleStatistics {
         System.out.printf("  - Через перестановку: %d\n", swappedSum);
         System.out.printf("Не добавлено: %d\n", totalSum - addedSum);
         System.out.println("=====================================\n");
-    }
+    }*/
 }

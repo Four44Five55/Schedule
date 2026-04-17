@@ -1,83 +1,128 @@
 package ru.services;
 
-import jakarta.transaction.Transactional;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.hibernate.Hibernate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import ru.dto.curriculumSlot.CurriculumSlotCreateDto;
+import ru.dto.curriculumSlot.CurriculumSlotDto;
+import ru.dto.curriculumSlot.CurriculumSlotUpdateDto;
+import ru.entity.Auditorium;
 import ru.entity.Lesson;
+import ru.entity.logicSchema.AuditoriumPool;
 import ru.entity.logicSchema.CurriculumSlot;
-import ru.entity.logicSchema.DisciplineCurriculum;
-import ru.repositories.CurriculumSlotRepository;
-import ru.repositories.DisciplineCurriculumRepository;
-import ru.repositories.DisciplineRepository;
-import ru.repositories.ThemeLessonRepository;
+import ru.entity.logicSchema.DisciplineCourse;
+import ru.entity.logicSchema.ThemeLesson;
+import ru.mapper.CurriculumSlotMapper;
+import ru.repository.CurriculumSlotRepository;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 @Service
-@Transactional
 @RequiredArgsConstructor
 public class CurriculumSlotService {
-    private final CurriculumSlotRepository repository;
-    private final DisciplineCurriculumService disciplineCurriculumService;
 
-
-
-    private static final Logger logger = LoggerFactory.getLogger(CurriculumSlotService.class);
-
-    public CurriculumSlot create(CurriculumSlot curriculumSlot) {
-        return repository.save(curriculumSlot);
-    }
-
-    public CurriculumSlot getById(Integer id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("CurriculumSlot не найден id: " + id));
-    }
-
-    public CurriculumSlot update(Integer id, CurriculumSlot updatedSlot) {
-        CurriculumSlot curriculumSlot = getById(id);
-        curriculumSlot.setKindOfStudy(updatedSlot.getKindOfStudy());
-        curriculumSlot.setThemeLesson(updatedSlot.getThemeLesson());
-        return repository.save(curriculumSlot);
-    }
-
-    public void delete(Integer id) {
-        repository.deleteById(id);
-    }
-
+    private final CurriculumSlotRepository curriculumSlotRepository;
+    private final DisciplineCourseService disciplineCourseService;
+    private final ThemeLessonService themeLessonService;
+    private final AuditoriumService auditoriumService;
+    private final AuditoriumPoolService auditoriumPoolService;
+    private final CurriculumSlotMapper curriculumSlotMapper;
 
     @Transactional
-    public List<CurriculumSlot> getAllSlotsForDiscipline(Integer disciplineId) {
-        DisciplineCurriculum curriculum = disciplineCurriculumService.findByDisciplineId(disciplineId);
-        int startId = curriculum.getStartSlot().getId();
-        int endId = curriculum.getEndSlot().getId();
+    public CurriculumSlotDto createSlot(CurriculumSlotCreateDto createDto) {
+        Integer courseId = createDto.disciplineCourseId();
 
-        List<CurriculumSlot> slots = new ArrayList<>();
+        // 1. Проверяем существование курса через сервис
+        DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
 
-        for (int id = startId; id <= endId; id++) {
-            CurriculumSlot slot = repository.findById(id).orElse(null);
+        // 2. "Раздвигаем" слоты
+        curriculumSlotRepository.incrementPositionsFrom(courseId, createDto.position());
 
-            if (slot != null) {
-                // Явная инициализация связей
-                if (slot.getDiscipline() != null) {
-                    Hibernate.initialize(slot.getDiscipline());
-                }
-                if (slot.getThemeLesson() != null) {
-                    Hibernate.initialize(slot.getThemeLesson());
-                }
-                slots.add(slot);
-            }
+        // 3. Создаем и наполняем сущность
+        CurriculumSlot newSlot = new CurriculumSlot();
+        newSlot.setPosition(createDto.position());
+        newSlot.setDisciplineCourse(course);
+        newSlot.setKindOfStudy(createDto.kindOfStudy());
+
+        // 4. Устанавливаем связи через сервисы
+        if (createDto.themeLessonId() != null) {
+            ThemeLesson theme = themeLessonService.getEntityById(createDto.themeLessonId());
+            newSlot.setThemeLesson(theme);
+        }
+        if (createDto.requiredAuditoriumId() != null) {
+            Auditorium aud = auditoriumService.getEntityById(createDto.requiredAuditoriumId());
+            newSlot.setRequiredAuditorium(aud);
+        }
+        if (createDto.priorityAuditoriumId() != null) {
+            Auditorium priorityAud = auditoriumService.getEntityById(createDto.priorityAuditoriumId());
+            newSlot.setPriorityAuditorium(priorityAud);
+        }
+        if (createDto.allowedAuditoriumPoolId() != null) {
+            AuditoriumPool pool = auditoriumPoolService.getEntityById(createDto.allowedAuditoriumPoolId());
+            newSlot.setAllowedAuditoriumPool(pool);
         }
 
-        return slots;
+        return curriculumSlotMapper.toDto(curriculumSlotRepository.save(newSlot));
     }
 
-    public Optional<CurriculumSlot> getPreviousLecture(Integer currentSlotId, Integer disciplineId) {
-        return repository.findPreviousLecture(currentSlotId, disciplineId);
+    @Transactional
+    public CurriculumSlotDto updateSlot(Integer slotId, CurriculumSlotUpdateDto updateDto) {
+        CurriculumSlot slotToUpdate = getEntityById(slotId);
+
+        slotToUpdate.setKindOfStudy(updateDto.kindOfStudy());
+
+        // Обновляем связи через сервисы, обрабатывая null
+        slotToUpdate.setThemeLesson(
+                updateDto.themeLessonId() != null
+                        ? themeLessonService.getEntityById(updateDto.themeLessonId())
+                        : null
+        );
+        slotToUpdate.setRequiredAuditorium(
+                updateDto.requiredAuditoriumId() != null
+                        ? auditoriumService.getEntityById(updateDto.requiredAuditoriumId())
+                        : null
+        );
+        slotToUpdate.setPriorityAuditorium(
+                updateDto.priorityAuditoriumId() != null
+                        ? auditoriumService.getEntityById(updateDto.priorityAuditoriumId())
+                        : null
+        );
+        slotToUpdate.setAllowedAuditoriumPool(
+                updateDto.allowedAuditoriumPoolId() != null
+                        ? auditoriumPoolService.getEntityById(updateDto.allowedAuditoriumPoolId())
+                        : null
+        );
+
+        return curriculumSlotMapper.toDto(curriculumSlotRepository.save(slotToUpdate));
     }
 
+    /**
+     * Проверяет существование слота по его ID.
+     *
+     * @param id ID слота для проверки.
+     * @return true, если слот существует, иначе false.
+     */
+    @Transactional(readOnly = true)
+    public boolean existsById(Integer id) {
+        return curriculumSlotRepository.existsById(id);
+    }
+    // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===
+
+    /**
+     * [СЛУЖЕБНЫЙ МЕТОД] Находит сущность CurriculumSlot по ID.
+     */
+    @Transactional(readOnly = true)
+    public CurriculumSlot getEntityById(Integer id) {
+        return curriculumSlotRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + id + " не найден."));
+    }
+    /**
+     * [СЛУЖЕБНЫЙ МЕТОД] Находит предыдущую лекцию.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CurriculumSlot> getPreviousLectureInCourse(Lesson lesson) {
+        return curriculumSlotRepository.findPreviousLectureInCourse(lesson.getDisciplineCourse().getId(), lesson.getCurriculumSlot().getPosition());
+
+    }
 }

@@ -2,155 +2,104 @@ package ru.abstracts;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import ru.entity.Discipline;
+import lombok.Setter;
+import ru.entity.Auditorium;
 import ru.entity.Educator;
-import ru.entity.Group;
-import ru.entity.GroupCombination;
+import ru.entity.logicSchema.AuditoriumPool;
 import ru.entity.logicSchema.CurriculumSlot;
+import ru.entity.logicSchema.DisciplineCourse;
+import ru.entity.logicSchema.StudyStream;
 import ru.enums.KindOfStudy;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.*;
 
+/**
+ * Базовый класс, представляющий "заявку на занятие" или уже размещенное занятие.
+ * Является POJO и используется алгоритмом решателя. Не является JPA-сущностью.
+ */
 @Getter
+@Setter
 @NoArgsConstructor
-abstract public class AbstractLesson {
-    protected Discipline discipline;
+public abstract class AbstractLesson {
+
+     /**
+     * Ссылка на курс (Дисциплина + Семестр), к которому относится это занятие.
+     */
+    protected DisciplineCourse disciplineCourse;
+
+    /**
+     * Ссылка на конкретный слот в учебном плане. Является уникальным идентификатором "замысла" занятия.
+     */
     protected CurriculumSlot curriculumSlot;
-    protected List<Educator> educators = new ArrayList<>();
-    protected List<GroupCombination> groupCombinations = new ArrayList<>();
-    protected List<AbstractAuditorium> auditoriums = new ArrayList<>();
-
-    public AbstractLesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, List<GroupCombination> groupCombinations) {
-        super();
-        this.discipline = discipline;
-        this.curriculumSlot = curriculumSlot;
-        this.educators.add(educator);
-        this.groupCombinations.addAll(groupCombinations);
-        this.auditoriums.add(GroupCombination.calculateCapacityAuditoriumForCombinations(groupCombinations));
-    }
-
-    public AbstractLesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, GroupCombination groupCombinations) {
-        super();
-        this.discipline = discipline;
-        this.curriculumSlot = curriculumSlot;
-        this.educators.add(educator);
-        this.groupCombinations.add(groupCombinations);
-        this.auditoriums.add(groupCombinations.getAuditorium());
-    }
-
-    public List<AbstractMaterialEntity> getAllMaterialEntity() {
-        List<AbstractMaterialEntity> entities = new ArrayList<>();
-        Optional.ofNullable(educators).ifPresent(entities::addAll);
-        List<Group> groups = new ArrayList<>();
-        for (GroupCombination groupCombination : groupCombinations) {
-            groups.addAll(groupCombination.getGroups());
-        }
-        Optional.of(groups).ifPresent(entities::addAll);
-        Optional.ofNullable(auditoriums).ifPresent(entities::addAll);
-
-        return entities;
-    }
 
 
     /**
-     * Проверяет, используется ли сущность в этом занятии
-     *
-     * @param entity проверяемая сущность (аудитория, преподаватель, группа)
-     * @return true если сущность используется в занятии
+     * Преподаватели, ведущие это занятие. Может быть несколько для параллельных подгрупп или совместных лекций.
      */
-    public boolean isEntityUsed(AbstractMaterialEntity entity) {
-        // Проверка аудитории
-        if (entity instanceof AbstractAuditorium) {
-            return this.auditoriums.contains(entity);
-        }
+    protected Set<Educator> educators = new HashSet<>();
 
-        // Проверка преподавателя
-        if (entity instanceof Educator) {
-            return this.educators.contains(entity);
-        }
+    /**
+     * Поток/подгруппа, для которой предназначено это занятие.
+     */
+    protected StudyStream studyStream;
 
-        // Проверка группы
-        if (entity instanceof Group) {
-            return this.groupCombinations.stream()
-                    .anyMatch(comb -> comb.getGroups().contains(entity));
-        }
+    /**
+     * Аудитории, УЖЕ НАЗНАЧЕННЫЕ для этого занятия алгоритмом.
+     * Изначально это поле пустое. Заполняется после успешного размещения.
+     */
+    protected List<Auditorium> assignedAuditoriums = new ArrayList<>();
 
-        return false;
-    }
+    // --- Требования к ресурсам (копируются из CurriculumSlot для удобства) ---
+    // жестко требуемая аудитория
+    protected Auditorium requiredAuditorium;
+    //  приоритетная аудитория
+    protected Auditorium priorityAuditorium;
+    //  пул аудиторий
+    protected AuditoriumPool allowedAuditoriumPool;
 
-    public List<GroupCombination> getGroupsCombinations() {
-        return groupCombinations;
-    }
 
-    public List<Group> getGroups() {
-        return groupCombinations.stream()         // Преобразуем список GroupCombination в поток
-                .filter(Objects::nonNull)        // Игнорируем null-комбинации
-                .map(GroupCombination::getGroups) // Преобразуем каждую комбинацию в список групп
-                .filter(Objects::nonNull)        // Игнорируем комбинации с null-списком групп
-                .flatMap(List::stream)           // Объединяем все группы в один поток
-                .collect(Collectors.toList());   // Собираем в список
-    }
+    /**
+     * Уникальный ID для группы параллельных занятий.
+     * Занятия с одинаковым parallelGroupId должны быть размещены в одном временном слоте.
+     * Может быть null, если занятие не является частью параллельного блока.
+     */
+    protected String parallelGroupId;
 
-    public void addGroup(GroupCombination groupCombination) {
-        this.groupCombinations.add(groupCombination);
-    }
 
-    public void setGroups(List<GroupCombination> groupCombinations) {
-        this.groupCombinations = groupCombinations;
-    }
-
-    public void addEducator(Educator educator) {
-        this.educators.add(educator);
-    }
-
-    public Integer getCurriculumSlotId() {
-        return curriculumSlot.getId();
-    }
+    // --- Полезные методы ---
 
     public KindOfStudy getKindOfStudy() {
-        return curriculumSlot.getKindOfStudy();
+        return curriculumSlot != null ? curriculumSlot.getKindOfStudy() : null;
     }
 
-    public String getNumberThemeLesson() {
-        String numberTheme = "";
-        if (curriculumSlot.getThemeLesson() != null) {
-            numberTheme = "/Т." + curriculumSlot.getThemeLesson().getThemeNumber();
-        }
-        return numberTheme;
-    }
-
-
-    public List<AbstractAuditorium> getAuditorium() {
-        return auditoriums;
-    }
-
-    public void addAuditorium(AbstractAuditorium auditorium) {
-        this.auditoriums.add(auditorium);
+    /**
+     * Определяет, является ли это занятие частью "сцепки" неразрывных занятий.
+     * (Логика будет зависеть от того, как мы будем работать со SlotChain)
+     */
+    public boolean isChained() {
+        // TODO: Реализовать, если понадобится, через SlotChainService
+        return false;
     }
 
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         AbstractLesson that = (AbstractLesson) o;
-        return Objects.equals(discipline, that.discipline) && Objects.equals(curriculumSlot, that.curriculumSlot) && Objects.equals(educators, that.educators) && Objects.equals(groupCombinations, that.groupCombinations) && Objects.equals(auditoriums, that.auditoriums);
+        return Objects.equals(curriculumSlot, that.curriculumSlot) && Objects.equals(educators, that.educators) && Objects.equals(studyStream, that.studyStream);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(discipline, curriculumSlot, educators, groupCombinations, auditoriums);
+        return Objects.hash(curriculumSlot, educators, studyStream);
     }
 
     @Override
     public String toString() {
-        return "dis: " + discipline +
-                ",kind: " + curriculumSlot.getKindOfStudy().getAbbreviationName() +
-                curriculumSlot.getThemeLesson().getThemeNumber() +
-                "(" + curriculumSlot.getId() + ")" +
-                ", educ: " + educators +
-                ", " + groupCombinations;
+        String courseName = (disciplineCourse != null && disciplineCourse.getDiscipline() != null)
+                ? disciplineCourse.getDiscipline().getAbbreviation()
+                : "N/A";
+        String streamName = (studyStream != null) ? studyStream.getName() : "N/A";
+        return String.format("%s %s (%s)", getKindOfStudy(), courseName, streamName);
     }
 }
+

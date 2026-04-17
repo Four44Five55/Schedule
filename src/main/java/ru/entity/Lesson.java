@@ -2,20 +2,41 @@ package ru.entity;
 
 import lombok.NoArgsConstructor;
 import ru.abstracts.AbstractLesson;
-import ru.entity.logicSchema.CurriculumSlot;
-import ru.enums.KindOfStudy;
 
-import java.util.List;
+import java.util.stream.Collectors;
 
+/**
+ * Конкретная реализация "заявки на занятие".
+ * Используется в алгоритме для представления одного планируемого события.
+ */
 @NoArgsConstructor
 public class Lesson extends AbstractLesson {
+    @Override
+    public String toString() {
+        String courseName = (disciplineCourse != null && disciplineCourse.getDiscipline() != null)
+                ? disciplineCourse.getDiscipline().getAbbreviation()
+                : "N/A";
+        String position = (curriculumSlot != null)
+                ? curriculumSlot.getPosition().toString()
+                : "N/A";
+        String themeLesson = (curriculumSlot != null && curriculumSlot.getThemeLesson() != null)
+                ? curriculumSlot.getThemeLesson().getThemeNumber()
+                : "N/A";
+        String groupsName;
+        if (studyStream != null && studyStream.getGroups() != null && !studyStream.getGroups().isEmpty()) {
+            groupsName = studyStream.getGroups().stream()
+                    .map(Group::getName)
+                    .collect(Collectors.joining(", "));
+        } else {
+            groupsName = "N/A";
+        }
 
-    public Lesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, List<GroupCombination> groupCombinations) {
-        super(discipline, curriculumSlot, educator, groupCombinations);
+        return String.format("%s, %s/T.%s, (%s), [%s]",
+                courseName,
+                getKindOfStudy().getAbbreviationName(),
+                themeLesson,
+                position,
+                groupsName);
+
     }
-
-    public Lesson(Discipline discipline, CurriculumSlot curriculumSlot, Educator educator, GroupCombination groupCombinations) {
-        super(discipline, curriculumSlot, educator, groupCombinations);
-    }
-
 }
