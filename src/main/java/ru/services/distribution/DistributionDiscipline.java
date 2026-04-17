@@ -29,6 +29,7 @@ public class DistributionDiscipline {
     private DistributionContext context;
     private LectureDistributionHandler lectureHandler;
     private PracticeDistributionHandler practiceHandler;
+    private final LocalSearchOptimizer localSearchOptimizer;
 
     /**
      * Конструктор для Spring DI.
@@ -36,11 +37,12 @@ public class DistributionDiscipline {
     @Autowired
     public DistributionDiscipline(EducatorPrioritizer educatorPrioritizer,
                                   SlotChainService slotChainService, LessonSortingService lessonSortingService,
-                                  CurriculumSlotService curriculumSlotService) {
+                                  CurriculumSlotService curriculumSlotService, LocalSearchOptimizer localSearchOptimizer) {
         this.educatorPrioritizer = educatorPrioritizer;
         this.slotChainService = slotChainService;
         this.lessonSortingService = lessonSortingService;
         this.curriculumSlotService = curriculumSlotService;
+        this.localSearchOptimizer = localSearchOptimizer;
     }
 
     /**
@@ -113,7 +115,9 @@ public class DistributionDiscipline {
 
         log.info("=== ФАЗА 2: Распределение практик ===");
         practiceHandler.distributePractices(semesterEnd);
-
+        // Фаза 3 — локальная оптимизация
+        log.info("=== ФАЗА 3: Локальная оптимизация ===");
+        localSearchOptimizer.optimize(context);
         // 4. Итоги
         logResults();
     }

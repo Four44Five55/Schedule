@@ -25,6 +25,7 @@ public class PracticeDistributionHandler {
     private final ChainPlacementHandler chainHandler;
     private final LessonDateFinder dateFinder;
     private final PracticeSlotStrategySelector strategySelector;
+    private final PracticePreScheduler preScheduler;
 
     public PracticeDistributionHandler(DistributionContext context,
                                        LessonPlacementService placement,
@@ -36,21 +37,22 @@ public class PracticeDistributionHandler {
         this.dateFinder = new LessonDateFinder(context, placement);
         this.strategySelector = new PracticeSlotStrategySelector(
                 dateFinder, lessonSortingService);
+        this.preScheduler = new PracticePreScheduler(dateFinder);
     }
 
     /**
      * Распределяет практики для всех преподавателей.
      */
     public void distributePractices(LocalDate semesterEnd) {
-        for (Educator educator : context.getEducators()) {
+/*        for (Educator educator : context.getEducators()) {
             if (educator.getId()==304){
                 distributeForEducator(educator, semesterEnd);
             }
 
-        }
-/*        for (Educator educator : context.getEducators()) {
-            distributeForEducator(educator, semesterEnd);
         }*/
+        for (Educator educator : context.getEducators()) {
+            distributeForEducator(educator, semesterEnd);
+        }
     }
 
     /**
@@ -64,19 +66,22 @@ public class PracticeDistributionHandler {
             log.info("Нет практик для распределения");
             return;
         }
-        // выбираем стратегию ДО цикла размещения
-        PracticeSlotStrategy strategy = strategySelector.selectFor(
-                educator, practices, semesterEnd);
+
+        // Выбираем стратегию ДО цикла размещения
+        PracticeSlotStrategy strategy = strategySelector.selectFor(educator, practices, semesterEnd);
         log.info("Выбрана стратегия: {}", strategy.getName());
-        // Получаем все даты, когда у преподавателя уже есть занятия (приоритетные)
+
         Set<LocalDate> occupiedDates = placement.getOccupiedDates(educator);
         log.info("Занятые даты (приоритетные): {}", occupiedDates);
         log.info("Практик: {}", practices.size());
 
+        // ★ Предварительно вычисляем целевые даты для всех занятий
+        Map<Lesson, LocalDate> targetDates = preScheduler.buildTargetDates(
+                practices, strategy, semesterEnd);
+
         int placedCount = 0;
         int skippedCount = 0;
         int index = 0;
-        // Отдельный минимум для каждой группы
         Map<String, LocalDate> lastPlacedByStreamAndDiscipline = new HashMap<>();
 
         while (index < practices.size()) {
@@ -99,17 +104,18 @@ public class PracticeDistributionHandler {
                 continue;
             }
 
-            //  передаём стратегию
-            // Определяем minDate по группе первого занятия цепочки
             String key = getPlacementKey(chain.getFirst());
             LocalDate minDate = lastPlacedByStreamAndDiscipline.get(key);
 
+            // ★ Целевая дата из pre-scheduler (равномерное распределение)
+            LocalDate targetDate = targetDates.get(chain.getFirst());
+
             PlacementResult result = tryPlaceChainWithStrategy(
-                    chain, Set.of(), semesterEnd, strategy, minDate);
+                    chain, Set.of(), semesterEnd, strategy, minDate, targetDate);
 
             if (result.placed()) {
-                // Обновляем только для этой группы
-                if (minDate == null || result.usedDate().isAfter(minDate)) {
+                boolean isFallback = result.dateSource().contains("fallback");
+                if (!isFallback && (minDate == null || result.usedDate().isAfter(minDate))) {
                     lastPlacedByStreamAndDiscipline.put(key, result.usedDate());
                 }
                 placedCount += chain.size();
@@ -119,16 +125,137 @@ public class PracticeDistributionHandler {
                 index++;
                 logPlacementFailure(chain);
             }
+        }
 
+        // Второй проход — неразмещённые занятия
+        List<Lesson> unplaced = practices.stream()
+                .filter(l -> !context.isLessonDistributed(l))
+                .toList();
+
+        if (!unplaced.isEmpty()) {
+            log.info("Второй проход (уплотнение): {} неразмещённых занятий", unplaced.size());
+            int repackPlaced = repackUnplaced(unplaced, strategy, semesterEnd);
+            placedCount += repackPlaced;
         }
 
         log.info("=== Результат практик для {}: размещено={}, пропущено={}, неразмещено={} ===",
-                educator.getName(), placedCount, skippedCount, practices.size() - placedCount - skippedCount);
+                educator.getName(), placedCount, skippedCount,
+                practices.size() - placedCount - skippedCount);
 
-        // Лог неразмещённых
         if (placedCount + skippedCount < practices.size()) {
             logUnplacedPractices(educator, practices);
         }
+    }
+    private int repackUnplaced(List<Lesson> unplaced, PracticeSlotStrategy strategy,
+                               LocalDate semesterEnd) {
+        int placed = 0;
+
+        Map<String, List<Lesson>> byKey = unplaced.stream()
+                .collect(Collectors.groupingBy(this::getPlacementKey));
+
+        for (Map.Entry<String, List<Lesson>> entry : byKey.entrySet()) {
+            String key = entry.getKey();
+            List<Lesson> groupUnplaced = entry.getValue();
+
+            // Все занятия этой дисциплины+потока — уже размещённые + неразмещённые
+            // отсортированные по позиции
+            List<LocalDate> placedDates = getPlacedDatesForKey(key);
+            if (placedDates.isEmpty()) continue;
+
+            // Самая ранняя дата уже размещённых — от неё считаем интервал
+            LocalDate firstPlaced = placedDates.getFirst();
+            LocalDate lastPlaced = placedDates.getLast();
+
+            // Сколько всего занятий нужно разместить (уже + не)
+            int totalNeeded = placedDates.size() + groupUnplaced.size();
+
+            // Сколько дней доступно от первой до конца семестра
+            List<LocalDate> allAvailable = dateFinder.getAvailableDates(
+                    groupUnplaced.getFirst(), semesterEnd, strategy.getSkipPairs());
+
+            // Берём только даты от firstPlaced
+            List<LocalDate> candidates = allAvailable.stream()
+                    .filter(d -> !d.isBefore(firstPlaced))
+                    .toList();
+
+            if (candidates.size() < totalNeeded) {
+                log.warn("  Уплотнение [{}]: недостаточно дат даже от начала ({} < {})",
+                        key, candidates.size(), totalNeeded);
+                continue;
+            }
+
+            // Равномерно распределяем неразмещённые в оставшиеся свободные слоты
+            // (те что не заняты уже размещёнными)
+            Set<LocalDate> alreadyUsed = new HashSet<>(placedDates);
+            List<LocalDate> freeSlots = candidates.stream()
+                    .filter(d -> !alreadyUsed.contains(d))
+                    .toList();
+
+            log.info("  Уплотнение [{}]: {} неразмещённых, {} свободных слотов от {}",
+                    key, groupUnplaced.size(), freeSlots.size(), firstPlaced);
+
+            // Занятия уже отсортированы по позиции — размещаем по порядку
+            // соблюдая хронологию: каждое следующее после предыдущего
+            LocalDate lastUsed = lastPlaced;
+            int slotIndex = 0;
+
+            for (Lesson lesson : groupUnplaced) {
+                if (context.isLessonDistributed(lesson)) continue;
+
+                List<Lesson> chain = chainHandler.getChainForLesson(lesson, unplaced);
+                if (chain.size() > 1 && !chain.getFirst().equals(lesson)) continue;
+
+                Set<LocalDate> lectureDates = buildLectureDatesCache(chain.getFirst());
+
+                // Ищем первый свободный слот ПОСЛЕ lastUsed
+                boolean chainPlaced = false;
+                while (slotIndex < freeSlots.size()) {
+                    LocalDate date = freeSlots.get(slotIndex);
+                    slotIndex++;
+
+                    if (date.isBefore(lastUsed)) continue; // строго после предыдущего
+
+                    Set<TimeSlotPair> skipPairs = lectureDates.contains(date)
+                            ? addFirst(strategy.getSkipPairs()) : strategy.getSkipPairs();
+
+                    if (chainHandler.tryPlaceChain(chain, date, skipPairs)) {
+                        logPlacementSuccess(chain, date, strategy.getName() + " [уплотнение]");
+                        placed += chain.size();
+                        lastUsed = date;
+                        chainPlaced = true;
+                        break;
+                    }
+                }
+
+                if (!chainPlaced) {
+                    log.warn("  Уплотнение: не удалось разместить {}",
+                            lesson.getCurriculumSlot().getPosition());
+                }
+            }
+        }
+
+        return placed;
+    }
+    /**
+     * Возвращает даты уже размещённых занятий для данного ключа дисциплина+поток,
+     * отсортированные по возрастанию.
+     */
+    private List<LocalDate> getPlacedDatesForKey(String key) {
+        // key = "streamId_disciplineId"
+        String[] parts = key.split("_");
+        int streamId = Integer.parseInt(parts[0]);
+        int disciplineId = Integer.parseInt(parts[1]);
+
+        return context.getDistributedLessons().stream()
+                .filter(l -> l.getStudyStream() != null
+                        && l.getStudyStream().getId() == streamId)
+                .filter(l -> l.getDisciplineCourse().getDiscipline().getId() == disciplineId)
+                .map(l -> context.getWorkspace().getCellForLesson(l))
+                .filter(Objects::nonNull)
+                .map(CellForLesson::getDate)
+                .distinct()
+                .sorted()
+                .toList();
     }
     private String getPlacementKey(Lesson lesson) {
         Integer streamId = lesson.getStudyStream() != null
@@ -150,7 +277,8 @@ public class PracticeDistributionHandler {
                                                       Set<LocalDate> occupiedDates,
                                                       LocalDate semesterEnd,
                                                       PracticeSlotStrategy strategy,
-                                                      LocalDate minDate) {
+                                                      LocalDate minDate,
+                                                      LocalDate targetDate) {
         if (chain.isEmpty()) return new PlacementResult(false, null, "empty chain");
 
         Lesson firstLesson = chain.getFirst();
@@ -159,11 +287,13 @@ public class PracticeDistributionHandler {
         // Кэш дат с лекциями — один раз для всего метода
         Set<LocalDate> lectureDates = buildLectureDatesCache(firstLesson);
 
-        // 1. Назначенная дата из фазы 1 — уточняем в окне ±3 дня с учётом minDate
+// targetDate уже учитывает равномерное распределение из preScheduler
+// но если фаза 1 дала дату — берём ближайшую из двух к targetDate
         LocalDate assignedDate = context.getDateForLesson(firstLesson);
-        if (assignedDate != null) {
-            LocalDate effectiveTarget = (minDate != null && minDate.isAfter(assignedDate))
-                    ? minDate : assignedDate;
+        LocalDate effectiveTarget = targetDate != null ? targetDate : assignedDate;
+        if (effectiveTarget != null) {
+            if (minDate != null && minDate.isAfter(effectiveTarget))
+                effectiveTarget = minDate;
 
             LocalDate bestDate = dateFinder.findBestDateInWindow(
                     firstLesson, effectiveTarget, semesterEnd, baseSkipPairs, 3, minDate);
