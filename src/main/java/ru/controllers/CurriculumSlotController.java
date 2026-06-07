@@ -16,43 +16,38 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/curriculum-slots")
 @RequiredArgsConstructor
 public class CurriculumSlotController {
+
     private final CurriculumSlotService curriculumSlotService;
-    private final CurriculumSlotRepository curriculumSlotRepository;
-    private final CurriculumSlotMapper curriculumSlotMapper;
+
     @GetMapping
     public ResponseEntity<List<CurriculumSlotDto>> getAll() {
-        return ResponseEntity.ok(
-                curriculumSlotRepository.findAll().stream()
-                        .map(curriculumSlotMapper::toDto)
-                        .collect(Collectors.toList())
-        );
+        return ResponseEntity.ok(curriculumSlotService.findAll());
     }
+
     @GetMapping("/by-course/{courseId}")
     public ResponseEntity<List<CurriculumSlotDto>> getByCourse(@PathVariable Integer courseId) {
-        return ResponseEntity.ok(
-                curriculumSlotRepository.findByDisciplineCourseIdOrderByPosition(courseId)
-                        .stream()
-                        .map(curriculumSlotMapper::toDto)
-                        .collect(Collectors.toList())
-        );
+        return ResponseEntity.ok(curriculumSlotService.findByCourseId(courseId));
     }
+
     @GetMapping("/{id}")
     public ResponseEntity<CurriculumSlotDto> getById(@PathVariable Integer id) {
-        return curriculumSlotRepository.findById(id)
-                .map(curriculumSlotMapper::toDto)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        // Сервис выбросит исключение, если не найдено (обработка через ControllerAdvice)
+        // Либо можно оставить Optional, если вы предпочитаете обработку в контроллере
+        return ResponseEntity.ok(curriculumSlotService.getDtoById(id));
     }
+
     @PostMapping
     public ResponseEntity<CurriculumSlotDto> create(@Valid @RequestBody CurriculumSlotCreateDto dto) {
         CurriculumSlotDto created = curriculumSlotService.createSlot(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
+
     @PutMapping("/{id}")
     public ResponseEntity<CurriculumSlotDto> update(@PathVariable Integer id, @Valid @RequestBody CurriculumSlotUpdateDto dto) {
         CurriculumSlotDto updated = curriculumSlotService.updateSlot(id, dto);
         return ResponseEntity.ok(updated);
     }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
         curriculumSlotService.deleteSlot(id);

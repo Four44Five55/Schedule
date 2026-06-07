@@ -16,7 +16,9 @@ import ru.entity.logicSchema.ThemeLesson;
 import ru.mapper.CurriculumSlotMapper;
 import ru.repository.CurriculumSlotRepository;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +30,26 @@ public class CurriculumSlotService {
     private final AuditoriumService auditoriumService;
     private final AuditoriumPoolService auditoriumPoolService;
     private final CurriculumSlotMapper curriculumSlotMapper;
+
+    @Transactional(readOnly = true)
+    public List<CurriculumSlotDto> findAll() {
+        return curriculumSlotRepository.findAll().stream()
+                .map(curriculumSlotMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CurriculumSlotDto> findByCourseId(Integer courseId) {
+        return curriculumSlotRepository.findByDisciplineCourseIdOrderByPosition(courseId)
+                .stream()
+                .map(curriculumSlotMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public CurriculumSlotDto getDtoById(Integer id) {
+        return curriculumSlotMapper.toDto(getEntityById(id));
+    }
 
     @Transactional
     public CurriculumSlotDto createSlot(CurriculumSlotCreateDto createDto) {

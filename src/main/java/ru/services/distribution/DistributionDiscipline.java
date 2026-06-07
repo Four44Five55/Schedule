@@ -116,8 +116,8 @@ public class DistributionDiscipline {
         log.info("=== ФАЗА 2: Распределение практик ===");
         practiceHandler.distributePractices(semesterEnd);
         // Фаза 3 — локальная оптимизация
-        log.info("=== ФАЗА 3: Локальная оптимизация ===");
-        localSearchOptimizer.optimize(context);
+        /*log.info("=== ФАЗА 3: Локальная оптимизация ===");
+        localSearchOptimizer.optimize(context);*/
         // 4. Итоги
         logResults();
     }
