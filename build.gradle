@@ -23,6 +23,10 @@ dependencies {
     // Spring Data JPA (для работы с БД)
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+//настроить Spring на правильную работу с Hibernate proxy
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-hibernate6'
+
     // Драйвер H2
     implementation 'com.h2database:h2'
 

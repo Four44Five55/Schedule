@@ -11,9 +11,6 @@ import ru.services.distribution.DistributionDiscipline;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.factories.LessonFactory;
 import ru.services.solver.ScheduleWorkspace;
-import ru.services.solver.genetic.GeneticAlgorithmRunner;
-import ru.services.solver.model.Gene;
-import ru.services.solver.model.Genome;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,7 +27,6 @@ public class ScheduleGenerationService {
     private final ConstraintService constraintService;
     private final LessonFactory lessonFactory;
     private final LessonSortingService lessonSorterService;
-    private final GeneticAlgorithmRunner geneticAlgorithmRunner;
     private final DistributionDiscipline distributionDiscipline;
 
     /**
@@ -69,13 +65,6 @@ public class ScheduleGenerationService {
 /*        // --- 3. ЗАПУСК АЛГОРИТМА ---
         LegacyAlgorithmRunner runner = new LegacyAlgorithmRunner(workspace, lessonsToPlace, lessonSorterService);
         runner.run(); // Запускаем адаптированный алгоритм*/
-
-        /*// Запускаем ГА
-        List<Lesson> sortedLessons = lessonSorterService.getSortedLessons(lessonsToPlace);
-        Genome bestResult = geneticAlgorithmRunner.run(workspace, sortedLessons);
-        // Применяем лучшее решение к реальной сетке (чтобы экспорт работал)
-        applyGenomeToWorkspace(bestResult, workspace);*/
-
 
         // --- 4. ВОЗВРАТ РЕЗУЛЬТАТА ---
         return workspace;

@@ -15,10 +15,24 @@ public class Application {
     public static void main(String[] args) throws SQLException {
         SpringApplication.run(Application.class, args);
     }
-
     /**
-     * Координирует генерацию расписания и последующий экспорт в Excel для всех сущностей.
+     * При старте приложения выводим информацию, но НЕ запускаем генерацию.
+     * Генерация запускается через REST API (/api/schedule/generate).
      */
+    @Bean
+    public CommandLineRunner startupInfo() {
+        return args -> {
+            System.out.println("=" .repeat(60));
+            System.out.println("  ScheduleGen — Генератор расписания");
+            System.out.println("  Сервер запущен на http://localhost:8080");
+            System.out.println("  API: POST /api/schedule/generate — запуск генерации");
+            System.out.println("  UI:  http://localhost:8080/index.html");
+            System.out.println("=" .repeat(60));
+        };
+    }
+   /* *//**
+     * Координирует генерацию расписания и последующий экспорт в Excel для всех сущностей.
+     *//*
     @Bean
     public CommandLineRunner commandLineRunner(ScheduleGenerationService generationService,
                                                ExcelExportService exportService,
@@ -56,5 +70,5 @@ public class Application {
 
             System.out.println("\nРабота приложения завершена. Результаты находятся в папке 'output'.");
         };
-    }
+    }*/
 }

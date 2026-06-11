@@ -1,18 +1,32 @@
 # Контекст разработки: Распределение занятий в расписании
 
-**Дата:** 2026-02-26
+**Дата обновления:** 2026-06-10
 **Основной класс:** `DistributionDiscipline` (оркестратор)
+**Текущая ветка:** `feature-front`
+**Статус:** Активная разработка фронтенда и системы переноса занятий
 
 ---
 
 ## Архитектура проекта
 
 ### Технологический стек
+
+**Backend:**
 - Spring Boot 3.2.0
 - Java 21
 - PostgreSQL (production), H2 (development)
 - Liquibase (миграции)
 - MapStruct (маппинг)
+- Apache POI (экспорт в Excel)
+- Lombok
+
+**Frontend:**
+- React 19.2.6
+- TypeScript 5.9.3
+- Vite 7.3.2 (сборщик)
+- TailwindCSS 4.1.17
+- Axios (HTTP-клиент)
+- Lucide React (иконки)
 
 ### Структура пакетов
 ```
@@ -20,7 +34,14 @@ ru/
 ├── entity/          - Сущности (Lesson, Educator, Group, Auditorium)
 ├── abstracts/       - Базовые классы
 ├── services/
-│   └── distribution/ - Алгоритмы распределения (РЕФАКТОРИНГ 2026-02-26)
+│   ├── distribution/ - Алгоритмы распределения (РЕФАКТОРИНГ 2026-02-26)
+│   ├── solver/ - Алгоритмы решения расписания
+│   │   ├── ScheduleWorkspace (главное пространство планирования)
+│   │   ├── model/
+│   │   │   ├── ScheduleGrid (сетка расписания)
+│   │   │   └── SchedulableResource (ресурс для планирования)
+│   │   └── availability/ (управление доступностью)
+│   └── MoveLessonSuggestionService - Поиск вариантов переноса (НОВОЕ 2026-06-10)
 │       ├── DistributionDiscipline.java      (оркестратор, ~113 строк)
 │       ├── core/                            (основные компоненты)
 │       │   ├── DistributionContext          (контекст распределения)
@@ -44,9 +65,32 @@ ru/
 │       └── utils/                           (утилиты)
 │           └── DistributionUtils            (вспомогательные методы)
 ├── dto/             - Data Transfer Objects
+│   ├── moveLesson/  - DTO для переноса занятий (НОВОЕ 2026-06-10)
+│   │   ├── MoveOptionDto
+│   │   └── MoveSuggestionRequest
+├── controllers/     - REST API контроллеры
+│   └── ScheduleMoveController - API для переноса занятий (НОВОЕ 2026-06-10)
 ├── repository/      - Spring Data JPA
 ├── mapper/          - MapStruct мапперы
 └── enums/           - KindOfStudy, DayOfWeek, TimeSlotPair
+
+**Frontend структура:**
+```
+frontend/src/
+├── components/      - Переиспользуемые компоненты UI
+├── features/       - Функциональные модули
+│   ├── constraints/ - Управление ограничениями
+│   ├── curriculum/  - Учебные планы
+│   ├── dashboard/    - Главная панель
+│   ├── resources/    - Ресурсы (аудитории, преподаватели)
+│   └── schedule/     - Расписание
+├── hooks/          - React hooks
+├── services/       - API сервисы
+│   ├── apiClient.ts
+│   └── apiServices.ts
+├── types/          - TypeScript типы
+└── utils/          - Утилиты
+```
 ```
 
 ---
@@ -100,6 +144,27 @@ ru/
 | `PracticeSwapService` | Свап практик при конфликтах |
 | `DistributionMetrics` | Вычисление метрик |
 | `DistributionUtils` | Утилитные методы |
+
+---
+
+## REST API Структура
+
+### Основные контроллеры:
+- `ScheduleController` - генерация расписания
+- `ScheduleMoveController` - перенос занятий (НОВОЕ 2026-06-10)
+- `AssignmentController` - управление назначениями
+- `EducatorController` - управление преподавателями
+- `GroupController` - управление группами
+- `AuditoriumController` - управление аудиториями
+- `DisciplineController` - управление дисциплинами
+- `AuditoriumConstraintController` - ограничения аудиторий
+- `EducatorConstraintController` - ограничения преподавателей
+- `GroupConstraintController` - ограничения групп
+
+### Новые endpoints (2026-06-10):
+
+**ScheduleMoveController**
+- `POST /api/schedule/find-move-options` - поиск вариантов переноса занятия
 
 ---
 
@@ -171,6 +236,17 @@ PracticeDistributionHandler.distributePractices()
 ---
 
 ## Ключевые компоненты
+
+### ScheduleWorkspace
+Главное пространство планирования (обновлено 2026-06-10):
+- `grid` - ScheduleGrid (сетка расписания)
+- `resourceManager` - ResourceAvailabilityManager (управление доступностью)
+- `findPlacementOption()` - поиск варианта размещения
+- `executePlacement()` - атомарное размещение занятия
+- `removePlacement()` - атомарное удаление занятия
+- `forcePlacement()` - принудительное размещение
+- `findAvailableAuditoriumsFor()` - поиск доступных аудиторий
+- `clear()` - очистка расписания и ресурсов
 
 ### DistributionContext
 Содержит общее состояние для всех компонентов:
@@ -250,6 +326,72 @@ PracticeDistributionHandler.distributePractices()
 
 ---
 
+## Система переноса занятий (НОВОЕ 2026-06-10)
+
+### Архитектура
+
+```
+ScheduleMoveController (REST API)
+└── POST /api/schedule/find-move-options
+    └── MoveLessonSuggestionService
+        ├── findLesson() - поиск занятия в Workspace
+        ├── removePlacement() - виртуальное изъятие занятия
+        ├── Каскадная фильтрация:
+        │   ├── ШАГ 1: Фильтр по корневой сущности
+        │   ├── ШАГ 2: Фильтр по участникам занятия
+        │   └── ШАГ 3: Фильтр по аудиториям
+        └── forcePlacement() - восстановление занятия
+```
+
+### Каскадная фильтрация
+
+**ШАГ 1: Фильтр по корневой сущности**
+- Самый быстрый фильтр O(1)
+- Если смотрим расписание Группы А → убираем ячейки где Группа А занята
+- Использует `SchedulableResource.isFree(cell)`
+
+**ШАГ 2: Фильтр по участникам**
+- Проверяет доступность преподавателей и других групп
+- Для каждого участника: `candidates.removeIf(cell -> !participant.isFree(cell))`
+
+**ШАГ 3: Фильтр по аудиториям**
+- Самый тяжелый фильтр
+- Для оставшихся ячеек проверяет наличие подходящей аудитории
+- Использует `workspace.findAvailableAuditoriumsFor(lesson, cell)`
+
+### API Endpoints
+
+**POST /api/schedule/find-move-options**
+```json
+// Request
+{
+  "lessonId": 123,
+  "rootEntityId": 456,
+  "rootEntityType": "EDUCATOR" // or "GROUP", "AUDITORIUM"
+}
+
+// Response
+[
+  { "date": "2026-06-15", "timeSlot": "FIRST" },
+  { "date": "2026-06-16", "timeSlot": "SECOND" }
+]
+```
+
+### Ключевые компоненты
+
+**MoveLessonSuggestionService**
+- `findMoveSuggestions()` - основной метод поиска
+- `getRootResource()` - получает корневой ресурс по типу
+- `getParticipantsExceptRoot()` - получает всех участников кроме корневого
+- `findLesson()` - поиск занятия в сетке Workspace
+
+**PlacementOption**
+- `isPossible()` - проверка возможности размещения
+- `assignedAuditoriums()` - список назначенных аудиторий
+- `score()` - оценка качества размещения
+
+---
+
 ## Важные entity-классы
 
 ### Lesson
@@ -273,19 +415,52 @@ PracticeDistributionHandler.distributePractices()
 
 ## Следующие шаги
 
-1. **Добавить тесты для новых компонентов**
-   - Unit тесты для каждого компонента
-   - Интеграционные тесты для оркестратора
+### В разработке (feature-front):
+1. **Система переноса занятий** (2026-06-10)
+   - ✅ ScheduleMoveController - REST API для поиска вариантов переноса
+   - ✅ MoveLessonSuggestionService - сервис поиска доступных мест
+   - ✅ Каскадная фильтрация по ресурсам
+   - 🔄 Frontend интеграция (в процессе)
+   - ⏳ Тестирование новой функциональности
+   - ⏳ Оптимизация кэширования Workspace
 
-2. **Реализовать CompactDateFinder**
-   - Альтернативная стратегия поиска дат
-   - Более агрессивное уплотнение
+### Планируемые улучшения:
+2. **Frontend разработка**
+   - 🔄 Интеграция новых API endpoints
+   - ⏳ UI для переноса занятий
+   - ⏳ Dashboard для мониторинга расписания
 
-3. **Оптимизировать Performance**
-   - Кэширование результатов поиска
-   - Оптимизация работы с цепочками
+3. **Оптимизация бэкенда**
+   - ⏳ Кэширование Workspace в сессии
+   - ⏳ Unit тесты для новых компонентов
+   - ⏳ Интеграционные тесты для оркестратора
+
+4. **Архитектурные улучшения**
+   - ⏳ CompactDateFinder - альтернативная стратегия поиска дат
+   - ⏳ Swagger/OpenAPI спецификация
+   - ⏳ Оптимизация работы с цепочками
 
 ---
 
-*Документ обновлён 2026-02-26 (после рефакторинга)*
-*Коммит: 32f9de1 - refactor (DistributionDiscipline) Разделить God Class на специализированные компоненты*
+## Текущие изменения (git status)
+
+**Новые файлы (в разработке):**
+- ✅ `ScheduleMoveController.java` - REST API для переноса занятий
+- ✅ `MoveOptionDto.java` - DTO для ответа с вариантами переноса
+- ✅ `MoveSuggestionRequest.java` - DTO для запроса на перенос
+- ✅ `MoveLessonSuggestionService.java` - сервис поиска доступных мест
+
+**Измененные файлы:**
+- 🔄 `ScheduleWorkspace.java` - оптимизация логики поиска аудиторий
+
+**Ключевая функциональность:**
+Система поиска доступных слотов для переноса занятий с каскадной фильтрацией:
+1. По корневой сущности (группа/преподаватель/аудитория)
+2. По остальным участникам занятия
+3. По инфраструктуре (наличие подходящей аудитории)
+
+---
+
+*Документ обновлён 2026-06-10 (обновление технологического стека и статуса разработки)*
+*Текущая ветка: feature-front*
+*Последний коммит: c3f9774 - feat Добавить сетку расписания*

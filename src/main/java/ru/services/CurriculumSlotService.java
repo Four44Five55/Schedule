@@ -16,7 +16,9 @@ import ru.entity.logicSchema.ThemeLesson;
 import ru.mapper.CurriculumSlotMapper;
 import ru.repository.CurriculumSlotRepository;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +30,26 @@ public class CurriculumSlotService {
     private final AuditoriumService auditoriumService;
     private final AuditoriumPoolService auditoriumPoolService;
     private final CurriculumSlotMapper curriculumSlotMapper;
+
+    @Transactional(readOnly = true)
+    public List<CurriculumSlotDto> findAll() {
+        return curriculumSlotRepository.findAll().stream()
+                .map(curriculumSlotMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CurriculumSlotDto> findByCourseId(Integer courseId) {
+        return curriculumSlotRepository.findByDisciplineCourseIdOrderByPosition(courseId)
+                .stream()
+                .map(curriculumSlotMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public CurriculumSlotDto getDtoById(Integer id) {
+        return curriculumSlotMapper.toDto(getEntityById(id));
+    }
 
     @Transactional
     public CurriculumSlotDto createSlot(CurriculumSlotCreateDto createDto) {
@@ -98,6 +120,36 @@ public class CurriculumSlotService {
     }
 
     /**
+     * Находит DTO слота по ID (для контроллера).
+     *
+     * @param id ID слота.
+     * @return Optional с DTO слота.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CurriculumSlotDto> findById(Integer id) {
+        return curriculumSlotRepository.findById(id)
+                .map(curriculumSlotMapper::toDto);
+    }
+
+    /**
+     * Удаляет слот по ID с корректировкой позиций остальных слотов.
+     *
+     * @param id ID удаляемого слота.
+     * @throws EntityNotFoundException если слот не найден.
+     */
+    @Transactional
+    public void deleteSlot(Integer id) {
+        CurriculumSlot slot = getEntityById(id);
+        Integer courseId = slot.getDisciplineCourse().getId();
+        Integer deletedPosition = slot.getPosition();
+
+        curriculumSlotRepository.delete(slot);
+
+        // Сдвигаем позиции последующих слотов
+        curriculumSlotRepository.decrementPositionsAfter(courseId, deletedPosition);
+    }
+
+    /**
      * Проверяет существование слота по его ID.
      *
      * @param id ID слота для проверки.
@@ -117,6 +169,7 @@ public class CurriculumSlotService {
         return curriculumSlotRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + id + " не найден."));
     }
+
     /**
      * [СЛУЖЕБНЫЙ МЕТОД] Находит предыдущую лекцию.
      */
