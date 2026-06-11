@@ -197,7 +197,7 @@ public final class ScheduleWorkspace {
         return participants;
     }
 
-    private List<Auditorium> findAvailableAuditoriumsFor(Lesson lesson, CellForLesson cell) {
+    public List<Auditorium> findAvailableAuditoriumsFor(Lesson lesson, CellForLesson cell) {
         // 1. Если есть жесткое требование
         if (lesson.getRequiredAuditorium() != null) {
             SchedulableResource audResource = resourceManager.getAuditoriumResource(lesson.getRequiredAuditorium().getId());
