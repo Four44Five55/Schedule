@@ -34,3 +34,39 @@ logs/
 # файл с переменными окружения
 .env
 .aider*
+
+# Frontend (Node.js / React)
+# ============================================
+# Зависимости (восстанавливаются из package.json)
+/frontend/node_modules/
+/frontend/.yarn/
+/frontend/.yarn-integrity/
+/frontend/.pnp/
+/frontend/.pnp.js/
+
+# Сборочные файлы
+/frontend/dist/
+/frontend/build/
+/frontend/.next/
+/frontend/.nuxt/
+/frontend/.cache/
+
+# Логи и кэш
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+/frontend/.eslintcache
+
+# Папки IDE
+/frontend/.vscode/
+/frontend/.idea/
+
+# Временные файлы
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+
+# Coverage (тесты)
+/frontend/coverage/
+/frontend/.nyc_output/
