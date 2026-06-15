@@ -27,7 +27,7 @@ import {
   GroupConstraintDto,
   AuditoriumConstraintDto,
   ScheduleResultDto,
-  ScheduledLessonDto
+  ScheduledLessonDto, StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
 
 // ============ 1. СПРАВОЧНИКИ (ENUMS) ============
@@ -65,6 +65,9 @@ export const ResourceService = {
   deleteGroup: (id: number) => api.delete(`/groups/${id}`).then(() => {}),
 
   getStreams: () => api.get<StudyStreamDto[]>('/study-streams').then((r) => r.data).catch(() => []),
+  createStream: (data: StudyStreamCreateDto) => api.post<StudyStreamDto>('/study-streams', data).then((r) => r.data),
+  updateStream: (id: number, data: StudyStreamUpdateDto) => api.put<StudyStreamDto>(`/study-streams/${id}`, data).then((r) => r.data),
+  deleteStream: (id: number) => api.delete(`/study-streams/${id}`).then(() => {}),
   getLocations: () => api.get<LocationDto[]>('/locations').then((r) => r.data),
   getBuildings: () => api.get<BuildingDto[]>('/buildings').then((r) => r.data),
   getFeatures: () => api.get<FeatureDto[]>('/features').then((r) => r.data),

@@ -9,7 +9,7 @@ import { StudyStreamList } from './features/resources/components/StudyStreamList
 import { ConstraintsManager } from './features/constraints/components/ConstraintsManager';
 import { CurriculumManager } from './features/curriculum/components/CurriculumManager';
 import { ScheduleManager } from './features/schedule/components/ScheduleManager';
-import type { ScheduledLessonDto, GroupDto, EducatorDto } from './types/api';
+import type { ScheduledLessonDto, GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto } from './types/api';
 import { ScheduleService, ResourceService, CurriculumService } from './services/apiServices';
 import { CQRSService } from './services/cqrsApiService';
 import { Bell, Search, HelpCircle, CalendarRange, ChevronRight } from 'lucide-react';
@@ -20,12 +20,10 @@ export default function App() {
   // ========== Загрузка ресурсов ==========
   const [loading, setLoading] = useState(true);
   const [educators, setEducators] = useState<EducatorDto[]>([]);
-  const [auditoriums, setAuditoriums] = useState<any[]>([]);
+  const [auditoriums, setAuditoriums] = useState<AuditoriumDto[]>([]);
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [disciplines, setDisciplines] = useState<any[]>([]);
-  const [streams, setStreams] = useState<any[]>([]);
-
-  // Типизированный alias для аудиторий (any[] — чтобы не конфликтовать с разными DTO)
+  const [streams, setStreams] = useState<StudyStreamDto[]>([]);
 
   // Начальная загрузка всех ресурсов
   useEffect(() => {
@@ -48,18 +46,17 @@ export default function App() {
   }, []);
 
   // ========== Загрузка существующего расписания при старте ==========
+  const [scheduleLessons, setScheduleLessons] = useState<ScheduledLessonDto[]>([]);
+  const [scheduleGrid, setScheduleGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
+
   useEffect(() => {
-    // 1. Сначала получаем активный учебный период
     ResourceService.getActiveStudyPeriod()
         .then((activePeriod) => {
           if (activePeriod) {
             console.log('✅ Активный период:', activePeriod.name, '(', activePeriod.startDate, '—', activePeriod.endDate, ')');
-
-            // 2. Загружаем расписание за этот период
             return ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
           } else {
             console.log('ℹ️ Нет активного учебного периода');
-            // Если нет активного периода, возвращаем пустой результат
             return Promise.resolve({
               status: 'empty',
               lessons: [],
@@ -73,7 +70,7 @@ export default function App() {
             });
           }
         })
-        .then((result) => {
+        .then((result: any) => {
           if (result.status === 'loaded' && result.lessons.length > 0) {
             console.log('✅ Загружено существующее расписание:', result.lessons.length, 'занятий');
             setScheduleLessons(result.lessons);
@@ -115,24 +112,26 @@ export default function App() {
     }
   }, []);
 
+  const reloadStreams = useCallback(async () => {
+    try {
+      const data = await ResourceService.getStreams();
+      setStreams(data);
+    } catch (err) {
+      console.error('Ошибка загрузки потоков:', err);
+    }
+  }, []);
+
   // ========== Расписание ==========
-  const [scheduleLessons, setScheduleLessons] = useState<ScheduledLessonDto[]>([]);
-  const [scheduleGrid, setScheduleGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
   const [isGenerating, setIsGenerating] = useState(false);
-  const [currentSession, setCurrentSession] = useState<any | null>(null);
 
   const handleGenerateSchedule = async (courseIds: number[]) => {
     setIsGenerating(true);
     try {
-      // Используем CQRS для генерации с созданием сессии
-      const session = await CQRSService.generateSchedule({
+      await CQRSService.generateSchedule({
         name: 'Генерация от ' + new Date().toLocaleString('ru-RU'),
         courseIds: courseIds
       });
 
-      setCurrentSession(session);
-
-      // Загружаем расписание за активный период
       const activePeriod = await ResourceService.getActiveStudyPeriod();
       if (activePeriod) {
         const result = await ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
@@ -191,7 +190,7 @@ export default function App() {
       case 'disciplines':
         return <DisciplineList disciplines={disciplines} />;
       case 'streams':
-        return <StudyStreamList streams={streams} />;
+        return <StudyStreamList streams={streams} onStreamsChange={reloadStreams} />;
       case 'constraints':
         return <ConstraintsManager />;
       case 'curriculum':
@@ -203,11 +202,6 @@ export default function App() {
                 grid={scheduleGrid}
                 startDate={new Date(2026, 1, 9)}
                 endDate={new Date(2026, 7, 31)}
-                onLessonChange={(lessons, grid) => {
-                  setScheduleLessons(lessons);
-                  setScheduleGrid(grid);
-                }}
-                currentSession={currentSession}
             />
         );
       default:

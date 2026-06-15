@@ -184,6 +184,18 @@ export interface StudyStreamDto {
   groups: { id: number; name: string; size: number }[];
 }
 
+export interface StudyStreamCreateDto {
+  name: string;
+  semester: number;
+  groupIds: number[];
+}
+
+export interface StudyStreamUpdateDto {
+  name: string;
+  semester: number;
+  groupIds: number[];
+}
+
 export interface AssignmentDto {
   id: number;
   curriculumSlot: { id: number; position: number; kindOfStudyName: string };
