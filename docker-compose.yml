@@ -2,16 +2,48 @@ version: '3.8'
 
 services:
   postgres_db:
-    image: postgres:15-alpine  # Используем легковесный образ PostgreSQL 15
+    image: postgres:15-alpine
     container_name: schedule-postgres
     environment:
-      POSTGRES_USER: ${DB_USERNAME:-postgres}       # Имя пользователя
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}     # Пароль
-      POSTGRES_DB: schedule_db        # Имя базы данных, которая будет создана
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: schedule_db
     ports:
-      - "${DB_PORT:-5432}:5432"  # Пробрасываем порт из контейнера на ваш компьютер
+      - "${DB_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Сохраняем данные даже после удаления контейнера
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: schedule-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_db:5432/schedule_db
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-password}
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: schedule-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   postgres_data:

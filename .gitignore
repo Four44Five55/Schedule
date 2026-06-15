@@ -1,6 +1,13 @@
 # Gradle
 .gradle/
 build/
+out/
+
+# Backend specific
+/backend/src/main/resources/db/values
+/backend/src/main/generated/
+/backend/build/
+/backend/schedule_db
 
 # IntelliJ IDEA
 # Игнорируем всю папку с настройками IDE. Этого достаточно.
@@ -13,19 +20,8 @@ build/
 # VS Code
 .vscode/
 
-# Сгенерированные приложением файлы и данные
-# ============================================
-
-# Файл локальной базы данных
-schedule_db
-/src/main/resources/db/values
-
 # Папка для сгенерированных отчетов (например, Excel-файлов)
 /output/
-out/
-
-# Папка для автоматически сгенерированного кода (Lombok, MapStruct и т.д.)
-/src/main/generated/
 
 # Логи
 *.log
