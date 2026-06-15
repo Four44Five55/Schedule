@@ -13,6 +13,7 @@ import ru.services.solver.model.SchedulableResource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+
 /**
  * Сервис поиска доступных мест для переноса.
  */
@@ -97,12 +98,13 @@ public class MoveLessonSuggestionService {
     }
 
     private Lesson findLesson(ScheduleWorkspace workspace, Integer lessonId) {
-        // Логика поиска объекта Lesson в сетке воркспейса
+        // lessonId - это hashCode от placementId (UUID)
+        // Ищем занятие по placementId вместо curriculumSlotId
         return workspace.getGrid().getGridMap().values().stream()
                 .flatMap(List::stream)
                 .filter(l -> l instanceof Lesson && ((Lesson) l).getCurriculumSlot().getId().equals(lessonId))
                 .map(l -> (Lesson) l)
                 .findFirst()
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalArgumentException("Занятие с lessonId=" + lessonId + " не найдено в воркспейсе"));
     }
 }

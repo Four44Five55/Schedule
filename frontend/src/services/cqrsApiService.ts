@@ -1,0 +1,240 @@
+// ============ CQRS API SERVICE ============
+// API сервис для работы с CQRS архитектурой
+// Command Side: запись, редактирование, оптимистичная блокировка
+// Query Side: быстрое чтение, денормализованные данные
+
+import api from './apiClient';
+import {
+  ScheduleSessionDto,
+  LessonPlacementDto,
+  ScheduleViewDto,
+  ConflictResponse,
+  MoveOptionDto,
+  CreateScheduleSessionRequest,
+  MoveLessonRequest,
+  MoveLessonResult,
+  FindMoveOptionsRequest
+} from '../types/cqrs';
+
+/**
+ * CQRS API Service
+ *
+ * Предоставляет методы для работы с Command Side (запись) и Query Side (чтение).
+ * Все методы возвращают Promise с типизированными данными.
+ */
+export const CQRSService = {
+  // ============================================================
+  // COMMAND SIDE (Запись, Редактирование)
+  // ============================================================
+
+  /**
+   * Создать новую пустую сессию расписания
+   *
+   * @param request - данные для создания сессии
+   * @returns созданная сессия со статусом INITIALIZED
+   */
+  createSchedule: (request: CreateScheduleSessionRequest): Promise<ScheduleSessionDto> => {
+    return api
+      .post<ScheduleSessionDto>('/schedule/command/sessions', request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Генерация расписания с сохранением в БД (CQRS Command Side)
+   *
+   * Процесс:
+   * 1. Создаётся сессия со статусом GENERATING
+   * 2. Генерируется workspace (существующий алгоритм)
+   * 3. Извлекаются placements и сохраняются в БД
+   * 4. Обновляется статус → READY_FOR_EDIT
+   * 5. Публикуется событие для синхронизации Query Side
+   *
+   * @param request - название и курсы для генерации
+   * @returns созданная сессия со статусом READY_FOR_EDIT
+   */
+  generateSchedule: (request: CreateScheduleSessionRequest): Promise<ScheduleSessionDto> => {
+    return api
+      .post<ScheduleSessionDto>('/schedule/command/sessions/generate', request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Получить сессию по ID
+   *
+   * @param sessionId - уникальный идентификатор сессии
+   * @returns данные сессии
+   */
+  getSession: (sessionId: string): Promise<ScheduleSessionDto> => {
+    return api
+      .get<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}`)
+      .then(r => r.data);
+  },
+
+  /**
+   * Перенести занятие с optimistic lock (версионированием)
+   *
+   * ВАЖНО: Всегда передавайте актуальную версию (session.version)
+   *
+   * @param sessionId - ID сессии
+   * @param request - данные для переноса с версией
+   * @returns результат операции:
+   *   - success: true, newVersion: N - успешный перенос
+   *   - success: false, conflict: ConflictResponse - конфликт версий
+   */
+  moveLesson: async (
+    sessionId: string,
+    request: MoveLessonRequest
+  ): Promise<MoveLessonResult> => {
+    try {
+      const response = await api.post<{
+        success: true;
+        newVersion?: number;
+      } | {
+        success: false;
+        conflict: ConflictResponse;
+      }>(
+        `/schedule/command/sessions/${sessionId}/move-lesson`,
+        request
+      );
+
+      return response.data;
+    } catch (error: any) {
+      // Обработка HTTP 409 Conflict
+      if (error.response?.status === 409) {
+        return {
+          success: false,
+          conflict: error.response.data
+        };
+      }
+      throw error;
+    }
+  },
+
+  /**
+   * Получить все размещения сессии
+   *
+   * @param sessionId - ID сессии
+   * @returns список всех размещений в сессии
+   */
+  getPlacements: (sessionId: string): Promise<LessonPlacementDto[]> => {
+    return api
+      .get<LessonPlacementDto[]>(`/schedule/command/sessions/${sessionId}/placements`)
+      .then(r => r.data);
+  },
+
+  /**
+   * Удалить сессию
+   *
+   * @param sessionId - ID сессии для удаления
+   */
+  deleteSession: (sessionId: string): Promise<void> => {
+    return api
+      .delete(`/schedule/command/sessions/${sessionId}`);
+  },
+
+  // ============================================================
+  // QUERY SIDE (Чтение, быстрые запросы)
+  // ============================================================
+
+  /**
+   * Получить расписание для студента/группы (быстро!)
+   *
+   * Использует schedule_view с индексами (8-12ms)
+   *
+   * @param streamId - ID потока/группы
+   * @param startDate - начальная дата (YYYY-MM-DD)
+   * @param endDate - конечная дата (YYYY-MM-DD)
+   * @returns расписание группы (денормализованные данные)
+   */
+  getStudentSchedule: (
+    streamId: number,
+    startDate: string,
+    endDate: string
+  ): Promise<ScheduleViewDto[]> => {
+    return api
+      .get<ScheduleViewDto[]>(
+        `/schedule/query/student/${streamId}?start=${startDate}&end=${endDate}`
+      )
+      .then(r => r.data);
+  },
+
+  /**
+   * Получить расписание преподавателя на дату
+   *
+   * @param educatorId - ID преподавателя
+   * @param date - дата (YYYY-MM-DD)
+   * @returns расписание преподавателя на дату
+   */
+  getEducatorSchedule: (
+    educatorId: number,
+    date: string
+  ): Promise<ScheduleViewDto[]> => {
+    return api
+      .get<ScheduleViewDto[]>(
+        `/schedule/query/educator/${educatorId}?date=${date}`
+      )
+      .then(r => r.data);
+  },
+
+  /**
+   * Проверить свободность аудитории
+   *
+   * @param auditoriumId - ID аудитории
+   * @param date - дата (YYYY-MM-DD)
+   * @param slot - временной слот ('FIRST' | 'SECOND' | 'THIRD' | 'FOURTH')
+   * @returns true если аудитория свободна, false если занята
+   */
+  checkAuditoriumFree: (
+    auditoriumId: number,
+    date: string,
+    slot: string
+  ): Promise<boolean> => {
+    return api
+      .get<boolean>(
+        `/schedule/query/check-auditorium?auditoriumId=${auditoriumId}&date=${date}&slot=${slot}`
+      )
+      .then(r => r.data);
+  },
+
+  // ============================================================
+  // MOVE OPTIONS (Поиск вариантов переноса)
+  // ============================================================
+
+  /**
+   * Найти варианты для переноса занятия
+   *
+   * Восстанавливает workspace из сессии и ищет свободные слоты
+   * с учётом всех ограничений преподавателя/группы/аудитории.
+   *
+   * @param request - параметры поиска
+   * @returns отсортированные варианты переноса (по score)
+   */
+  findMoveOptions: (request: FindMoveOptionsRequest): Promise<MoveOptionDto[]> => {
+    return api
+      .post<MoveOptionDto[]>('/schedule/find-move-options', request)
+      .then(r => r.data);
+  },
+};
+
+/**
+ * Вспомогательные функции для форматирования дат
+ */
+export const dateUtils = {
+  /**
+   * Конвертировать Date в YYYY-MM-DD
+   */
+  formatDate: (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+
+  /**
+   * Конвертировать строку YYYY-MM-DD в Date
+   */
+  parseDate: (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  },
+};

@@ -1,15 +1,23 @@
 import React, { useMemo, useState } from 'react';
 import { ScheduledLessonDto, TimeSlotPair } from '../../../types/api';
-import { format, addDays, isSameDay, eachWeekOfInterval, isWithinInterval, parseISO } from 'date-fns';
+import { format, addDays, eachWeekOfInterval, isWithinInterval, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { cn } from '../../../utils/cn';
 import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, ShieldAlert } from 'lucide-react';
+import { MoveLessonDialog } from './MoveLessonDialog';
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];
+  grid: Record<string, ScheduledLessonDto[]>;
+  filterType: 'group' | 'educator' | 'auditorium';
+  selectedValue: string;
   startDate: Date;
   endDate: Date;
   constraints?: any[];
+  isEditMode?: boolean;
+  sessionId?: string;
+  currentVersion?: number;
+  onMoveLesson?: (placementId: string) => void;
 }
 
 const DAYS = [
@@ -28,9 +36,35 @@ const SLOTS: { id: TimeSlotPair; label: string; time: string }[] = [
   { id: 'FOURTH', label: '4', time: '16:20' },
 ];
 
-export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({ lessons, startDate, endDate, constraints = [] }) => {
+export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
+                                                                            lessons,
+                                                                            grid,
+                                                                            filterType,
+                                                                            selectedValue,
+                                                                            startDate,
+                                                                            endDate,
+                                                                            constraints = [],
+                                                                            isEditMode = false,
+                                                                            sessionId,
+                                                                            currentVersion = 0,
+                                                                            onMoveLesson
+                                                                          }) => {
   const [zoom, setZoom] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [selectedLesson, setSelectedLesson] = useState<ScheduledLessonDto | null>(null);
+
+  const handleLessonClick = (lesson: ScheduledLessonDto) => {
+    if (isEditMode && sessionId && onMoveLesson) {
+      setSelectedLesson(lesson);
+    }
+  };
+
+  const handleMoveSuccessful = () => {
+    setSelectedLesson(null);
+    if (selectedLesson && onMoveLesson) {
+      onMoveLesson(String(selectedLesson.id));
+    }
+  };
 
   const mondays = useMemo(() => {
     return eachWeekOfInterval({ start: startDate, end: endDate }, { weekStartsOn: 1 });
@@ -161,9 +195,29 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({ less
 
                           {mondays.map((monday, weekIdx) => {
                             const targetDate = addDays(monday, day.id - 1);
-                            const lesson = lessons.find((l) =>
-                                isSameDay(new Date(l.date), targetDate) && l.timeSlotPair === slot.id
-                            );
+
+                            const dateStr = format(targetDate, 'yyyy-MM-dd');
+                            const gridKey = `${dateStr}_${slot.id}`;
+                            const lessonsInCell = grid[gridKey] || [];
+
+                            // 1. Сначала ищем в сетке
+                            let lesson = lessonsInCell.find(l => {
+                              if (filterType === 'group') return l.groupNames.includes(selectedValue);
+                              if (filterType === 'educator') return l.educatorNames.includes(selectedValue);
+                              if (filterType === 'auditorium') return l.auditoriumNames.includes(selectedValue);
+                              return false;
+                            });
+
+                            // 2. Если в сетке пусто (проблема ключа), ищем в плоском списке (fallback)
+                            if (!lesson && lessons) {
+                              lesson = lessons.find(l =>
+                                  l.date === dateStr &&
+                                  l.timeSlotPair === slot.id &&
+                                  (filterType === 'group' ? l.groupNames.includes(selectedValue) :
+                                      filterType === 'educator' ? l.educatorNames.includes(selectedValue) :
+                                          l.auditoriumNames.includes(selectedValue))
+                              );
+                            }
 
                             const activeConstraint = constraints.find(c => {
                               const start = parseISO(c.startDate);
@@ -182,17 +236,22 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({ less
                             return (
                                 <td
                                     key={weekIdx}
+                                    onClick={() => lesson && handleLessonClick(lesson)}
                                     className={cn(
                                         'border-r p-0.5 transition-all relative overflow-hidden',
                                         borderClass,
                                         !lesson && 'bg-white hover:bg-slate-50/30',
-                                        lesson && 'bg-slate-200 text-slate-900 hover:bg-slate-300 cursor-help',
+                                        lesson && isEditMode && 'bg-blue-100 text-blue-900 hover:bg-blue-200 cursor-pointer',
+                                        lesson && !isEditMode && 'bg-slate-200 text-slate-900 hover:bg-slate-300 cursor-help',
                                         !lesson && activeConstraint && 'bg-rose-50/50'
                                     )}
-                                    title={tooltipContent}
+                                    title={lesson && isEditMode ? 'Нажмите, чтобы перенести занятие' : tooltipContent}
                                 >
                                   {lesson ? (
-                                      <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5", zoomClasses.fontSizeMain)}>
+                                      <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", zoomClasses.fontSizeMain)}>
+                                        {isEditMode && (
+                                            <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse" />
+                                        )}
                                         <div className="font-bold border-b border-slate-300/50 pb-0.5 mb-0.5 whitespace-nowrap overflow-hidden opacity-60">
                                           {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
                                         </div>
@@ -219,6 +278,16 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({ less
             </table>
           </div>
         </div>
+
+        {selectedLesson && sessionId && (
+            <MoveLessonDialog
+                placement={selectedLesson}
+                sessionId={sessionId}
+                currentVersion={currentVersion}
+                onMoveSuccessful={handleMoveSuccessful}
+                onCancel={() => setSelectedLesson(null)}
+            />
+        )}
       </div>
   );
 };

@@ -39,6 +39,7 @@ public class EducatorService {
         newEducator.setName(createDto.name());
         newEducator.setPreferredDays(createDto.preferredDays());
         newEducator.setPreferredTimeSlots(createDto.preferredTimeSlots());
+        newEducator.setCompactSchedule(createDto.compactSchedule());
 
         return educatorMapper.toDto(educatorRepository.save(newEducator));
     }
@@ -57,6 +58,7 @@ public class EducatorService {
         educatorToUpdate.setName(updateDto.name());
         educatorToUpdate.setPreferredDays(updateDto.preferredDays());
         educatorToUpdate.setPreferredTimeSlots(updateDto.preferredTimeSlots());
+        educatorToUpdate.setCompactSchedule(updateDto.compactSchedule());
 
         return educatorMapper.toDto(educatorRepository.save(educatorToUpdate));
     }

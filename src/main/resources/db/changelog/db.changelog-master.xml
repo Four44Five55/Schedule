@@ -11,4 +11,16 @@
     <!-- Добавление поля compact_schedule в таблицу educator -->
     <include file="002-add-educator-compact-schedule.sql" relativeToChangelogFile="true"/>
 
+    <!-- CQRS Query Side: Создание таблицы schedule_view -->
+    <include file="003-create-schedule-view.sql" relativeToChangelogFile="true"/>
+
+    <!-- CQRS Command Side: Создание таблиц schedule_session и lesson_placement -->
+    <include file="004-create-command-side.sql" relativeToChangelogFile="true"/>
+
+    <!-- CQRS Command Side: Исправление constraints для мульти-групповой поддержки -->
+    <include file="005-fix-constraints.sql" relativeToChangelogFile="true"/>
+
+    <!-- CQRS Query Side: Исправление constraint schedule_view для мульти-групповой поддержки -->
+    <include file="006-fix-schedule-view-constraint.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

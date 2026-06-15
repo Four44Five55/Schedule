@@ -101,10 +101,10 @@ public class AuditoriumService {
             auditoriumToUpdate.setPurpose(null);
         }
 
-        auditoriumToUpdate.getFeatures().clear(); // Очищаем старый набор
+        auditoriumToUpdate.getFeatures().clear();
         if (updateDto.featureIds() != null && !updateDto.featureIds().isEmpty()) {
             List<Feature> newFeatures = featureService.getAllEntitiesByIds(updateDto.featureIds());
-            auditoriumToUpdate.setFeatures(new HashSet<>(newFeatures));
+            auditoriumToUpdate.getFeatures().addAll(newFeatures);
         }
 
         return auditoriumMapper.toDto(auditoriumRepository.save(auditoriumToUpdate));

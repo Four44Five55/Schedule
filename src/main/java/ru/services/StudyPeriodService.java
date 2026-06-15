@@ -11,6 +11,7 @@ import ru.entity.StudyPeriod;
 import ru.mapper.StudyPeriodMapper;
 import ru.repository.StudyPeriodRepository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -77,6 +78,17 @@ public class StudyPeriodService {
     @Transactional(readOnly = true)
     public Optional<StudyPeriodDto> findById(Integer id) {
         return studyPeriodRepository.findById(id).map(studyPeriodMapper::toDto);
+    }
+
+    /**
+     * Получить активный учебный период (содержит сегодняшнюю дату).
+     *
+     * @return Optional с активным периодом или пустой, если активного периода нет
+     */
+    @Transactional(readOnly = true)
+    public Optional<StudyPeriodDto> findActivePeriod() {
+        return studyPeriodRepository.findActivePeriod(LocalDate.now())
+                .map(studyPeriodMapper::toDto);
     }
 
     @Transactional

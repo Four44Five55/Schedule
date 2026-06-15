@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Sidebar, type TabId } from './components/layout/Sidebar';
 import { Dashboard } from './features/dashboard/components/Dashboard';
 import { EducatorList } from './features/resources/components/EducatorList';
@@ -9,23 +9,137 @@ import { StudyStreamList } from './features/resources/components/StudyStreamList
 import { ConstraintsManager } from './features/constraints/components/ConstraintsManager';
 import { CurriculumManager } from './features/curriculum/components/CurriculumManager';
 import { ScheduleManager } from './features/schedule/components/ScheduleManager';
-import { useResources } from './hooks/useData';
-import type { ScheduledLessonDto } from './types/api';
-import { ScheduleService } from './services/apiServices';
-import { Bell, Search, HelpCircle, Loader2, CalendarRange, ChevronRight } from 'lucide-react';
+import type { ScheduledLessonDto, GroupDto, EducatorDto } from './types/api';
+import { ScheduleService, ResourceService, CurriculumService } from './services/apiServices';
+import { CQRSService } from './services/cqrsApiService';
+import { Bell, Search, HelpCircle, CalendarRange, ChevronRight } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
-  const resourceData = useResources();
-  const { educators, auditoriums, groups, disciplines, loading } = resourceData;
+
+  // ========== Загрузка ресурсов ==========
+  const [loading, setLoading] = useState(true);
+  const [educators, setEducators] = useState<EducatorDto[]>([]);
+  const [auditoriums, setAuditoriums] = useState<any[]>([]);
+  const [groups, setGroups] = useState<GroupDto[]>([]);
+  const [disciplines, setDisciplines] = useState<any[]>([]);
+  const [streams, setStreams] = useState<any[]>([]);
+
+  // Типизированный alias для аудиторий (any[] — чтобы не конфликтовать с разными DTO)
+
+  // Начальная загрузка всех ресурсов
+  useEffect(() => {
+    Promise.all([
+      ResourceService.getEducators(),
+      ResourceService.getAuditoriums(),
+      ResourceService.getGroups(),
+      CurriculumService.getDisciplines(),
+      ResourceService.getStreams(),
+    ])
+        .then(([edu, aud, grp, disc, str]) => {
+          setEducators(edu);
+          setAuditoriums(aud);
+          setGroups(grp);
+          setDisciplines(disc);
+          setStreams(str);
+        })
+        .catch((err) => console.error('Ошибка загрузки данных:', err))
+        .finally(() => setLoading(false));
+  }, []);
+
+  // ========== Загрузка существующего расписания при старте ==========
+  useEffect(() => {
+    // 1. Сначала получаем активный учебный период
+    ResourceService.getActiveStudyPeriod()
+        .then((activePeriod) => {
+          if (activePeriod) {
+            console.log('✅ Активный период:', activePeriod.name, '(', activePeriod.startDate, '—', activePeriod.endDate, ')');
+
+            // 2. Загружаем расписание за этот период
+            return ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
+          } else {
+            console.log('ℹ️ Нет активного учебного периода');
+            // Если нет активного периода, возвращаем пустой результат
+            return Promise.resolve({
+              status: 'empty',
+              lessons: [],
+              grid: {},
+              placedCount: 0,
+              unplacedCount: 0,
+              startDate: new Date().toISOString().split('T')[0],
+              endDate: new Date().toISOString().split('T')[0],
+              totalSlots: 0,
+              usedSlots: 0
+            });
+          }
+        })
+        .then((result) => {
+          if (result.status === 'loaded' && result.lessons.length > 0) {
+            console.log('✅ Загружено существующее расписание:', result.lessons.length, 'занятий');
+            setScheduleLessons(result.lessons);
+            setScheduleGrid(result.grid || {});
+          } else {
+            console.log('ℹ️ Нет существующего расписания, нужна генерация');
+          }
+        })
+        .catch((err) => {
+          console.error('Ошибка загрузки расписания:', err);
+        });
+  }, []);
+
+  // ========== CRUD перезагрузки ==========
+  const reloadGroups = useCallback(async () => {
+    try {
+      const data = await ResourceService.getGroups();
+      setGroups(data);
+    } catch (err) {
+      console.error('Ошибка загрузки групп:', err);
+    }
+  }, []);
+
+  const reloadEducators = useCallback(async () => {
+    try {
+      const data = await ResourceService.getEducators();
+      setEducators(data);
+    } catch (err) {
+      console.error('Ошибка загрузки преподавателей:', err);
+    }
+  }, []);
+
+  const reloadAuditoriums = useCallback(async () => {
+    try {
+      const data = await ResourceService.getAuditoriums();
+      setAuditoriums(data);
+    } catch (err) {
+      console.error('Ошибка загрузки аудиторий:', err);
+    }
+  }, []);
+
+  // ========== Расписание ==========
   const [scheduleLessons, setScheduleLessons] = useState<ScheduledLessonDto[]>([]);
+  const [scheduleGrid, setScheduleGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
   const [isGenerating, setIsGenerating] = useState(false);
+  const [currentSession, setCurrentSession] = useState<any | null>(null);
 
   const handleGenerateSchedule = async (courseIds: number[]) => {
     setIsGenerating(true);
     try {
-      const result = await ScheduleService.generateBatch(courseIds);
-      setScheduleLessons(result.lessons);
+      // Используем CQRS для генерации с созданием сессии
+      const session = await CQRSService.generateSchedule({
+        name: 'Генерация от ' + new Date().toLocaleString('ru-RU'),
+        courseIds: courseIds
+      });
+
+      setCurrentSession(session);
+
+      // Загружаем расписание за активный период
+      const activePeriod = await ResourceService.getActiveStudyPeriod();
+      if (activePeriod) {
+        const result = await ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
+        setScheduleLessons(result.lessons);
+        setScheduleGrid(result.grid || {});
+      }
+
       setActiveTab('schedule');
     } catch (err) {
       console.error(err);
@@ -35,6 +149,7 @@ export default function App() {
     }
   };
 
+  // ========== Рендер контента ==========
   const renderContent = () => {
     if (loading) {
       return (
@@ -53,38 +168,56 @@ export default function App() {
       );
     }
 
-    return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-          {(() => {
-            switch (activeTab) {
-              case 'dashboard':
-                return (
-                    <Dashboard
-                        stats={{ educators: educators.length, auditoriums: auditoriums.length, groups: groups.length, disciplines: disciplines.length }}
-                        onGenerate={handleGenerateSchedule}
-                        isGenerating={isGenerating}
-                    />
-                );
-              case 'educators': return <EducatorList educators={educators} />;
-              case 'auditoriums': return <AuditoriumGrid auditoriums={auditoriums} />;
-              case 'groups': return <GroupList groups={groups} />;
-              case 'disciplines': return <DisciplineList disciplines={disciplines} />;
-              case 'streams': return <StudyStreamList streams={(resourceData as any).streams || []} />;
-              case 'constraints': return <ConstraintsManager />;
-              case 'curriculum': return <CurriculumManager disciplines={disciplines} />;
-              case 'schedule':
-                return <ScheduleManager lessons={scheduleLessons} startDate={new Date(2026, 1, 9)} endDate={new Date(2026, 7, 31)} />;
-              default:
-                return (
-                    <div className="flex flex-col items-center justify-center h-96 text-slate-300">
-                      <HelpCircle size={48} className="mb-4 opacity-10" />
-                      <p className="text-lg font-bold">Модуль "{activeTab}" не найден</p>
-                    </div>
-                );
-            }
-          })()}
-        </div>
-    );
+    switch (activeTab) {
+      case 'dashboard':
+        return (
+            <Dashboard
+                stats={{
+                  educators: educators.length,
+                  auditoriums: auditoriums.length,
+                  groups: groups.length,
+                  disciplines: disciplines.length,
+                }}
+                onGenerate={handleGenerateSchedule}
+                isGenerating={isGenerating}
+            />
+        );
+      case 'educators':
+        return <EducatorList educators={educators} onEducatorsChange={reloadEducators} />;
+      case 'auditoriums':
+        return <AuditoriumGrid auditoriums={auditoriums} onAuditoriumsChange={reloadAuditoriums} />;
+      case 'groups':
+        return <GroupList groups={groups} onGroupsChange={reloadGroups} />;
+      case 'disciplines':
+        return <DisciplineList disciplines={disciplines} />;
+      case 'streams':
+        return <StudyStreamList streams={streams} />;
+      case 'constraints':
+        return <ConstraintsManager />;
+      case 'curriculum':
+        return <CurriculumManager disciplines={disciplines} />;
+      case 'schedule':
+        return (
+            <ScheduleManager
+                lessons={scheduleLessons}
+                grid={scheduleGrid}
+                startDate={new Date(2026, 1, 9)}
+                endDate={new Date(2026, 7, 31)}
+                onLessonChange={(lessons, grid) => {
+                  setScheduleLessons(lessons);
+                  setScheduleGrid(grid);
+                }}
+                currentSession={currentSession}
+            />
+        );
+      default:
+        return (
+            <div className="flex flex-col items-center justify-center h-96 text-slate-300">
+              <HelpCircle size={48} className="mb-4 opacity-10" />
+              <p className="text-lg font-bold">Модуль "{activeTab}" не найден</p>
+            </div>
+        );
+    }
   };
 
   return (
@@ -136,7 +269,9 @@ export default function App() {
                   <CalendarRange size={16} />
                 </div>
                 <div>
-                  <h1 className="text-xl font-black text-slate-900 capitalize tracking-tight leading-none">{activeTab === 'dashboard' ? 'Dashboard' : activeTab}</h1>
+                  <h1 className="text-xl font-black text-slate-900 capitalize tracking-tight leading-none">
+                    {activeTab === 'dashboard' ? 'Dashboard' : activeTab}
+                  </h1>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Management System</p>
                 </div>
               </div>

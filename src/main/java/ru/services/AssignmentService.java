@@ -97,4 +97,9 @@ public class AssignmentService {
     public List<Assignment> getAllEntitiesByCourseId(Integer courseId) {
         return assignmentRepository.findAllByCourseIdWithDetails(courseId);
     }
+
+    @Transactional(readOnly = true)
+    public List<Assignment> getAllEntities() {
+        return assignmentRepository.findAll();
+    }
 }

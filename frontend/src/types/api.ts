@@ -1,17 +1,17 @@
 // ============ ENUMS ============
 export type KindOfStudy =
-  | 'LECTURE'
-  | 'PRACTICAL_WORK'
-  | 'LAB_WORK'
-  | 'SEMINAR'
-  | 'GROUP_WORK'
-  | 'GROUP_EXERCISE'
-  | 'QUIZ'
-  | 'INDIVIDUAL_REVIEW_INTERVIEW'
-  | 'CREDIT_WITH_GRADE'
-  | 'CREDIT_WITHOUT_GRADE'
-  | 'EXAM'
-  | 'INDEPENDENT_STUDY';
+    | 'LECTURE'
+    | 'PRACTICAL_WORK'
+    | 'LAB_WORK'
+    | 'SEMINAR'
+    | 'GROUP_WORK'
+    | 'GROUP_EXERCISE'
+    | 'QUIZ'
+    | 'INDIVIDUAL_REVIEW_INTERVIEW'
+    | 'CREDIT_WITH_GRADE'
+    | 'CREDIT_WITHOUT_GRADE'
+    | 'EXAM'
+    | 'INDEPENDENT_STUDY';
 
 export type TimeSlotPair = 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH';
 export type KindOfConstraints = 'BUSINESS_TRIP' | 'VACATION' | 'EXAM_SESSION' | 'MEDICAL_CARE' | 'LIBRARY' | 'FINAL_STATE_ATTESTATION' | 'OTHER';
@@ -29,10 +29,29 @@ export interface EnumDto {
 export interface EducatorDto {
   id: number;
   name: string;
-  preferredDays: string[];
+  preferredDays: DayOfWeek[];
   preferredTimeSlots: TimeSlotPair[];
   compactSchedule: boolean;
 }
+
+export interface EducatorCreateDto {
+  name: string;
+  preferredDays: DayOfWeek[];
+  preferredTimeSlots: TimeSlotPair[];
+  compactSchedule: boolean;
+}
+
+export interface EducatorUpdateDto {
+  name: string;
+  preferredDays: DayOfWeek[];
+  preferredTimeSlots: TimeSlotPair[];
+  compactSchedule: boolean;
+}
+
+export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';
+
+// Все лейблы enum-ов загружаются с бэкенда через GET /api/enums/all
+// Никакого хардкода — единый источник правды на сервере
 
 export interface GroupDto {
   id: number;
@@ -41,13 +60,41 @@ export interface GroupDto {
   baseAuditorium?: { id: number; name: string };
 }
 
+export interface GroupCreateDto {
+  name: string;
+  size: number;
+  baseAuditoriumId?: number | null;
+}
+
+export interface GroupUpdateDto {
+  name: string;
+  size: number;
+  baseAuditoriumId?: number | null;
+}
+
 export interface AuditoriumDto {
   id: number;
   name: string;
   capacity: number;
   building: { id: number; name: string; location: { id: number; name: string } };
-  purpose?: { id: number; name: string };
+  purpose?: { id: number; name: string } | null;
   features: { id: number; name: string; code: string }[];
+}
+
+export interface AuditoriumCreateDto {
+  name: string;
+  capacity: number;
+  buildingId: number;
+  purposeId?: number | null;
+  featureIds?: number[];
+}
+
+export interface AuditoriumUpdateDto {
+  name: string;
+  capacity: number;
+  buildingId: number;
+  purposeId?: number | null;
+  featureIds?: number[];
 }
 
 export interface LocationDto {
@@ -200,6 +247,7 @@ export interface ScheduledLessonDto {
 export interface ScheduleResultDto {
   status: string;
   lessons: ScheduledLessonDto[];
+  grid: Record<string, ScheduledLessonDto[]>; // Координатная сетка: "YYYY-MM-DD_SLOT" -> Уроки
   placedCount: number;
   unplacedCount: number;
   startDate: string;

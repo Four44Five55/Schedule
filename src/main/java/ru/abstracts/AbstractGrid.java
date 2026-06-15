@@ -1,9 +1,11 @@
 package ru.abstracts;
 
+import lombok.Getter;
 import ru.inter.IGrid;
 
 import java.time.LocalDate;
 
+@Getter
 abstract public class AbstractGrid implements IGrid {
     private final LocalDate startDate;
     private final LocalDate endDate;
@@ -18,11 +20,4 @@ abstract public class AbstractGrid implements IGrid {
         this.endDate = endDate;
     }
 
-    public LocalDate getStartDate() {
-        return this.startDate;
-    }
-
-    public LocalDate getEndDate() {
-        return this.endDate;
-    }
 }

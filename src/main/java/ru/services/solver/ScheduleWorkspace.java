@@ -215,10 +215,21 @@ public final class ScheduleWorkspace {
 
         // 3. Если есть пул
         if (lesson.getAllowedAuditoriumPool() != null) {
-            return lesson.getAllowedAuditoriumPool().getAuditoriums().stream()
+            List<Auditorium> available = lesson.getAllowedAuditoriumPool().getAuditoriums().stream()
                     .filter(aud -> resourceManager.getAuditoriumResource(aud.getId()).isFree(cell))
-                    .filter(aud -> aud.getCapacity() >= lesson.getStudyStream().calculateTotalSize()) // Условный метод
+                    .filter(aud -> aud.getCapacity() >= lesson.getStudyStream().calculateTotalSize())
                     .collect(Collectors.toList());
+
+            // ✅ ПРОВЕРКА: Если занятию уже назначены аудитории, нужно минимум столько же
+            int minRequired = lesson.getAssignedAuditoriums() != null && !lesson.getAssignedAuditoriums().isEmpty()
+                    ? lesson.getAssignedAuditoriums().size()
+                    : 1;
+
+            if (available.size() < minRequired) {
+                return Collections.emptyList(); // Недостаточно аудиторий!
+            }
+
+            return available;
         }
 
         // 4. Резервный вариант (нежелателен)
