@@ -1,0 +1,22 @@
+// Root build.gradle для Schedule Monorepo
+// Этот файл нужен только для IntelliJ IDEA, чтобы понять структуру проекта
+
+allprojects {
+    group = 'ru'
+    version = '1.0-SNAPSHOT'
+}
+
+tasks.register('cleanAll') {
+    description = 'Очистка всех модулей'
+    group = 'build'
+}
+
+tasks.register('buildAll') {
+    description = 'Сборка всех модулей'
+    group = 'build'
+}
+
+tasks.register('testAll') {
+    description = 'Запуск тестов всех модулей'
+    group = 'verification'
+}

@@ -2,67 +2,64 @@
 .gradle/
 build/
 out/
+.gradle/
+backend/.gradle/
 
 # Backend specific
-/backend/src/main/resources/db/values
-/backend/src/main/generated/
-/backend/build/
-/backend/schedule_db
+backend/src/main/generated/
+backend/build/
+schedule_db
+*.log
+logs/
+
+# Database - local DB files, not shared
+backend/src/main/resources/db/values/
 
 # IntelliJ IDEA
-# Игнорируем всю папку с настройками IDE. Этого достаточно.
 .idea/
-
-# Специфичные файлы IDE, которые могут оказаться вне папки .idea
 *.iml
 *.iws
 
 # VS Code
 .vscode/
 
-# Папка для сгенерированных отчетов (например, Excel-файлов)
+# Output files
 /output/
 
-# Логи
-*.log
-logs/
-
-# файл с переменными окружения
+# Environment
 .env
+backend/.env
+backend/src/main/resources/application-dotenv.properties
 .aider*
 
+# Documentation (user not interested)
+docs/
+
+# Temporary/Restructuring files
+RESTRICTORING*
+-H
+-d
+
 # Frontend (Node.js / React)
-# ============================================
-# Зависимости (восстанавливаются из package.json)
 /frontend/node_modules/
 /frontend/.yarn/
 /frontend/.yarn-integrity/
 /frontend/.pnp/
 /frontend/.pnp.js/
-
-# Сборочные файлы
 /frontend/dist/
 /frontend/build/
 /frontend/.next/
 /frontend/.nuxt/
 /frontend/.cache/
-
-# Логи и кэш
 /frontend/npm-debug.log*
 /frontend/yarn-debug.log*
 /frontend/yarn-error.log*
 /frontend/.eslintcache
-
-# Папки IDE
 /frontend/.vscode/
 /frontend/.idea/
-
-# Временные файлы
 /frontend/.env.local
 /frontend/.env.development.local
 /frontend/.env.test.local
 /frontend/.env.production.local
-
-# Coverage (тесты)
 /frontend/coverage/
 /frontend/.nyc_output/
