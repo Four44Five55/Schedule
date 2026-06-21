@@ -89,6 +89,22 @@ public class ScheduleCommandController {
     }
 
     /**
+     * Получить сессию для редактирования «живого» расписания.
+     *
+     * <p>POST /api/schedule/command/sessions/editable</p>
+     *
+     * <p>Находит сессию текущего расписания и при необходимости переоткрывает её
+     * для редактирования — без повторной генерации. Возвращает 204, если расписания
+     * (ни одной сессии с размещениями) ещё нет.</p>
+     */
+    @PostMapping("/sessions/editable")
+    public ResponseEntity<ScheduleSessionDto> getEditableSession() {
+        return generationService.getOrCreateEditableSession("user")
+            .map(session -> ResponseEntity.ok(sessionMapper.toDto(session)))
+            .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
      * Перенести занятие с optimistic lock.
      *
      * POST /api/schedule/command/sessions/{sessionId}/move-lesson

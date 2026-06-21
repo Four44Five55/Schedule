@@ -2,7 +2,7 @@
 // Компонент для отображения статуса сессии расписания
 
 import React from 'react';
-import { CheckCircle, Clock, Archive, Loader2, FileText, Calendar } from 'lucide-react';
+import { CheckCircle, Clock, Archive, Loader2, FileText } from 'lucide-react';
 import { ScheduleSessionDto, SessionStatus } from '../../../types/cqrs';
 import { cn } from '../../../utils/cn';
 

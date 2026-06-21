@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
-import { Users, School, BookOpen, Play, CheckCircle2, Loader2, Zap, ArrowRight, TrendingUp } from 'lucide-react';
+import { Users, School, BookOpen, CheckCircle2, Loader2, Zap, ArrowRight, TrendingUp } from 'lucide-react';
 
 interface DashboardProps {
   stats: {

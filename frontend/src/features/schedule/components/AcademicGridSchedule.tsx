@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { ScheduledLessonDto, TimeSlotPair } from '../../../types/api';
+import React, { useMemo, useState, useEffect } from 'react';
+import { ScheduledLessonDto, TimeSlotPair, ConstraintDto } from '../../../types/api';
 import { format, addDays, eachWeekOfInterval, isWithinInterval, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { cn } from '../../../utils/cn';
-import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, ShieldAlert } from 'lucide-react';
-import { MoveLessonDialog } from './MoveLessonDialog';
+import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, ShieldAlert, X } from 'lucide-react';
+import { CQRSService } from '../../../services/cqrsApiService';
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];
@@ -13,10 +13,12 @@ interface AcademicGridScheduleProps {
   selectedValue: string;
   startDate: Date;
   endDate: Date;
-  constraints?: any[];
+  constraints?: ConstraintDto[];
   isEditMode?: boolean;
   sessionId?: string;
   currentVersion?: number;
+  rootEntityType?: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
+  rootEntityId?: number;
   onMoveLesson?: (placementId: string) => void;
 }
 
@@ -47,22 +49,124 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             isEditMode = false,
                                                                             sessionId,
                                                                             currentVersion = 0,
+                                                                            rootEntityType,
+                                                                            rootEntityId,
                                                                             onMoveLesson
                                                                           }) => {
   const [zoom, setZoom] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [selectedLesson, setSelectedLesson] = useState<ScheduledLessonDto | null>(null);
 
-  const handleLessonClick = (lesson: ScheduledLessonDto) => {
-    if (isEditMode && sessionId && onMoveLesson) {
-      setSelectedLesson(lesson);
-    }
+  // Перенос «по сетке»: выбираем занятие → подсвечиваем зелёным доступные ячейки →
+  // клик по зелёной ячейке переносит занятие туда. Без модального окна.
+  const [selectedLesson, setSelectedLesson] = useState<ScheduledLessonDto | null>(null);
+  const [moveTargets, setMoveTargets] = useState<Set<string>>(new Set());
+  const [loadingTargets, setLoadingTargets] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [hintVisible, setHintVisible] = useState(true);
+
+  const clearSelection = () => {
+    setSelectedLesson(null);
+    setMoveTargets(new Set());
   };
 
-  const handleMoveSuccessful = () => {
-    setSelectedLesson(null);
-    if (selectedLesson && onMoveLesson) {
-      onMoveLesson(String(selectedLesson.id));
+  const isSelectedLesson = (l: ScheduledLessonDto) =>
+      !!selectedLesson &&
+      selectedLesson.placementId === l.placementId &&
+      selectedLesson.date === l.date &&
+      selectedLesson.timeSlotPair === l.timeSlotPair;
+
+  const handleLessonClick = (lesson: ScheduledLessonDto) => {
+    if (!isEditMode || !sessionId || !onMoveLesson) return;
+    // повторный клик по тому же занятию — снять выбор
+    if (isSelectedLesson(lesson)) {
+      clearSelection();
+      return;
+    }
+    setSelectedLesson(lesson);
+  };
+
+  // Подбор доступных ячеек для выбранного занятия (то, что подсветится зелёным).
+  useEffect(() => {
+    if (!selectedLesson || !sessionId || !selectedLesson.placementId) {
+      setMoveTargets(new Set());
+      return;
+    }
+    let cancelled = false;
+    setLoadingTargets(true);
+    const rootType = rootEntityType ?? 'EDUCATOR';
+    const rootId = rootEntityId ?? selectedLesson.educatorIds[0] ?? 1;
+    CQRSService.findMoveOptions({
+      sessionId,
+      placementId: selectedLesson.placementId,
+      rootEntityId: rootId,
+      rootEntityType: rootType,
+    })
+        .then((options) => {
+          if (!cancelled) setMoveTargets(new Set(options.map((o) => `${o.date}_${o.timeSlot}`)));
+        })
+        .catch(() => { if (!cancelled) setMoveTargets(new Set()); })
+        .finally(() => { if (!cancelled) setLoadingTargets(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLesson, sessionId, rootEntityType, rootEntityId]);
+
+  // Esc — отмена выбора.
+  useEffect(() => {
+    if (!selectedLesson) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') clearSelection(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedLesson]);
+
+  // Подсказка-тост сама угасает через несколько секунд (зелёные ячейки остаются).
+  // Каждое значимое изменение состояния (выбор/загрузка/перенос) снова показывает её.
+  useEffect(() => {
+    if (!selectedLesson) return;
+    setHintVisible(true);
+    const t = setTimeout(() => setHintVisible(false), 3500);
+    return () => clearTimeout(t);
+  }, [selectedLesson, loadingTargets, moving]);
+
+  // Ячейки, где заняты преподаватель(и) выбранного занятия — чтобы располагать его
+  // компактно к остальным парам преподавателя. Считается из уже загруженного
+  // расписания, без обращения к бэкенду.
+  const teacherBusyCells = useMemo(() => {
+    const set = new Set<string>();
+    if (!selectedLesson) return set;
+    const educatorIds = new Set(selectedLesson.educatorIds);
+    for (const l of lessons) {
+      if (l.educatorIds.some((id) => educatorIds.has(id))) {
+        set.add(`${l.date}_${l.timeSlotPair}`);
+      }
+    }
+    return set;
+  }, [selectedLesson, lessons]);
+
+  const handleCellMove = async (dateStr: string, slotId: TimeSlotPair) => {
+    if (!selectedLesson || !sessionId || moving) return;
+    if (!moveTargets.has(`${dateStr}_${slotId}`) || !selectedLesson.placementId) return;
+
+    const movedId = String(selectedLesson.id);
+    setMoving(true);
+    try {
+      const result = await CQRSService.moveLesson(sessionId, {
+        placementId: selectedLesson.placementId,
+        newDate: dateStr,
+        newSlot: slotId,
+        // аудитории оставляем за занятием
+        newAuditoriumIds: selectedLesson.auditoriumIds,
+        version: currentVersion,
+      });
+      clearSelection();
+      if (result.success) {
+        // Query Side обновляется асинхронно — даём ему мгновение, затем перезагружаем.
+        setTimeout(() => onMoveLesson?.(movedId), 1000);
+      }
+    } catch (e) {
+      console.error('Ошибка переноса:', e);
+      clearSelection();
+    } finally {
+      setMoving(false);
     }
   };
 
@@ -89,9 +193,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   const zoomClasses = {
     cellHeight: zoom === 0 ? 'h-9' : zoom === 1 ? 'h-14' : 'h-24',
     fontSizeMain: zoom === 0 ? 'text-[7px]' : zoom === 1 ? 'text-[10px]' : 'text-[12px]',
+    // Аббревиатура дисциплины — на 2pt крупнее основного текста ячейки.
+    fontSizeAbbr: zoom === 0 ? 'text-[9px]' : zoom === 1 ? 'text-[12px]' : 'text-[14px]',
     fontSizeSub: zoom === 0 ? 'text-[6px]' : zoom === 1 ? 'text-[8px]' : 'text-[10px]',
     containerMaxHeight: isFullscreen ? 'h-[90vh]' : 'max-h-[700px]'
   };
+
+  // У преподавателя в ячейке важны группы (он ведёт разные), поэтому контент
+  // ячейки перестраиваем именно для его расписания.
+  const isEducatorView = filterType === 'educator';
 
   return (
       <div className={cn(
@@ -134,6 +244,33 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             {isFullscreen ? 'Свернуть' : 'Развернуть'}
           </button>
         </div>
+
+        {selectedLesson && (
+            <div
+                className={cn(
+                    'fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-3',
+                    'bg-slate-900/95 text-white rounded-xl px-4 py-2 shadow-2xl backdrop-blur',
+                    'transition-opacity duration-500',
+                    hintVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                )}
+            >
+              <span className="text-[11px] font-bold whitespace-nowrap">
+                {loadingTargets
+                    ? 'Ищем доступные слоты…'
+                    : moving
+                        ? 'Переносим занятие…'
+                        : moveTargets.size > 0
+                            ? <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>
+                            : `Нет доступных слотов для «${selectedLesson.disciplineAbbreviation}»`}
+              </span>
+              <button
+                  onClick={clearSelection}
+                  className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
+              >
+                <X size={12} /> Esc
+              </button>
+            </div>
+        )}
 
         <div className={cn(
             "bg-white shadow-2xl rounded-xl border-2 border-slate-300 overflow-hidden flex flex-col transition-all duration-500",
@@ -233,34 +370,79 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                               `Группы: ${lesson.groupNames.join(', ')}`
                             ].join('\n') : activeConstraint ? `ОГРАНИЧЕНИЕ: ${activeConstraint.kindOfConstraint}` : '';
 
+                            // Доступная для переноса ячейка (подсвечивается зелёным) —
+                            // только пустая для выбранного ресурса и из списка вариантов.
+                            const isMoveTarget = !!selectedLesson && !lesson && moveTargets.has(gridKey);
+                            const isTeacherBusy = !!selectedLesson && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
+                            const isSourceCell = !!lesson && isSelectedLesson(lesson);
+                            const isExamOrCredit = !!lesson &&
+                                (lesson.kindOfStudy === 'EXAM' ||
+                                    lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
+                                    lesson.kindOfStudy === 'CREDIT_WITHOUT_GRADE');
+
                             return (
                                 <td
                                     key={weekIdx}
-                                    onClick={() => lesson && handleLessonClick(lesson)}
+                                    onClick={() => {
+                                      if (isMoveTarget) { handleCellMove(dateStr, slot.id); return; }
+                                      if (lesson) handleLessonClick(lesson);
+                                    }}
                                     className={cn(
                                         'border-r p-0.5 transition-all relative overflow-hidden',
                                         borderClass,
-                                        !lesson && 'bg-white hover:bg-slate-50/30',
-                                        lesson && isEditMode && 'bg-blue-100 text-blue-900 hover:bg-blue-200 cursor-pointer',
-                                        lesson && !isEditMode && 'bg-slate-200 text-slate-900 hover:bg-slate-300 cursor-help',
-                                        !lesson && activeConstraint && 'bg-rose-50/50'
+                                        !lesson && !isMoveTarget && !isTeacherBusy && 'bg-white hover:bg-slate-50/30',
+                                        !lesson && !isMoveTarget && !isTeacherBusy && activeConstraint && 'bg-rose-50/50',
+                                        isMoveTarget && 'bg-emerald-200 hover:bg-emerald-300 cursor-pointer ring-1 ring-inset ring-emerald-500',
+                                        isTeacherBusy && 'bg-amber-100 ring-1 ring-inset ring-amber-300',
+                                        lesson && !isExamOrCredit && 'bg-slate-100 text-slate-900 hover:bg-slate-200',
+                                        lesson && isExamOrCredit && 'bg-slate-300 text-slate-600 hover:bg-slate-400',
+                                        lesson && isEditMode && 'cursor-pointer',
+                                        lesson && !isEditMode && 'cursor-help',
+                                        isSourceCell && 'ring-2 ring-inset ring-blue-600'
                                     )}
-                                    title={lesson && isEditMode ? 'Нажмите, чтобы перенести занятие' : tooltipContent}
+                                    title={
+                                      isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
+                                          : isTeacherBusy ? 'Преподаватель занят в это время'
+                                              : lesson && isEditMode ? 'Нажмите, чтобы выбрать занятие для переноса'
+                                                  : tooltipContent
+                                    }
                                 >
                                   {lesson ? (
                                       <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", zoomClasses.fontSizeMain)}>
                                         {isEditMode && (
-                                            <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse" />
+                                            <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" />
                                         )}
-                                        <div className="font-bold border-b border-slate-300/50 pb-0.5 mb-0.5 whitespace-nowrap overflow-hidden opacity-60">
-                                          {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
-                                        </div>
-                                        <div className="font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center">
-                                          {lesson.disciplineAbbreviation}
-                                        </div>
-                                        <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", zoomClasses.fontSizeSub)}>
-                                          {lesson.auditoriumNames[0]}
-                                        </div>
+                                        {isEducatorView ? (
+                                            <>
+                                              {/* Преподаватель: дисциплина+вид+тема / группы / аудитория */}
+                                              <div className="flex items-baseline gap-1 whitespace-nowrap overflow-hidden border-b border-slate-300/50 pb-0.5 mb-0.5">
+                                                <span className={cn("font-black tracking-tighter", zoomClasses.fontSizeAbbr)}>
+                                                  {lesson.disciplineAbbreviation}
+                                                </span>
+                                                <span className={cn("font-bold opacity-60", zoomClasses.fontSizeSub)}>
+                                                  {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
+                                                </span>
+                                              </div>
+                                              <div className="font-bold truncate flex-1 flex items-center">
+                                                {lesson.groupNames.join(', ') || '—'}
+                                              </div>
+                                              <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", zoomClasses.fontSizeSub)}>
+                                                {lesson.auditoriumNames.join(', ')}
+                                              </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                              <div className="font-bold border-b border-slate-300/50 pb-0.5 mb-0.5 whitespace-nowrap overflow-hidden opacity-60">
+                                                {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
+                                              </div>
+                                              <div className={cn("font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center", zoomClasses.fontSizeAbbr)}>
+                                                {lesson.disciplineAbbreviation}
+                                              </div>
+                                              <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", zoomClasses.fontSizeSub)}>
+                                                {lesson.auditoriumNames[0]}
+                                              </div>
+                                            </>
+                                        )}
                                       </div>
                                   ) : activeConstraint ? (
                                       <div className="flex items-center justify-center h-full opacity-30">
@@ -279,15 +461,6 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           </div>
         </div>
 
-        {selectedLesson && sessionId && (
-            <MoveLessonDialog
-                placement={selectedLesson}
-                sessionId={sessionId}
-                currentVersion={currentVersion}
-                onMoveSuccessful={handleMoveSuccessful}
-                onCancel={() => setSelectedLesson(null)}
-            />
-        )}
       </div>
   );
 };

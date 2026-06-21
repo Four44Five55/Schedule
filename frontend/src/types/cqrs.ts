@@ -76,13 +76,12 @@ export interface ConflictResponse {
 }
 
 /**
- * Вариант для переноса занятия
+ * Вариант для переноса занятия.
+ * Бэкенд (ru.dto.moveLesson.MoveOptionDto) возвращает только дату и слот.
  */
 export interface MoveOptionDto {
   date: string;                   // YYYY-MM-DD
   timeSlot: string;               // 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH'
-  auditoriumIds: number[];
-  score: number;                  // Оценка качества (0-100)
 }
 
 /**
@@ -100,7 +99,7 @@ export interface MoveLessonRequest {
   placementId: string;
   newDate: string;                // YYYY-MM-DD
   newSlot: string;                // 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH'
-  auditoriumIds: number[];
+  newAuditoriumIds: number[];     // имя поля как в бэкенд-DTO
   version: number;                // Оптимистичная блокировка
 }
 
@@ -118,7 +117,7 @@ export interface MoveLessonResult {
  */
 export interface FindMoveOptionsRequest {
   sessionId: string;
-  lessonId: number;
+  placementId: string;             // UUID размещения — надёжный уникальный ключ занятия
   rootEntityId: number;
   rootEntityType: string;          // 'EDUCATOR' | 'GROUP' | 'AUDITORIUM'
 }

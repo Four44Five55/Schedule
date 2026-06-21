@@ -71,6 +71,20 @@ export const CQRSService = {
   },
 
   /**
+   * Получить сессию для редактирования «живого» расписания.
+   *
+   * Находит сессию текущего расписания и при необходимости переоткрывает её
+   * для редактирования — без повторной генерации. Возвращает null, если
+   * расписания ещё нет (HTTP 204).
+   */
+  getEditableSession: (): Promise<ScheduleSessionDto | null> => {
+    return api
+      .post<ScheduleSessionDto>('/schedule/command/sessions/editable')
+      .then(r => (r.status === 204 ? null : r.data))
+      .catch(() => null);
+  },
+
+  /**
    * Перенести занятие с optimistic lock (версионированием)
    *
    * ВАЖНО: Всегда передавайте актуальную версию (session.version)
@@ -86,24 +100,21 @@ export const CQRSService = {
     request: MoveLessonRequest
   ): Promise<MoveLessonResult> => {
     try {
-      const response = await api.post<{
-        success: true;
-        newVersion?: number;
-      } | {
-        success: false;
-        conflict: ConflictResponse;
-      }>(
+      // Бэкенд возвращает ScheduleSessionDto (с актуальной version), а НЕ {success}.
+      // Переводим успешный 2xx-ответ в контракт MoveLessonResult здесь, в сервисном
+      // слое — иначе result.success === undefined и UI не узнаёт об успехе переноса.
+      const response = await api.post<ScheduleSessionDto>(
         `/schedule/command/sessions/${sessionId}/move-lesson`,
         request
       );
 
-      return response.data;
+      return { success: true, newVersion: response.data.version };
     } catch (error: any) {
       // Обработка HTTP 409 Conflict
       if (error.response?.status === 409) {
         return {
           success: false,
-          conflict: error.response.data
+          conflict: error.response.data as ConflictResponse
         };
       }
       throw error;

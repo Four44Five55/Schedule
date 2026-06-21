@@ -32,9 +32,12 @@ public interface ScheduledLessonMapper {
     @Mapping(target = "groupNames", expression = "java(lesson.getStudyStream() != null && lesson.getStudyStream().getGroups() != null ? lesson.getStudyStream().getGroups().stream().map(g -> g.getName()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumIds", expression = "java(lesson.getAssignedAuditoriums() != null ? lesson.getAssignedAuditoriums().stream().map(a -> a.getId()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumNames", expression = "java(lesson.getAssignedAuditoriums() != null ? lesson.getAssignedAuditoriums().stream().map(a -> a.getName()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
+    @Mapping(target = "placementId", ignore = true)
     ScheduledLessonDto toDto(Lesson lesson, CellForLesson cell);
 
-    @Mapping(target = "id", source = "curriculumSlotId")
+    // id (Integer) на read-пути не несёт смысла — идентификация занятия идёт по
+    // placementId (UUID). Раньше маппился из curriculumSlotId, которого нет в schedule_view.
+    @Mapping(target = "id", ignore = true)
     @Mapping(target = "date", source = "scheduledDate")
     @Mapping(target = "timeSlotPair", source = "timeSlot")
     @Mapping(target = "disciplineName", source = "disciplineName")
@@ -49,6 +52,7 @@ public interface ScheduledLessonMapper {
     @Mapping(target = "groupNames", expression = "java(view.getGroupName() != null ? java.util.List.of(view.getGroupName()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumIds", expression = "java(view.getAuditoriumId() != null ? java.util.List.of(view.getAuditoriumId()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumNames", expression = "java(view.getAuditoriumName() != null ? java.util.List.of(view.getAuditoriumName()) : java.util.Collections.emptyList())")
+    @Mapping(target = "placementId", expression = "java(view.getPlacementId() != null ? view.getPlacementId().toString() : null)")
     ScheduledLessonDto toDto(ScheduleView view);
 
     /**
@@ -77,5 +81,6 @@ public interface ScheduledLessonMapper {
     @Mapping(target = "groupNames", expression = "java(placement.getAssignment() != null && placement.getAssignment().getStudyStream() != null && placement.getAssignment().getStudyStream().getGroups() != null ? placement.getAssignment().getStudyStream().getGroups().stream().map(g -> g.getName()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumIds", expression = "java(placement.getAssignedAuditoriums() != null ? placement.getAssignedAuditoriums().stream().map(a -> a.getId()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumNames", expression = "java(placement.getAssignedAuditoriums() != null ? placement.getAssignedAuditoriums().stream().map(a -> a.getName()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
+    @Mapping(target = "placementId", expression = "java(placement.getId() != null ? placement.getId().toString() : null)")
     ScheduledLessonDto toDto(LessonPlacement placement);
 }

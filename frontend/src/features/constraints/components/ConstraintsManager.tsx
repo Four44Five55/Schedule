@@ -3,7 +3,7 @@ import { ConstraintsService } from '../../../services/apiServices';
 import { EducatorConstraintDto, GroupConstraintDto, AuditoriumConstraintDto } from '../../../types/api';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
-import { ShieldAlert, User, Users, School, Calendar, Info } from 'lucide-react';
+import { User, Users, School, Calendar, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 

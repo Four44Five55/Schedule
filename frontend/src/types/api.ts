@@ -150,6 +150,28 @@ export interface DisciplineCourseDto {
   id: number;
   semester: number;
   discipline: { id: number; name: string; abbreviation: string };
+  studyPeriod?: { id: number; name: string; studyYear: number; periodType: string };
+}
+
+export interface DisciplineCreateDto {
+  name: string;
+  abbreviation?: string;
+}
+
+export interface DisciplineUpdateDto {
+  name: string;
+  abbreviation?: string;
+}
+
+export interface DisciplineCourseCreateDto {
+  disciplineId: number;
+  studyPeriodId: number;
+  semester: number;
+}
+
+// Бэкенд (DisciplineCourseUpdateDto) принимает при обновлении только учебный период.
+export interface DisciplineCourseUpdateDto {
+  studyPeriodId: number;
 }
 
 export interface CurriculumSlotDto {
@@ -161,6 +183,24 @@ export interface CurriculumSlotDto {
   requiredAuditorium?: { id: number; name: string };
   priorityAuditorium?: { id: number; name: string };
   allowedAuditoriumPool?: { id: number; name: string };
+}
+
+export interface CurriculumSlotCreateDto {
+  disciplineCourseId: number;
+  position: number;
+  kindOfStudy: KindOfStudy;
+  themeLessonId?: number;
+  requiredAuditoriumId?: number;
+  priorityAuditoriumId?: number;
+  allowedAuditoriumPoolId?: number;
+}
+
+export interface CurriculumSlotUpdateDto {
+  kindOfStudy: KindOfStudy; // на бэке @NotNull
+  themeLessonId?: number;
+  requiredAuditoriumId?: number;
+  priorityAuditoriumId?: number;
+  allowedAuditoriumPoolId?: number;
 }
 
 export interface ThemeLessonDto {
@@ -203,6 +243,17 @@ export interface AssignmentDto {
   educators: { id: number; name: string }[];
 }
 
+export interface AssignmentCreateDto {
+  curriculumSlotId: number;
+  studyStreamId: number;
+  educatorIds: number[];
+}
+
+export interface AssignmentUpdateDto {
+  studyStreamId?: number;
+  educatorIds?: number[];
+}
+
 // ============ CONSTRAINTS ============
 export interface EducatorConstraintDto {
   id: number;
@@ -234,6 +285,12 @@ export interface AuditoriumConstraintDto {
   description?: string;
 }
 
+/** Любое ограничение (преподавателя, группы или аудитории) — общие поля. */
+export type ConstraintDto =
+    | EducatorConstraintDto
+    | GroupConstraintDto
+    | AuditoriumConstraintDto;
+
 // ============ SCHEDULE ============
 export interface ScheduledLessonDto {
   id: number;
@@ -253,6 +310,7 @@ export interface ScheduledLessonDto {
   groupNames: string[];
   auditoriumNames: string[];
   auditoriumIds: number[];
+  placementId?: string; // UUID размещения (Command Side) для переноса; есть только у загруженного из БД расписания
 }
 
 // ============ SCHEDULE RESULT ============

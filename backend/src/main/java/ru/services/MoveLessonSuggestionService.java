@@ -25,10 +25,10 @@ public class MoveLessonSuggestionService {
      * Основной метод поиска доступных мест для переноса.
      * Реализует каскадную фильтрацию для максимальной производительности.
      */
-    public List<MoveOptionDto> findMoveSuggestions(ScheduleWorkspace workspace, MoveSuggestionRequest request) {
-        // 1. Находим занятие в текущем воркспейсе
-        // (Предполагаем, что воркспейс уже загружен текущим состоянием из БД)
-        Lesson targetLesson = findLesson(workspace, request.lessonId());
+    public List<MoveOptionDto> findMoveSuggestions(ScheduleWorkspace workspace, Lesson targetLesson, MoveSuggestionRequest request) {
+        // 1. Занятие уже найдено по placementId на границе восстановления workspace
+        //    (см. WorkspaceRecreationService.RecreatedWorkspace) — это тот же объект,
+        //    что лежит в сетке, поэтому операции ниже консистентны.
 
         // 2. ВАЖНО: Виртуально изымаем занятие из воркспейса.
         // Это освобождает ресурсы (преподавателя, группу, аудиторию),
@@ -38,6 +38,13 @@ public class MoveLessonSuggestionService {
 
         // 3. Получаем исходное множество всех ячеек семестра
         List<CellForLesson> candidates = new ArrayList<>(CellForLessonFactory.getAllCells());
+
+        // Исключаем текущую ячейку занятия: на шаге 2 мы его виртуально изъяли,
+        // поэтому его собственный слот выглядит «свободным». Предлагать перенос
+        // туда, где занятие уже стоит, не нужно.
+        if (originalCell != null) {
+            candidates.remove(originalCell);
+        }
 
         // --- КАСКАДНЫЙ ФИЛЬТР ---
 
@@ -95,16 +102,5 @@ public class MoveLessonSuggestionService {
             });
         }
         return participants;
-    }
-
-    private Lesson findLesson(ScheduleWorkspace workspace, Integer lessonId) {
-        // lessonId - это hashCode от placementId (UUID)
-        // Ищем занятие по placementId вместо curriculumSlotId
-        return workspace.getGrid().getGridMap().values().stream()
-                .flatMap(List::stream)
-                .filter(l -> l instanceof Lesson && ((Lesson) l).getCurriculumSlot().getId().equals(lessonId))
-                .map(l -> (Lesson) l)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Занятие с lessonId=" + lessonId + " не найдено в воркспейсе"));
     }
 }

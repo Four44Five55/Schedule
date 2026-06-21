@@ -10,13 +10,21 @@ import {
   GroupCreateDto,
   GroupUpdateDto,
   DisciplineDto,
+  DisciplineCreateDto,
+  DisciplineUpdateDto,
+  DisciplineCourseDto,
+  DisciplineCourseCreateDto,
+  DisciplineCourseUpdateDto,
   EnumDto,
   StudyStreamDto,
   CurriculumSlotDto,
-  DisciplineCourseDto,
+  CurriculumSlotCreateDto,
+  CurriculumSlotUpdateDto,
   ThemeLessonDto,
   SlotChainDto,
   AssignmentDto,
+  AssignmentCreateDto,
+  AssignmentUpdateDto,
   LocationDto,
   BuildingDto,
   FeatureDto,
@@ -27,7 +35,7 @@ import {
   GroupConstraintDto,
   AuditoriumConstraintDto,
   ScheduleResultDto,
-  ScheduledLessonDto, StudyStreamCreateDto, StudyStreamUpdateDto
+  StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
 
 // ============ 1. СПРАВОЧНИКИ (ENUMS) ============
@@ -87,12 +95,30 @@ export const ResourceService = {
 // ============ 3. УЧЕБНЫЙ ПЛАН ============
 export const CurriculumService = {
   getDisciplines: () => api.get<DisciplineDto[]>('/disciplines').then((r) => r.data).catch(() => []),
+  getDiscipline: (id: number) => api.get<DisciplineDto>(`/disciplines/${id}`).then((r) => r.data),
+  createDiscipline: (data: DisciplineCreateDto) => api.post<DisciplineDto>('/disciplines', data).then((r) => r.data),
+  updateDiscipline: (id: number, data: DisciplineUpdateDto) => api.put<DisciplineDto>(`/disciplines/${id}`, data).then((r) => r.data),
+  deleteDiscipline: (id: number) => api.delete(`/disciplines/${id}`).then(() => {}),
+
   getCourses: () => api.get<DisciplineCourseDto[]>('/discipline-courses').then((r) => r.data),
+  getCourse: (id: number) => api.get<DisciplineCourseDto>(`/discipline-courses/${id}`).then((r) => r.data),
   getCoursesByDiscipline: (disciplineId: number) => api.get<DisciplineCourseDto[]>(`/discipline-courses/by-discipline/${disciplineId}`).then((r) => r.data),
+  createCourse: (data: DisciplineCourseCreateDto) => api.post<DisciplineCourseDto>('/discipline-courses', data).then((r) => r.data),
+  updateCourse: (id: number, data: DisciplineCourseUpdateDto) => api.put<DisciplineCourseDto>(`/discipline-courses/${id}`, data).then((r) => r.data),
+  deleteCourse: (id: number) => api.delete(`/discipline-courses/${id}`).then(() => {}),
+
   getSlotsByCourse: (courseId: number) => api.get<CurriculumSlotDto[]>(`/curriculum-slots/by-course/${courseId}`).then((r) => r.data),
+  getSlot: (id: number) => api.get<CurriculumSlotDto>(`/curriculum-slots/${id}`).then((r) => r.data),
+  createSlot: (data: CurriculumSlotCreateDto) => api.post<CurriculumSlotDto>('/curriculum-slots', data).then((r) => r.data),
+  updateSlot: (id: number, data: CurriculumSlotUpdateDto) => api.put<CurriculumSlotDto>(`/curriculum-slots/${id}`, data).then((r) => r.data),
+  deleteSlot: (id: number) => api.delete(`/curriculum-slots/${id}`).then(() => {}),
+
   getThemesByDiscipline: (disciplineId: number) => api.get<ThemeLessonDto[]>(`/theme-lessons/by-discipline/${disciplineId}`).then((r) => r.data),
   getSlotChains: () => api.get<SlotChainDto[]>('/slot-chains').then((r) => r.data),
-  getAssignmentsByCourse: (courseId: number) => api.get<AssignmentDto[]>(`/assignments/by-course/${courseId}`).then((r) => r.data),
+  getAssignmentsByCourse: (courseId: number) => api.get<AssignmentDto[]>(`/assignments/by-course/${courseId}`).then((r) => r.data).catch(() => []),
+  createAssignment: (data: AssignmentCreateDto) => api.post<AssignmentDto>('/assignments', data).then((r) => r.data),
+  updateAssignment: (id: number, data: AssignmentUpdateDto) => api.put<AssignmentDto>(`/assignments/${id}`, data).then((r) => r.data),
+  deleteAssignment: (id: number) => api.delete(`/assignments/${id}`).then(() => {}),
 };
 
 // ============ 4. ОГРАНИЧЕНИЯ ============
@@ -108,51 +134,9 @@ export const ConstraintsService = {
 };
 
 // ============ 5. ГЕНЕРАЦИЯ ============
+// Генерация расписания выполняется через CQRSService.generateSchedule (Command Side).
+// Здесь остаётся только загрузка уже сохранённого расписания из БД.
 export const ScheduleService = {
-  generateBatch: (courseIds: number[]): Promise<ScheduleResultDto> =>
-      api.post<ScheduleResultDto>('/schedule/generate', { courseIds })
-          .then((r) => r.data)
-          .catch(() => {
-            // МОК-ДАННЫЕ, если бэкенд недоступен
-            const lessons: ScheduledLessonDto[] = [
-              {
-                id: 1,
-                date: '2026-02-09',
-                timeSlotPair: 'FIRST',
-                disciplineName: 'Программная инженерия',
-                disciplineAbbreviation: 'ПИ',
-                kindOfStudy: 'LECTURE',
-                kindOfStudyName: 'Лекция',
-                kindOfStudyAbbr: 'Л',
-                position: 1,
-                themeNumber: '1',
-                educatorIds: [1],
-                educatorNames: ['Иванов И.И.'],
-                groupNames: ['ПИ-401'],
-                auditoriumNames: ['Ауд. 301'],
-                auditoriumIds: [1],
-                streamName: 'Поток 1'
-              }
-            ];
-            const grid: Record<string, ScheduledLessonDto[]> = {
-              "2026-02-09_FIRST": [lessons[0]]
-            };
-            return {
-              status: "generated",
-              lessons,
-              grid,
-              placedCount: 1,
-              unplacedCount: 0,
-              startDate: "2026-02-09",
-              endDate: "2026-07-31",
-              totalSlots: 100,
-              usedSlots: 1
-            };
-          }),
-
-  generateSingle: (courseId: number) =>
-      api.post<ScheduleResultDto>(`/schedule/generate/${courseId}`).then((r) => r.data),
-
   /**
    * Загрузить существующее расписание из БД.
    * Используется при старте приложения для отображения уже сгенерированного расписания.

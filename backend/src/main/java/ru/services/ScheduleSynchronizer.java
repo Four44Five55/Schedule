@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import ru.entity.Assignment;
@@ -13,6 +15,7 @@ import ru.enums.TimeSlotPair;
 import ru.events.PlacementChangedEvent;
 import ru.events.ScheduleGeneratedEvent;
 import ru.repository.read.ScheduleViewRepository;
+import ru.repository.write.LessonPlacementRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -61,6 +64,7 @@ import java.util.UUID;
 public class ScheduleSynchronizer {
 
     private final ScheduleViewRepository viewRepository;
+    private final LessonPlacementRepository placementRepository;
 
     /**
      * Синхронизация Query Side после генерации расписания.
@@ -97,9 +101,16 @@ public class ScheduleSynchronizer {
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onScheduleGenerated(ScheduleGeneratedEvent event) {
         log.info("🔄 Синхронизация Query Side для session: {} ({} placements)",
                 event.getSessionId(), event.getPlacementsCount());
+
+        // Read-model — это проекция ОДНОГО живого расписания. Перед перепроекцией
+        // полностью очищаем view, чтобы исключить наложение прежних (теперь
+        // архивированных) сессий. Парная логика на Command-стороне:
+        // ScheduleGenerationService.archivePreviousSessions.
+        viewRepository.deleteAllInBatch();
 
         int syncedCount = 0;
         int createdCount = 0;
@@ -180,6 +191,7 @@ public class ScheduleSynchronizer {
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPlacementChanged(PlacementChangedEvent event) {
         log.info("🔄 Синхронизация Query Side для placementId={} (тип: {})",
                 event.getPlacementId(), event.getChangeType());
@@ -189,25 +201,69 @@ public class ScheduleSynchronizer {
                 // Удаляем view
                 viewRepository.deleteByPlacementId(event.getPlacementId());
                 log.info("🗑️  Удалена ScheduleView для placementId={}", event.getPlacementId());
-            } else {
-                // Создаём или обновляем view
-                var existingView = viewRepository.findByPlacementId(event.getPlacementId());
-
-                if (existingView.isEmpty()) {
-                    // Создаём новую view
-                    ScheduleView view = createViewFromPlacement(event.getPlacement());
-                    viewRepository.save(view);
-                    log.info("✅ Создана ScheduleView для placementId={}", event.getPlacementId());
-                } else {
-                    // Обновляем существующую view
-                    ScheduleView view = existingView.get();
-                    updateViewFromPlacement(view, event.getPlacement());
-                    viewRepository.save(view);
-                    log.info("🔄 Обновлена ScheduleView для placementId={}", event.getPlacementId());
-                }
+                return;
             }
+
+            // Перенос/изменение: перечитываем размещение по id в СОБСТВЕННОЙ
+            // транзакции (REQUIRES_NEW). Полагаться на entity из события нельзя —
+            // слушатель @Async выполняется в другом потоке после COMMIT, и навигация
+            // по ленивым ассоциациям детачнутого placement в чужой/закрытой сессии
+            // падает с "Illegal pop() ... JdbcValuesSourceProcessingState".
+            LessonPlacement placement = placementRepository.findById(event.getPlacementId()).orElse(null);
+            if (placement == null) {
+                log.warn("⚠️  Размещение placementId={} не найдено — view не обновлена", event.getPlacementId());
+                return;
+            }
+
+            // Один placement может иметь НЕСКОЛЬКО view — по одной на группу
+            // (вариант 3). Обновляем/создаём каждую, как при генерации.
+            syncPlacementViews(placement);
+            log.info("🔄 Синхронизирована ScheduleView для placementId={}", event.getPlacementId());
         } catch (Exception e) {
             log.error("❌ Ошибка синхронизации placementId={}: {}", event.getPlacementId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Создаёт или обновляет все {@link ScheduleView} для одного размещения.
+     *
+     * <p>Учитывает «вариант 3»: на один {@link LessonPlacement} приходится по одной
+     * view на каждую группу потока. Симметрично логике в {@link #onScheduleGenerated},
+     * благодаря чему перенос обновляет ровно те же строки, что создала генерация.</p>
+     *
+     * @param placement изменённое размещение
+     */
+    private void syncPlacementViews(LessonPlacement placement) {
+        Assignment assignment = placement.getAssignment();
+
+        boolean hasGroups = assignment != null
+                && assignment.getStudyStream() != null
+                && assignment.getStudyStream().getGroups() != null
+                && !assignment.getStudyStream().getGroups().isEmpty();
+
+        if (!hasGroups) {
+            // Один view (без групп)
+            var existingView = viewRepository.findByPlacementId(placement.getId());
+            if (existingView.isEmpty()) {
+                viewRepository.save(createViewFromPlacement(placement));
+            } else {
+                ScheduleView view = existingView.get();
+                updateViewFromPlacement(view, placement);
+                viewRepository.save(view);
+            }
+            return;
+        }
+
+        // По одной view на каждую группу потока
+        for (ru.entity.Group group : assignment.getStudyStream().getGroups()) {
+            var existingView = viewRepository.findByPlacementIdAndGroupId(placement.getId(), group.getId());
+            if (existingView.isEmpty()) {
+                viewRepository.save(createViewFromPlacementForGroup(placement, group));
+            } else {
+                ScheduleView view = existingView.get();
+                updateViewFromPlacementForGroup(view, placement, group);
+                viewRepository.save(view);
+            }
         }
     }
 
@@ -235,7 +291,6 @@ public class ScheduleSynchronizer {
                 extractDisciplineAbbr(assignment)
             );
             view.setKindOfStudy(assignment.getCurriculumSlot().getKindOfStudy().name());
-            view.setCurriculumSlotId(assignment.getCurriculumSlot().getId());
 
             if (assignment.getCurriculumSlot().getThemeLesson() != null) {
                 view.setTheme(
@@ -307,7 +362,6 @@ public class ScheduleSynchronizer {
                 extractDisciplineAbbr(assignment)
             );
             view.setKindOfStudy(assignment.getCurriculumSlot().getKindOfStudy().name());
-            view.setCurriculumSlotId(assignment.getCurriculumSlot().getId());
 
             if (assignment.getCurriculumSlot().getThemeLesson() != null) {
                 view.setTheme(
@@ -357,6 +411,15 @@ public class ScheduleSynchronizer {
         view.setScheduledDate(placement.getScheduledDate());
         view.setTimeSlot(placement.getScheduledSlot());
         view.setPlacementId(placement.getId());
+
+        // Обновляем аудитории (после переноса они могли измениться)
+        if (placement.getAssignedAuditoriums() != null && !placement.getAssignedAuditoriums().isEmpty()) {
+            view.setAuditorium(
+                placement.getAssignedAuditoriums().iterator().next().getId(),
+                placement.getAssignedAuditoriums().iterator().next().getName()
+            );
+        }
+
         view.setLastUpdated(LocalDateTime.now());
 
         log.debug("Обновлена ScheduleView: date={}, slot={}",

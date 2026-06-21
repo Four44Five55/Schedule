@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AcademicGridSchedule } from './AcademicGridSchedule';
-import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto, StudyPeriodDto } from '../../../types/api';
+import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto, StudyPeriodDto, ConstraintDto } from '../../../types/api';
 import { ConstraintsService, ResourceService, ScheduleService } from '../../../services/apiServices';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Calendar
 } from 'lucide-react';
-import { cn } from '../../../utils/cn';
 
 interface ScheduleManagerProps {
   lessons: ScheduledLessonDto[];
@@ -32,9 +31,24 @@ interface ScheduleManagerProps {
 type FilterType = 'group' | 'educator' | 'auditorium';
 
 export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid = {}, startDate, endDate, onLessonChange, currentSession: sessionProp }) => {
-  const [filterType, setFilterType] = useState<FilterType>('group');
-  const [selectedValue, setSelectedValue] = useState<string>('');
-  const [constraints, setConstraints] = useState<any[]>([]);
+  // Тип фильтра и выбранный объект переживают обновление страницы (localStorage),
+  // иначе F5 сбрасывает открытое расписание и его приходится выбирать заново.
+  const [filterType, setFilterType] = useState<FilterType>(() => {
+    const saved = localStorage.getItem('unischedule.schedule.filterType');
+    return saved === 'group' || saved === 'educator' || saved === 'auditorium' ? saved : 'group';
+  });
+  const [selectedValue, setSelectedValue] = useState<string>(
+    () => localStorage.getItem('unischedule.schedule.selectedValue') || ''
+  );
+
+  useEffect(() => {
+    localStorage.setItem('unischedule.schedule.filterType', filterType);
+  }, [filterType]);
+
+  useEffect(() => {
+    localStorage.setItem('unischedule.schedule.selectedValue', selectedValue);
+  }, [selectedValue]);
+  const [constraints, setConstraints] = useState<ConstraintDto[]>([]);
   const [loadingConstraints, setLoadingConstraints] = useState(false);
 
   const [isEditMode, setIsEditMode] = useState(false);
@@ -66,9 +80,20 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
     });
   }, []);
 
-  // Синхронизируем currentSession с пропом
+  // Синхронизируем currentSession с пропом (только если проп задан —
+  // иначе не затираем сессию, подтянутую при открытии расписания).
   useEffect(() => {
-    setCurrentSession(sessionProp || null);
+    if (sessionProp) setCurrentSession(sessionProp);
+  }, [sessionProp]);
+
+  // При открытии расписания подтягиваем сессию «живого» расписания (и при
+  // необходимости переоткрываем её), чтобы редактирование было доступно сразу —
+  // без повторной генерации.
+  useEffect(() => {
+    if (sessionProp) return;
+    CQRSService.getEditableSession().then((s) => {
+      if (s) setCurrentSession(s);
+    });
   }, [sessionProp]);
 
   const options = useMemo(() => {
@@ -88,6 +113,19 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
       auditorium: Array.from(auditoriums).sort(),
     };
   }, [lessons]);
+
+  // Корневая сущность для подбора вариантов переноса — та, через которую
+  // открыто расписание (выбранный фильтр). Первой проверяется именно она.
+  const rootEntityType: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM' =
+      filterType === 'group' ? 'GROUP' : filterType === 'educator' ? 'EDUCATOR' : 'AUDITORIUM';
+
+  const rootEntityId = useMemo(() => {
+    if (!selectedValue) return undefined;
+    const list = filterType === 'group' ? allResources.groups
+        : filterType === 'educator' ? allResources.educators
+            : allResources.auditoriums;
+    return list.find(r => r.name === selectedValue)?.id;
+  }, [filterType, selectedValue, allResources]);
 
   useEffect(() => {
     if (!selectedValue) {
@@ -132,8 +170,22 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
   };
 
   const handleMoveLesson = async (_placementId: string) => {
-    if (!currentSession) return;
     setActionMessage('✅ Занятие перенесено!');
+
+    // Перезагружаем расписание за текущий период, чтобы перенос отразился сразу,
+    // без ручного обновления страницы. Query Side обновляется асинхронно, но диалог
+    // переноса уже выждал ~1.5с перед вызовом — к этому моменту view готова.
+    if (selectedPeriod) {
+      try {
+        const result = await ScheduleService.loadExisting(selectedPeriod.startDate, selectedPeriod.endDate);
+        if (result.status === 'loaded') {
+          onLessonChange?.(result.lessons, result.grid || {});
+        }
+      } catch (err) {
+        console.error('Не удалось перезагрузить расписание после переноса:', err);
+      }
+    }
+
     setTimeout(() => setActionMessage(null), 2000);
   };
 
@@ -312,6 +364,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
                 isEditMode={isEditMode}
                 sessionId={currentSession?.id}
                 currentVersion={currentSession?.version || 0}
+                rootEntityType={rootEntityType}
+                rootEntityId={rootEntityId}
                 onMoveLesson={handleMoveLesson}
             />
         ) : (

@@ -3,8 +3,9 @@ import { CurriculumService } from '../../../services/apiServices';
 import { DisciplineDto, DisciplineCourseDto, CurriculumSlotDto } from '../../../types/api';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
-import { BookOpen, ChevronRight, FileText, User, Users, School } from 'lucide-react';
+import { ChevronRight, FileText, School, Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { CurriculumSlotFormModal } from './CurriculumSlotFormModal';
 
 export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ disciplines }) => {
   const [selectedDiscipline, setSelectedDiscipline] = useState<DisciplineDto | null>(null);
@@ -12,6 +13,11 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [slots, setSlots] = useState<CurriculumSlotDto[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Модальные окна и операции
+  const [showSlotForm, setShowSlotForm] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<CurriculumSlotDto | null>(null);
+  const [deletingSlot, setDeletingSlot] = useState<number | null>(null);
 
   useEffect(() => {
     if (selectedDiscipline) {
@@ -33,7 +39,51 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
     }
   }, [selectedCourseId]);
 
+  const handleCreateSlot = () => {
+    setSelectedSlot(null);
+    setShowSlotForm(true);
+  };
+
+  const handleEditSlot = (slot: CurriculumSlotDto) => {
+    setSelectedSlot(slot);
+    setShowSlotForm(true);
+  };
+
+  const handleDeleteSlot = async (slotId: number) => {
+    if (!confirm('Вы уверены, что хотите удалить это занятие? Последующие занятия сдвинутся вверх.')) {
+      return;
+    }
+
+    setDeletingSlot(slotId);
+    try {
+      await CurriculumService.deleteSlot(slotId);
+      // Перезагружаем слоты
+      if (selectedCourseId) {
+        const updated = await CurriculumService.getSlotsByCourse(selectedCourseId);
+        setSlots(updated);
+      }
+    } catch (error) {
+      console.error('Ошибка удаления слота:', error);
+      alert('Не удалось удалить занятие');
+    } finally {
+      setDeletingSlot(null);
+    }
+  };
+
+  const handleSlotSaved = (_slot: CurriculumSlotDto) => {
+    setShowSlotForm(false);
+    setSelectedSlot(null);
+    // Перезагружаем слоты
+    if (selectedCourseId) {
+      CurriculumService.getSlotsByCourse(selectedCourseId).then(setSlots);
+    }
+  };
+
+  // Вычисляем следующую доступную позицию
+  const nextPosition = slots.length > 0 ? Math.max(...slots.map(s => s.position)) + 1 : 0;
+
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
       {/* Sidebar: Disciplines & Courses */}
       <div className="lg:col-span-1 space-y-4">
@@ -79,7 +129,18 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
       {/* Main: Slots Table */}
       <div className="lg:col-span-3">
         {selectedCourseId ? (
-          <Card title={`Учебный план: ${selectedDiscipline?.name}`}>
+          <Card
+            title={`Учебный план: ${selectedDiscipline?.name}`}
+            headerActions={
+              <button
+                onClick={handleCreateSlot}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700 transition-colors flex items-center gap-1"
+              >
+                <Plus size={14} />
+                Добавить занятие
+              </button>
+            }
+          >
             {loading ? (
               <div className="py-12 text-center text-slate-400 animate-pulse">Загрузка слотов...</div>
             ) : (
@@ -91,11 +152,12 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
                       <th className="px-4 py-3 text-left border-b border-slate-100">Вид занятия</th>
                       <th className="px-4 py-3 text-left border-b border-slate-100">Тема</th>
                       <th className="px-4 py-3 text-left border-b border-slate-100">Требования к ауд.</th>
+                      <th className="px-4 py-3 text-right border-b border-slate-100 w-24">Действия</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {slots.map((slot) => (
-                      <tr key={slot.id} className="hover:bg-slate-50/50 transition-colors text-sm">
+                      <tr key={slot.id} className="hover:bg-slate-50/50 transition-colors text-sm group">
                         <td className="px-4 py-3 font-mono text-slate-400">{slot.position}</td>
                         <td className="px-4 py-3">
                           <Badge variant={slot.kindOfStudy === 'LECTURE' ? 'blue' : 'slate'}>
@@ -123,8 +185,38 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
                           )}
                           {!slot.requiredAuditorium && !slot.priorityAuditorium && <span className="text-slate-300">—</span>}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleEditSlot(slot)}
+                              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                              title="Редактировать занятие"
+                            >
+                              <Edit2 size={14} className="text-slate-500" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSlot(slot.id)}
+                              disabled={deletingSlot === slot.id}
+                              className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Удалить занятие"
+                            >
+                              {deletingSlot === slot.id ? (
+                                <Loader2 size={14} className="text-red-500 animate-spin" />
+                              ) : (
+                                <Trash2 size={14} className="text-slate-500 hover:text-red-600" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
+                    {slots.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-sm">
+                          В этом курсе пока нет занятий. Нажмите "Добавить занятие" для создания.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -138,5 +230,17 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
         )}
       </div>
     </div>
+
+    {/* Модальное окно для создания/редактирования слота */}
+    {showSlotForm && selectedCourseId && (
+      <CurriculumSlotFormModal
+        slot={selectedSlot}
+        disciplineCourseId={selectedCourseId}
+        nextPosition={nextPosition}
+        onClose={() => { setShowSlotForm(false); setSelectedSlot(null); }}
+        onSaved={handleSlotSaved}
+      />
+    )}
+  </>
   );
 };

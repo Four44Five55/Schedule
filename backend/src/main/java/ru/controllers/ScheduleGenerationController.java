@@ -191,7 +191,8 @@ public class ScheduleGenerationController {
                         streamName,
                         groupNames,
                         auditoriumNames,
-                        auditoriumIds
+                        auditoriumIds,
+                        null // workspace-путь не знает UUID размещения (Command Side)
                 );
                 result.add(dto);
             }

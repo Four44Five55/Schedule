@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Sidebar, type TabId } from './components/layout/Sidebar';
+import { Sidebar, TAB_IDS, type TabId } from './components/layout/Sidebar';
 import { Dashboard } from './features/dashboard/components/Dashboard';
 import { EducatorList } from './features/resources/components/EducatorList';
 import { AuditoriumGrid } from './features/resources/components/AuditoriumGrid';
@@ -7,22 +7,34 @@ import { GroupList } from './features/resources/components/GroupList';
 import { DisciplineList } from './features/curriculum/components/DisciplineList';
 import { StudyStreamList } from './features/resources/components/StudyStreamList';
 import { ConstraintsManager } from './features/constraints/components/ConstraintsManager';
-import { CurriculumManager } from './features/curriculum/components/CurriculumManager';
+import { PlannerManager } from './features/planner/components/PlannerManager';
 import { ScheduleManager } from './features/schedule/components/ScheduleManager';
-import type { ScheduledLessonDto, GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto } from './types/api';
+import type { ScheduledLessonDto, GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto, DisciplineDto, ScheduleResultDto, StudyPeriodDto } from './types/api';
 import { ScheduleService, ResourceService, CurriculumService } from './services/apiServices';
-import { CQRSService } from './services/cqrsApiService';
+import { CQRSService, dateUtils } from './services/cqrsApiService';
 import { Bell, Search, HelpCircle, CalendarRange, ChevronRight } from 'lucide-react';
 
+const ACTIVE_TAB_STORAGE_KEY = 'unischedule.activeTab';
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  // Активная вкладка переживает обновление страницы: храним её в localStorage,
+  // а не только в state (иначе F5 сбрасывает на дашборд). Восстановленное значение
+  // валидируем по списку вкладок, чтобы не открыть несуществующий раздел.
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const saved = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) as TabId | null;
+    return saved && TAB_IDS.includes(saved) ? saved : 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   // ========== Загрузка ресурсов ==========
   const [loading, setLoading] = useState(true);
   const [educators, setEducators] = useState<EducatorDto[]>([]);
   const [auditoriums, setAuditoriums] = useState<AuditoriumDto[]>([]);
   const [groups, setGroups] = useState<GroupDto[]>([]);
-  const [disciplines, setDisciplines] = useState<any[]>([]);
+  const [disciplines, setDisciplines] = useState<DisciplineDto[]>([]);
   const [streams, setStreams] = useState<StudyStreamDto[]>([]);
 
   // Начальная загрузка всех ресурсов
@@ -48,12 +60,14 @@ export default function App() {
   // ========== Загрузка существующего расписания при старте ==========
   const [scheduleLessons, setScheduleLessons] = useState<ScheduledLessonDto[]>([]);
   const [scheduleGrid, setScheduleGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
+  const [schedulePeriod, setSchedulePeriod] = useState<StudyPeriodDto | null>(null);
 
   useEffect(() => {
     ResourceService.getActiveStudyPeriod()
         .then((activePeriod) => {
           if (activePeriod) {
             console.log('✅ Активный период:', activePeriod.name, '(', activePeriod.startDate, '—', activePeriod.endDate, ')');
+            setSchedulePeriod(activePeriod);
             return ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
           } else {
             console.log('ℹ️ Нет активного учебного периода');
@@ -70,7 +84,7 @@ export default function App() {
             });
           }
         })
-        .then((result: any) => {
+        .then((result: ScheduleResultDto) => {
           if (result.status === 'loaded' && result.lessons.length > 0) {
             console.log('✅ Загружено существующее расписание:', result.lessons.length, 'занятий');
             setScheduleLessons(result.lessons);
@@ -109,6 +123,15 @@ export default function App() {
       setAuditoriums(data);
     } catch (err) {
       console.error('Ошибка загрузки аудиторий:', err);
+    }
+  }, []);
+
+  const reloadDisciplines = useCallback(async () => {
+    try {
+      const data = await CurriculumService.getDisciplines();
+      setDisciplines(data);
+    } catch (err) {
+      console.error('Ошибка загрузки дисциплин:', err);
     }
   }, []);
 
@@ -188,20 +211,45 @@ export default function App() {
       case 'groups':
         return <GroupList groups={groups} onGroupsChange={reloadGroups} />;
       case 'disciplines':
-        return <DisciplineList disciplines={disciplines} />;
+        return <DisciplineList disciplines={disciplines} onRefresh={reloadDisciplines} />;
       case 'streams':
         return <StudyStreamList streams={streams} onStreamsChange={reloadStreams} />;
       case 'constraints':
         return <ConstraintsManager />;
+      case 'planner':
+        return (
+            <PlannerManager
+                disciplines={disciplines}
+                educators={educators}
+                groups={groups}
+                onGenerate={handleGenerateSchedule}
+                isGenerating={isGenerating}
+            />
+        );
       case 'curriculum':
-        return <CurriculumManager disciplines={disciplines} />;
+        return (
+            <div className="flex flex-col items-center justify-center h-96 gap-4 border-2 border-dashed border-slate-200 rounded-2xl bg-white">
+              <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center">
+                <HelpCircle size={28} className="text-amber-400" />
+              </div>
+              <div className="text-center">
+                <p className="font-black text-slate-700 text-lg">В разработке</p>
+                <p className="text-slate-400 text-sm mt-1">Раздел «Учебный план» временно недоступен</p>
+                <p className="text-slate-300 text-xs mt-2">Управление занятиями перенесено в раздел «Дисциплины»</p>
+              </div>
+            </div>
+        );
       case 'schedule':
         return (
             <ScheduleManager
                 lessons={scheduleLessons}
                 grid={scheduleGrid}
-                startDate={new Date(2026, 1, 9)}
-                endDate={new Date(2026, 7, 31)}
+                startDate={schedulePeriod ? dateUtils.parseDate(schedulePeriod.startDate) : new Date(2026, 1, 9)}
+                endDate={schedulePeriod ? dateUtils.parseDate(schedulePeriod.endDate) : new Date(2026, 7, 31)}
+                onLessonChange={(lessons, grid) => {
+                  setScheduleLessons(lessons);
+                  setScheduleGrid(grid);
+                }}
             />
         );
       default:

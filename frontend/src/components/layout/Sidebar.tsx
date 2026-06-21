@@ -7,12 +7,14 @@ import {
   Calendar,
   ShieldAlert,
   Layers,
-  LogOut
+  LogOut,
+  CalendarRange
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 export type TabId =
     | 'dashboard'
+    | 'planner'
     | 'curriculum'
     | 'disciplines'
     | 'educators'
@@ -29,6 +31,7 @@ interface SidebarProps {
 
 const menuItems: { id: TabId; label: string; icon: React.ElementType; color: string }[] = [
   { id: 'dashboard', label: 'Обзор', icon: LayoutDashboard, color: 'text-blue-500' },
+  { id: 'planner', label: 'Планировщик', icon: CalendarRange, color: 'text-blue-600' },
   { id: 'schedule', label: 'Расписание', icon: Calendar, color: 'text-emerald-500' },
   { id: 'curriculum', label: 'Учебный план', icon: BookOpen, color: 'text-violet-500' },
   { id: 'disciplines', label: 'Дисциплины', icon: Layers, color: 'text-orange-500' },
@@ -38,6 +41,9 @@ const menuItems: { id: TabId; label: string; icon: React.ElementType; color: str
   { id: 'streams', label: 'Потоки', icon: Layers, color: 'text-teal-500' },
   { id: 'constraints', label: 'Ограничения', icon: ShieldAlert, color: 'text-amber-500' },
 ];
+
+/** Все валидные id вкладок — единый источник для навигации и восстановления состояния. */
+export const TAB_IDS: TabId[] = menuItems.map((item) => item.id);
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   return (

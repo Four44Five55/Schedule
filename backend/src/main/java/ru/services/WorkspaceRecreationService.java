@@ -11,7 +11,9 @@ import ru.services.constraints.ConstraintService;
 import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -38,15 +40,37 @@ public class WorkspaceRecreationService {
      * @param sessionId ID сессии расписания
      * @return Пересозданный workspace
      */
+    /**
+     * Пересоздать workspace по конкретному размещению.
+     *
+     * <p>Сессию берём из самого {@link LessonPlacement}, а не извне: отображаемое
+     * расписание ({@code schedule_view}) загружается без привязки к сессии, поэтому
+     * sessionId с фронта может указывать на другую сессию. Единственный надёжный
+     * якорь — сам placementId и его собственная сессия.</p>
+     *
+     * @param placementId ID размещения, для которого нужен workspace
+     * @return Пересозданный workspace (с картой placementId → Lesson), либо пустой,
+     *         если размещение не найдено
+     */
     @Transactional(readOnly = true)
-    public ru.services.solver.ScheduleWorkspace recreateWorkspaceFromSession(UUID sessionId) {
+    public RecreatedWorkspace recreateWorkspaceForPlacement(UUID placementId) {
+        LessonPlacement placement = placementRepo.findById(placementId).orElse(null);
+        if (placement == null) {
+            log.warn("⚠️  Размещение placementId={} не найдено", placementId);
+            return new RecreatedWorkspace(createEmptyWorkspace(), Map.of());
+        }
+        return recreateWorkspaceFromSession(placement.getSession().getId());
+    }
+
+    @Transactional(readOnly = true)
+    public RecreatedWorkspace recreateWorkspaceFromSession(UUID sessionId) {
         log.info("🔄 Пересоздание workspace для session: {}", sessionId);
 
         List<LessonPlacement> placements = placementRepo.findBySessionId(sessionId);
 
         if (placements.isEmpty()) {
             log.warn("⚠️  Сессия не содержит placements");
-            return createEmptyWorkspace();
+            return new RecreatedWorkspace(createEmptyWorkspace(), Map.of());
         }
 
         log.info("Загружено {} placements", placements.size());
@@ -66,12 +90,19 @@ public class WorkspaceRecreationService {
             constraintService.loadAllConstraints()
         );
 
-        // 3. Восстанавливаем и размещаем занятия
+        // 3. Восстанавливаем и размещаем занятия.
+        //    Связку placementId → созданный Lesson сохраняем здесь — на границе
+        //    персистентности, где UUID размещения и in-memory Lesson встречаются.
+        //    Сам Lesson о своём placementId ничего не знает.
+        Map<UUID, Lesson> lessonByPlacementId = new HashMap<>();
         int placedCount = 0;
         for (LessonPlacement placement : placements) {
             try {
-                placeLessonFromPlacement(workspace, placement);
-                placedCount++;
+                Lesson lesson = placeLessonFromPlacement(workspace, placement);
+                if (lesson != null) {
+                    lessonByPlacementId.put(placement.getId(), lesson);
+                    placedCount++;
+                }
             } catch (Exception e) {
                 log.error("❌ Ошибка размещения placementId={}: {}",
                     placement.getId(), e.getMessage());
@@ -81,7 +112,7 @@ public class WorkspaceRecreationService {
         log.info("✅ Workspace пересоздан: {} занятий из {} размещены",
                 placedCount, placements.size());
 
-        return workspace;
+        return new RecreatedWorkspace(workspace, lessonByPlacementId);
     }
 
     /**
@@ -112,15 +143,17 @@ public class WorkspaceRecreationService {
 
     /**
      * Разместить занятие из placement в workspace.
+     *
+     * @return созданный и размещённый Lesson, либо null, если placement без assignment.
      */
-    private void placeLessonFromPlacement(
+    private Lesson placeLessonFromPlacement(
             ru.services.solver.ScheduleWorkspace workspace,
             LessonPlacement placement) {
 
         Assignment assignment = placement.getAssignment();
         if (assignment == null) {
             log.warn("⚠️  Placement без assignment: {}", placement.getId());
-            return;
+            return null;
         }
 
         // Создаём Lesson из Assignment
@@ -140,6 +173,8 @@ public class WorkspaceRecreationService {
             // Если аудитории не назначены, передаём пустой список
             workspace.forcePlacement(lesson, cell, new java.util.ArrayList<>());
         }
+
+        return lesson;
     }
 
     /**
@@ -187,4 +222,20 @@ public class WorkspaceRecreationService {
      * Вспомогательный класс для диапазона дат.
      */
     private record DateRange(LocalDate startDate, LocalDate endDate) {}
+
+    /**
+     * Результат пересоздания workspace.
+     *
+     * <p>Помимо самого workspace несёт карту {@code placementId → Lesson} —
+     * единственное место, где персистентный UUID размещения связан с in-memory
+     * занятием. Позволяет надёжно (и уникально) находить занятие для операций
+     * вроде поиска вариантов переноса, не «протекая» placementId в доменный Lesson.</p>
+     *
+     * @param workspace           пересозданное рабочее пространство решателя
+     * @param lessonByPlacementId соответствие UUID размещения → размещённый Lesson
+     */
+    public record RecreatedWorkspace(
+            ru.services.solver.ScheduleWorkspace workspace,
+            Map<UUID, Lesson> lessonByPlacementId
+    ) {}
 }

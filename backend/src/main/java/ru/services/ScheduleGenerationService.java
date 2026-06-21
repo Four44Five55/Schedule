@@ -188,7 +188,13 @@ public class ScheduleGenerationService {
             session.updateStatus(ru.enums.SessionStatus.READY_FOR_EDIT, user);
             session = sessionRepo.save(session);
 
-            // 6. Публикуем событие
+            // 5.1 Новое расписание ЗАМЕНЯЕТ прежнее: архивируем остальные активные
+            //     сессии, чтобы в системе осталась одна каноничная. Иначе их проекции
+            //     в schedule_view накладываются, и подбор мест видит неполную/чужую
+            //     картину занятости (источник «лютого» бага с дублями сессий).
+            archivePreviousSessions(session.getId(), user);
+
+            // 6. Публикуем событие (проектор перестроит read-model под новую сессию)
             eventPublisher.publishEvent(new ru.events.ScheduleGeneratedEvent(session.getId(), placements));
 
             log.info("✅ Расписание сгенерировано: sessionId={}, placementsCount={}",
@@ -204,6 +210,36 @@ public class ScheduleGenerationService {
     }
 
     /**
+     * Архивирует все активные сессии, кроме указанной.
+     *
+     * <p>Поддерживает инвариант «одно живое расписание»: после генерации новая
+     * сессия остаётся единственной активной, прежние переходят в
+     * {@link ru.enums.SessionStatus#ARCHIVED} и больше не участвуют ни в
+     * {@link #getOrCreateEditableSession}, ни в проекции read-model.</p>
+     *
+     * <p>Используется существующий жизненный цикл статусов, а не удаление —
+     * история сохраняется; периодическая чистка архива выполняется отдельно
+     * ({@code ScheduleSessionRepository.deleteOldArchivedSessions}).</p>
+     *
+     * @param keepSessionId сессия, которую оставляем активной
+     * @param user          пользователь, выполняющий действие
+     */
+    private void archivePreviousSessions(java.util.UUID keepSessionId, String user) {
+        List<ru.entity.write.ScheduleSession> previous =
+                sessionRepo.findActiveSessions(ru.enums.SessionStatus.ARCHIVED).stream()
+                        .filter(s -> !s.getId().equals(keepSessionId))
+                        .toList();
+
+        if (previous.isEmpty()) {
+            return;
+        }
+
+        previous.forEach(s -> s.updateStatus(ru.enums.SessionStatus.ARCHIVED, user));
+        sessionRepo.saveAll(previous);
+        log.info("🗄️  Архивировано прежних активных сессий: {}", previous.size());
+    }
+
+    /**
      * ✅ НОВЫЙ МЕТОД: Получить сессию по ID.
      *
      * @param sessionId ID сессии
@@ -212,6 +248,35 @@ public class ScheduleGenerationService {
     @Transactional(readOnly = true)
     public java.util.Optional<ru.entity.write.ScheduleSession> getScheduleSession(java.util.UUID sessionId) {
         return sessionRepo.findById(sessionId);
+    }
+
+    /**
+     * Получить сессию «живого» расписания, пригодную для редактирования.
+     *
+     * <p>Берёт самую свежую неархивную сессию, у которой есть размещения
+     * (т.е. реально отображаемое расписание), и при необходимости переоткрывает
+     * её для редактирования (статус → READY_FOR_EDIT). Это позволяет править
+     * расписание в любой момент учебного процесса <b>без повторной генерации</b>.</p>
+     *
+     * @param user пользователь, выполняющий действие
+     * @return Сессия, готовая к редактированию, или пустой Optional, если расписания нет
+     */
+    @Transactional
+    public java.util.Optional<ru.entity.write.ScheduleSession> getOrCreateEditableSession(String user) {
+        java.util.Optional<ru.entity.write.ScheduleSession> candidate =
+                sessionRepo.findActiveSessions(ru.enums.SessionStatus.ARCHIVED).stream()
+                        .filter(s -> placementRepo.countBySessionId(s.getId()) > 0)
+                        .findFirst(); // findActiveSessions отсортирован по updatedAt DESC
+
+        candidate.ifPresent(session -> {
+            // Переоткрываем для редактирования, если сессия не в редактируемом статусе.
+            if (!session.getStatus().isEditable()) {
+                session.updateStatus(ru.enums.SessionStatus.READY_FOR_EDIT, user);
+                sessionRepo.save(session);
+            }
+        });
+
+        return candidate;
     }
 
     /**
@@ -267,11 +332,16 @@ public class ScheduleGenerationService {
         // (TODO: загрузить workspace из snapshot или пересоздать)
         // workspace.removePlacement(lesson);
 
-        // 5. Обновляем placement
+        // 5. Обновляем placement, СОХРАНЯЯ переданные аудитории
+        //    (раньше сюда передавался пустой набор — аудитории затирались при переносе)
+        java.util.Set<Auditorium> newAuditoriums = (newAuditoriumIds == null || newAuditoriumIds.isEmpty())
+            ? new java.util.HashSet<>()
+            : new java.util.HashSet<>(auditoriumService.getAllEntitiesByIds(new ArrayList<>(newAuditoriumIds)));
+
         placement.updatePlacement(
             newDate,
             ru.enums.TimeSlotPair.valueOf(newSlot),
-            new java.util.HashSet<>(),
+            newAuditoriums,
             user
         );
 
