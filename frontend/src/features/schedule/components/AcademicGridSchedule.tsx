@@ -63,6 +63,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [moving, setMoving] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
+  // Дисциплина, подсвеченная наведением (когда занятие ещё не выбрано).
+  const [hoveredDiscipline, setHoveredDiscipline] = useState<string | null>(null);
 
   const clearSelection = () => {
     setSelectedLesson(null);
@@ -127,20 +129,28 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     return () => clearTimeout(t);
   }, [selectedLesson, loadingTargets, moving]);
 
+  // Преподаватели выбранного занятия — для условия «препод скрыто занят».
+  const selectedEducatorIds = useMemo(
+    () => new Set(selectedLesson?.educatorIds ?? []),
+    [selectedLesson]
+  );
+
   // Ячейки, где заняты преподаватель(и) выбранного занятия — чтобы располагать его
   // компактно к остальным парам преподавателя. Считается из уже загруженного
-  // расписания, без обращения к бэкенду.
+  // расписания (полное, по всем группам), без обращения к бэкенду.
   const teacherBusyCells = useMemo(() => {
     const set = new Set<string>();
     if (!selectedLesson) return set;
-    const educatorIds = new Set(selectedLesson.educatorIds);
     for (const l of lessons) {
-      if (l.educatorIds.some((id) => educatorIds.has(id))) {
+      if (l.educatorIds.some((id) => selectedEducatorIds.has(id))) {
         set.add(`${l.date}_${l.timeSlotPair}`);
       }
     }
     return set;
-  }, [selectedLesson, lessons]);
+  }, [selectedLesson, lessons, selectedEducatorIds]);
+
+  // Активная дисциплина: закреплённая выбором имеет приоритет над наведением.
+  const activeDiscipline = selectedLesson?.disciplineName ?? hoveredDiscipline;
 
   const handleCellMove = async (dateStr: string, slotId: TimeSlotPair) => {
     if (!selectedLesson || !sessionId || moving) return;
@@ -380,6 +390,29 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                     lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
                                     lesson.kindOfStudy === 'CREDIT_WITHOUT_GRADE');
 
+                            // Занятая ячейка, где препод выбранного занятия занят ДРУГИМ
+                            // занятием (скрытая занятость, не видимая в этом виде) — жёлтая.
+                            const isTeacherBusyHidden = !!selectedLesson && !!lesson && !isSourceCell &&
+                                teacherBusyCells.has(gridKey) &&
+                                !lesson.educatorIds.some((id) => selectedEducatorIds.has(id));
+                            // Принадлежит ли занятие активной дисциплине (подсветка по виду).
+                            const cellDiscipline = lesson?.disciplineName ?? null;
+                            const isDisciplineMatch = !!cellDiscipline && cellDiscipline === activeDiscipline;
+
+                            // Фон занятой ячейки: жёлтый (скрытая занятость) → цвет по виду
+                            // для активной дисциплины → нейтральный серый в покое.
+                            const disciplineBg = isExamOrCredit
+                                ? 'bg-violet-150 text-slate-900 hover:bg-violet-200'
+                                : lesson?.kindOfStudy === 'LECTURE'
+                                    ? 'bg-rose-150 text-slate-900 hover:bg-rose-200'
+                                    : 'bg-sky-150 text-slate-900 hover:bg-sky-200';
+                            const restingBg = isExamOrCredit
+                                ? 'bg-slate-300 text-slate-600 hover:bg-slate-400'
+                                : 'bg-slate-100 text-slate-900 hover:bg-slate-200';
+                            const occupiedBg = isTeacherBusyHidden
+                                ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
+                                : isDisciplineMatch ? disciplineBg : restingBg;
+
                             return (
                                 <td
                                     key={weekIdx}
@@ -387,15 +420,16 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                       if (isMoveTarget) { handleCellMove(dateStr, slot.id); return; }
                                       if (lesson) handleLessonClick(lesson);
                                     }}
+                                    onMouseEnter={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(cellDiscipline) : undefined}
+                                    onMouseLeave={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(null) : undefined}
                                     className={cn(
                                         'border-r p-0.5 transition-all relative overflow-hidden',
                                         borderClass,
                                         !lesson && !isMoveTarget && !isTeacherBusy && 'bg-white hover:bg-slate-50/30',
                                         !lesson && !isMoveTarget && !isTeacherBusy && activeConstraint && 'bg-rose-50/50',
-                                        isMoveTarget && 'bg-emerald-200 hover:bg-emerald-300 cursor-pointer ring-1 ring-inset ring-emerald-500',
-                                        isTeacherBusy && 'bg-amber-100 ring-1 ring-inset ring-amber-300',
-                                        lesson && !isExamOrCredit && 'bg-slate-100 text-slate-900 hover:bg-slate-200',
-                                        lesson && isExamOrCredit && 'bg-slate-300 text-slate-600 hover:bg-slate-400',
+                                        isMoveTarget && 'bg-emerald-150 hover:bg-emerald-200 cursor-pointer',
+                                        isTeacherBusy && 'bg-amber-150',
+                                        lesson && occupiedBg,
                                         lesson && isEditMode && 'cursor-pointer',
                                         lesson && !isEditMode && 'cursor-help',
                                         isSourceCell && 'ring-2 ring-inset ring-blue-600'

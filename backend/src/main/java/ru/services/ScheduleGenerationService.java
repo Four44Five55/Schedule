@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import ru.entity.*;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.services.constraints.AllConstraints;
@@ -291,72 +290,9 @@ public class ScheduleGenerationService {
     }
 
     /**
-     * ✅ НОВЫЙ МЕТОД: Перенести занятие в сессии с optimistic lock.
-     *
-     * @param sessionId ID сессии
-     * @param placementId ID размещения
-     * @param newDate Новая дата
-     * @param newSlot Новый временной слот
-     * @param newAuditoriumIds Новые аудитории
-     * @param expectedVersion Ожидаемая версия (для optimistic lock)
-     * @param user Пользователь
-     * @throws ObjectOptimisticLockingFailureException если version не совпадает
+     * Перенос занятия вынесен в {@link LessonMoveService}: он пересоздаёт workspace и
+     * повторно валидирует все ресурсы (включая аудиторию) перед записью.
      */
-    @Transactional
-    public void moveLessonInSession(
-            java.util.UUID sessionId,
-            java.util.UUID placementId,
-            java.time.LocalDate newDate,
-            String newSlot,
-            java.util.Set<Integer> newAuditoriumIds,
-            Long expectedVersion,
-            String user
-    ) {
-        // 1. Загружаем сессию
-        ru.entity.write.ScheduleSession session = sessionRepo.findById(sessionId)
-            .orElseThrow(() -> new RuntimeException("Session not found"));
-
-        // 2. Проверяем optimistic lock
-        if (!session.getVersion().equals(expectedVersion)) {
-            throw new ObjectOptimisticLockingFailureException(
-                ru.entity.write.ScheduleSession.class,
-                session.getId()
-            );
-        }
-
-        // 3. Находим placement
-        ru.entity.write.LessonPlacement placement = placementRepo.findById(placementId)
-            .orElseThrow(() -> new RuntimeException("Placement not found"));
-
-        // 4. Временно удаляем занятие из workspace
-        // (TODO: загрузить workspace из snapshot или пересоздать)
-        // workspace.removePlacement(lesson);
-
-        // 5. Обновляем placement, СОХРАНЯЯ переданные аудитории
-        //    (раньше сюда передавался пустой набор — аудитории затирались при переносе)
-        java.util.Set<Auditorium> newAuditoriums = (newAuditoriumIds == null || newAuditoriumIds.isEmpty())
-            ? new java.util.HashSet<>()
-            : new java.util.HashSet<>(auditoriumService.getAllEntitiesByIds(new ArrayList<>(newAuditoriumIds)));
-
-        placement.updatePlacement(
-            newDate,
-            ru.enums.TimeSlotPair.valueOf(newSlot),
-            newAuditoriums,
-            user
-        );
-
-        // 6. Добавляем новое размещение
-        // (TODO: workspace.forcePlacement(lesson, newCell, newAuditoriums))
-
-        // 7. Сохраняем
-        placementRepo.save(placement);
-
-        // 8. ✅ Публикуем событие для синхронизации Query Side
-        eventPublisher.publishEvent(new ru.events.PlacementChangedEvent(sessionId, placementId, placement));
-
-        log.info("✅ Занятие перенесено: placementId={}, newDate={}, newSlot={}",
-                placementId, newDate, newSlot);
-    }
 
     /**
      * ✅ НОВЫЙ МЕТОД: Удалить сессию.

@@ -12,8 +12,10 @@ import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 import ru.enums.SessionStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import ru.exceptions.LessonMoveConflictException;
 import ru.mapper.command.LessonPlacementMapper;
 import ru.mapper.command.ScheduleSessionMapper;
+import ru.services.LessonMoveService;
 import ru.services.ScheduleGenerationService;
 
 import java.util.List;
@@ -37,6 +39,7 @@ import java.util.stream.Collectors;
 public class ScheduleCommandController {
 
     private final ScheduleGenerationService generationService;
+    private final LessonMoveService lessonMoveService;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
 
@@ -118,36 +121,48 @@ public class ScheduleCommandController {
                 request.placementId(), request.newDate(), request.version());
 
         try {
-            generationService.moveLessonInSession(
-                sessionId,
+            // Аудитории подбираются на бэке (см. LessonMoveService) —
+            // request.newAuditoriumIds() намеренно не используется.
+            ScheduleSession session = lessonMoveService.moveLesson(
                 request.placementId(),
                 request.newDate(),
                 request.newSlot(),
-                request.newAuditoriumIds(),
                 request.version(),
                 "user"
             );
-
-            ScheduleSession session = generationService.getScheduleSession(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
 
             return ResponseEntity.ok(sessionMapper.toDto(session));
 
         } catch (ObjectOptimisticLockingFailureException e) {
             log.warn("❌ Optimistic lock conflict: {}", e.getMessage());
 
-            // Получаем текущую версию сессии
-            Long currentVersion = generationService.getScheduleSession(sessionId)
-                .map(ScheduleSession::getVersion)
-                .orElse(null);
-
             return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
                 .body(new ConflictResponse(
                     "CONFLICT",
                     "Расписание было изменено другим пользователем. Обновите страницу.",
-                    currentVersion
+                    currentVersionOf(sessionId)
+                ));
+
+        } catch (LessonMoveConflictException e) {
+            log.warn("❌ Resource conflict при переносе: {}", e.getMessage());
+
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
+                .body(new ConflictResponse(
+                    "RESOURCE_CONFLICT",
+                    "Невозможно перенести занятие: " + e.getMessage()
+                        + ". Обновите данные и выберите другой слот.",
+                    currentVersionOf(sessionId)
                 ));
         }
+    }
+
+    /**
+     * Текущая версия сессии для тела {@link ConflictResponse} (или {@code null}, если сессии нет).
+     */
+    private Long currentVersionOf(UUID sessionId) {
+        return generationService.getScheduleSession(sessionId)
+            .map(ScheduleSession::getVersion)
+            .orElse(null);
     }
 
     /**

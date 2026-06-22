@@ -4,6 +4,14 @@
   --font-sans: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --color-brand-primary: #3b82f6;
   --color-brand-secondary: #6366f1;
+
+  /* Промежуточная ступень -150 (среднее между -100 и -200) для спокойных
+     акцентных заливок сетки расписания: вид занятия, перенос, занятость. */
+  --color-rose-150: #ffd9dd;
+  --color-sky-150: #cdecfe;
+  --color-violet-150: #e5dffe;
+  --color-emerald-150: #bcf6db;
+  --color-amber-150: #feeda9;
 }
 
 :root {

@@ -68,7 +68,11 @@ public final class ScheduleWorkspace {
 
         // 3. Подбираем аудитории
         List<Auditorium> foundAuditoriums = findAvailableAuditoriumsFor(lesson, cell);
-        int requiredAuditoriumCount = lesson.getEducators().size(); // Простое правило: 1 преподаватель = 1 аудитория
+        // Одно занятие (один Assignment) = одна аудитория. Параллельные подгруппы — это
+        // отдельные Assignment → отдельные Lesson, каждый со своей комнатой. Число
+        // преподавателей на занятии (совместный экзамен/зачёт двумя преподавателями
+        // в одной аудитории) на число комнат не влияет.
+        int requiredAuditoriumCount = 1;
 
         if (foundAuditoriums.size() < requiredAuditoriumCount) {
             return PlacementOption.unavailable(lesson, cell, "Недостаточно свободных аудиторий");
