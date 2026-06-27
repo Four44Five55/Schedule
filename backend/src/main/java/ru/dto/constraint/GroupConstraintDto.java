@@ -9,6 +9,8 @@ public record GroupConstraintDto(
         Integer groupId,
         String groupName,
         KindOfConstraints kindOfConstraint,
+        String abbreviation,
+        String fullName,
         LocalDate startDate,
         LocalDate endDate,
         String description

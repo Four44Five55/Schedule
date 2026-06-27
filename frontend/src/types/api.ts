@@ -260,6 +260,8 @@ export interface EducatorConstraintDto {
   educatorId: number;
   educatorName: string;
   kindOfConstraint: KindOfConstraints;
+  abbreviation: string;
+  fullName: string;
   startDate: string;
   endDate: string;
   description?: string;
@@ -270,6 +272,8 @@ export interface GroupConstraintDto {
   groupId: number;
   groupName: string;
   kindOfConstraint: KindOfConstraints;
+  abbreviation: string;
+  fullName: string;
   startDate: string;
   endDate: string;
   description?: string;
@@ -280,6 +284,8 @@ export interface AuditoriumConstraintDto {
   auditoriumId: number;
   auditoriumName: string;
   kindOfConstraint: KindOfConstraints;
+  abbreviation: string;
+  fullName: string;
   startDate: string;
   endDate: string;
   description?: string;

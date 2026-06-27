@@ -58,6 +58,8 @@ public class AuditoriumConstraintController {
                 c.getAuditorium().getId(),
                 c.getAuditorium().getName(),
                 c.getKindOfConstraint(),
+                c.getKindOfConstraint().getAbbreviationName(),
+                c.getKindOfConstraint().getFullName(),
                 c.getStartDate(),
                 c.getEndDate(),
                 c.getDescription()

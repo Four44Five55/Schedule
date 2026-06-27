@@ -9,6 +9,8 @@ public record AuditoriumConstraintDto(
         Integer auditoriumId,
         String auditoriumName,
         KindOfConstraints kindOfConstraint,
+        String abbreviation,
+        String fullName,
         LocalDate startDate,
         LocalDate endDate,
         String description

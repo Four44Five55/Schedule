@@ -59,6 +59,8 @@ public class EducatorConstraintController {
                 c.getEducator().getId(),
                 c.getEducator().getName(),
                 c.getKindOfConstraint(),
+                c.getKindOfConstraint().getAbbreviationName(),
+                c.getKindOfConstraint().getFullName(),
                 c.getStartDate(),
                 c.getEndDate(),
                 c.getDescription()

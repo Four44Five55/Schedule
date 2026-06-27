@@ -9,6 +9,8 @@ public record EducatorConstraintDto(
         Integer educatorId,
         String educatorName,
         KindOfConstraints kindOfConstraint,
+        String abbreviation,
+        String fullName,
         LocalDate startDate,
         LocalDate endDate,
         String description

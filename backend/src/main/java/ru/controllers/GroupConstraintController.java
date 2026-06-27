@@ -58,6 +58,8 @@ public class GroupConstraintController {
                 c.getGroup().getId(),
                 c.getGroup().getName(),
                 c.getKindOfConstraint(),
+                c.getKindOfConstraint().getAbbreviationName(),
+                c.getKindOfConstraint().getFullName(),
                 c.getStartDate(),
                 c.getEndDate(),
                 c.getDescription()
