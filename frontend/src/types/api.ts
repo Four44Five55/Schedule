@@ -311,6 +311,7 @@ export interface ScheduledLessonDto {
   auditoriumNames: string[];
   auditoriumIds: number[];
   placementId?: string; // UUID размещения (Command Side) для переноса; есть только у загруженного из БД расписания
+  curriculumSlotId?: number; // слот учебного плана — для определения сцепок (SlotChain)
 }
 
 // ============ SCHEDULE RESULT ============

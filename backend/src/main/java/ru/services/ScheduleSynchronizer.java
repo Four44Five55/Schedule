@@ -291,6 +291,7 @@ public class ScheduleSynchronizer {
                 extractDisciplineAbbr(assignment)
             );
             view.setKindOfStudy(assignment.getCurriculumSlot().getKindOfStudy().name());
+            view.setCurriculumSlotId(assignment.getCurriculumSlot().getId());
 
             if (assignment.getCurriculumSlot().getThemeLesson() != null) {
                 view.setTheme(
@@ -362,6 +363,7 @@ public class ScheduleSynchronizer {
                 extractDisciplineAbbr(assignment)
             );
             view.setKindOfStudy(assignment.getCurriculumSlot().getKindOfStudy().name());
+            view.setCurriculumSlotId(assignment.getCurriculumSlot().getId());
 
             if (assignment.getCurriculumSlot().getThemeLesson() != null) {
                 view.setTheme(

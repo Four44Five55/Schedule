@@ -170,29 +170,7 @@ frontend/src/
 
 ## Схема БД
 
-### Основные таблицы:
-
-```
-educator (преподаватели)
-├── id, name
-├── compact_schedule (флаг компактности)
-└── preferences (educator_day_priority, educator_slot_priority)
-
-study_stream (потоки/подгруппы)
-├── id, name, semester
-└── groups (через stream_groups)
-
-curriculum_slot (слоты учебного плана)
-├── id, position, kind_of_study
-├── discipline_course_id → discipline → discipline_course
-├── required_auditorium_id, priority_auditorium_id
-└── allowed_pool_id
-
-assignment (назначения)
-├── curriculum_slot_id
-├── study_stream_id
-└── educators (через assignment_educators)
-```
+Полный справочник схемы — в **[DATABASE.md](DATABASE.md)**: все таблицы, поля, типы, связи и индексы.
 
 ---
 
@@ -439,25 +417,6 @@ ScheduleMoveController (REST API)
    - ⏳ CompactDateFinder - альтернативная стратегия поиска дат
    - ⏳ Swagger/OpenAPI спецификация
    - ⏳ Оптимизация работы с цепочками
-
----
-
-## Текущие изменения (git status)
-
-**Новые файлы (в разработке):**
-- ✅ `ScheduleMoveController.java` - REST API для переноса занятий
-- ✅ `MoveOptionDto.java` - DTO для ответа с вариантами переноса
-- ✅ `MoveSuggestionRequest.java` - DTO для запроса на перенос
-- ✅ `MoveLessonSuggestionService.java` - сервис поиска доступных мест
-
-**Измененные файлы:**
-- 🔄 `ScheduleWorkspace.java` - оптимизация логики поиска аудиторий
-
-**Ключевая функциональность:**
-Система поиска доступных слотов для переноса занятий с каскадной фильтрацией:
-1. По корневой сущности (группа/преподаватель/аудитория)
-2. По остальным участникам занятия
-3. По инфраструктуре (наличие подходящей аудитории)
 
 ---
 

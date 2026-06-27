@@ -23,4 +23,13 @@
     <!-- CQRS Query Side: Исправление constraint schedule_view для мульти-групповой поддержки -->
     <include file="006-fix-schedule-view-constraint.sql" relativeToChangelogFile="true"/>
 
+    <!-- CQRS Query Side: Ссылка на CurriculumSlot в schedule_view (для сцепок занятий) -->
+    <include file="007-add-curriculum-slot-to-view.sql" relativeToChangelogFile="true"/>
+
+    <!-- Краткие описания (COMMENT ON TABLE) для таблиц начальной схемы -->
+    <include file="008-add-table-comments.sql" relativeToChangelogFile="true"/>
+
+    <!-- Краткие описания (COMMENT ON COLUMN) для ключевых полей -->
+    <include file="009-add-column-comments.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

@@ -192,7 +192,8 @@ public class ScheduleGenerationController {
                         groupNames,
                         auditoriumNames,
                         auditoriumIds,
-                        null // workspace-путь не знает UUID размещения (Command Side)
+                        null, // workspace-путь не знает UUID размещения (Command Side)
+                        lesson.getCurriculumSlot() != null ? lesson.getCurriculumSlot().getId() : null
                 );
                 result.add(dto);
             }

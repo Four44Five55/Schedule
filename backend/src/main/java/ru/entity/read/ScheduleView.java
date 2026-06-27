@@ -86,6 +86,10 @@ public class ScheduleView {
     @Column(name = "theme_title")
     private String themeTitle;
 
+    // Слот учебного плана — для определения сцепок (SlotChain связывает CurriculumSlot).
+    @Column(name = "curriculum_slot_id")
+    private Integer curriculumSlotId;
+
     // ========== Метаданные для синхронизации ==========
 
     @Column(name = "placement_id")
@@ -165,6 +169,11 @@ public class ScheduleView {
     public void setTheme(String themeNumber, String themeTitle) {
         this.themeNumber = themeNumber;
         this.themeTitle = themeTitle;
+        this.lastUpdated = LocalDateTime.now();
+    }
+
+    public void setCurriculumSlotId(Integer curriculumSlotId) {
+        this.curriculumSlotId = curriculumSlotId;
         this.lastUpdated = LocalDateTime.now();
     }
 

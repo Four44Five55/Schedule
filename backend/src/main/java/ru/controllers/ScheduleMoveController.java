@@ -7,9 +7,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import ru.dto.moveLesson.ChainMoveSuggestionRequest;
 import ru.dto.moveLesson.MoveOptionDto;
 import ru.dto.moveLesson.MoveSuggestionRequest;
 import ru.entity.Lesson;
+import ru.services.LessonChainMoveService;
 import ru.services.MoveLessonSuggestionService;
 import ru.services.WorkspaceRecreationService;
 
@@ -23,6 +25,7 @@ import java.util.List;
 public class ScheduleMoveController {
 
     private final MoveLessonSuggestionService moveService;
+    private final LessonChainMoveService chainMoveService;
     private final WorkspaceRecreationService workspaceRecreationService;
 
     @PostMapping("/find-move-options")
@@ -53,6 +56,24 @@ public class ScheduleMoveController {
 
         } catch (Exception e) {
             log.error("❌ Ошибка при поиске вариантов: {}", e.getMessage(), e);
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+    }
+
+    /**
+     * Поиск стартовых ячеек, куда помещается вся цепочка занятий.
+     *
+     * <p>POST /api/schedule/find-chain-move-options</p>
+     */
+    @PostMapping("/find-chain-move-options")
+    public ResponseEntity<List<MoveOptionDto>> findChainOptions(@RequestBody ChainMoveSuggestionRequest request) {
+        log.info("Поиск вариантов переноса цепочки: {} звеньев", request.placementIds() != null ? request.placementIds().size() : 0);
+        try {
+            List<MoveOptionDto> options = chainMoveService.findChainMoveOptions(request.placementIds());
+            log.info("✅ Найдено {} вариантов для цепочки", options.size());
+            return ResponseEntity.ok(options);
+        } catch (Exception e) {
+            log.error("❌ Ошибка при поиске вариантов цепочки: {}", e.getMessage(), e);
             return ResponseEntity.ok(Collections.emptyList());
         }
     }

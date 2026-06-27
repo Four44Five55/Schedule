@@ -1,10 +1,11 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { ScheduledLessonDto, TimeSlotPair, ConstraintDto } from '../../../types/api';
 import { format, addDays, eachWeekOfInterval, isWithinInterval, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { cn } from '../../../utils/cn';
-import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, ShieldAlert, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, ShieldAlert, X, Link2, Unlink } from 'lucide-react';
 import { CQRSService } from '../../../services/cqrsApiService';
+import { CurriculumService } from '../../../services/apiServices';
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];
@@ -59,16 +60,28 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // Перенос «по сетке»: выбираем занятие → подсвечиваем зелёным доступные ячейки →
   // клик по зелёной ячейке переносит занятие туда. Без модального окна.
   const [selectedLesson, setSelectedLesson] = useState<ScheduledLessonDto | null>(null);
-  const [moveTargets, setMoveTargets] = useState<Set<string>>(new Set());
+  // Подсвечиваемые зелёным ячейки → стартовый слот головы для переноса в эту цель.
+  // Для цепочки одна цель раскрывается в весь «след» (голова + хвосты), и любой
+  // его ячейке сопоставлен один и тот же старт головы — чтобы клик по хвосту
+  // (напр. по 4-й паре в следе 3-4) переносил цепочку правильно.
+  const [moveTargets, setMoveTargets] = useState<Map<string, TimeSlotPair>>(new Map());
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [moving, setMoving] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
   // Дисциплина, подсвеченная наведением (когда занятие ещё не выбрано).
   const [hoveredDiscipline, setHoveredDiscipline] = useState<string | null>(null);
+  // Временно разомкнутые стыки цепочек (ключ "date_topSlotId") — только для переноса,
+  // план (SlotChain) не трогаем. Сбрасываются при снятии выбора.
+  const [detachedBoundaries, setDetachedBoundaries] = useState<Set<string>>(new Set());
+  // placementId звеньев цепочки, выбранной для переноса (в порядке по времени).
+  // Длина > 1 → переносим цепочкой; иначе — одиночный перенос.
+  const [selectedChainIds, setSelectedChainIds] = useState<string[]>([]);
 
   const clearSelection = () => {
     setSelectedLesson(null);
-    setMoveTargets(new Set());
+    setMoveTargets(new Map());
+    setSelectedChainIds([]);
+    setDetachedBoundaries(new Set()); // временные размыкания живут только на время выбора
   };
 
   const isSelectedLesson = (l: ScheduledLessonDto) =>
@@ -87,30 +100,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     setSelectedLesson(lesson);
   };
 
-  // Подбор доступных ячеек для выбранного занятия (то, что подсветится зелёным).
-  useEffect(() => {
-    if (!selectedLesson || !sessionId || !selectedLesson.placementId) {
-      setMoveTargets(new Set());
-      return;
-    }
-    let cancelled = false;
-    setLoadingTargets(true);
-    const rootType = rootEntityType ?? 'EDUCATOR';
-    const rootId = rootEntityId ?? selectedLesson.educatorIds[0] ?? 1;
-    CQRSService.findMoveOptions({
-      sessionId,
-      placementId: selectedLesson.placementId,
-      rootEntityId: rootId,
-      rootEntityType: rootType,
-    })
-        .then((options) => {
-          if (!cancelled) setMoveTargets(new Set(options.map((o) => `${o.date}_${o.timeSlot}`)));
-        })
-        .catch(() => { if (!cancelled) setMoveTargets(new Set()); })
-        .finally(() => { if (!cancelled) setLoadingTargets(false); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLesson, sessionId, rootEntityType, rootEntityId]);
+  // Подбор доступных ячеек вынесен ниже — после объявления buildChain
+  // (от которого зависит), чтобы не словить temporal dead zone в массиве зависимостей.
 
   // Esc — отмена выбора.
   useEffect(() => {
@@ -152,21 +143,148 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // Активная дисциплина: закреплённая выбором имеет приоритет над наведением.
   const activeDiscipline = selectedLesson?.disciplineName ?? hoveredDiscipline;
 
+  // Сцепки слотов (SlotChain) — пары соседних слотов, идущих единой цепочкой.
+  // Храним как множество канонических ключей "minId-maxId" для O(1)-проверки.
+  const [chainPairs, setChainPairs] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    CurriculumService.getSlotChains()
+      .then((chains) => {
+        if (cancelled) return;
+        const set = new Set<string>();
+        for (const c of chains) {
+          const a = c.slotA.id, b = c.slotB.id;
+          set.add(`${Math.min(a, b)}-${Math.max(a, b)}`);
+        }
+        setChainPairs(set);
+      })
+      .catch(() => { if (!cancelled) setChainPairs(new Set()); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Сцеплены ли два слота напрямую (в любом порядке).
+  const areSlotsChained = (a?: number, b?: number) =>
+    a != null && b != null && chainPairs.has(`${Math.min(a, b)}-${Math.max(a, b)}`);
+
+  // Быстрый индекс «занятие выбранного ресурса по ячейке» — для поиска соседей
+  // (звено цепочки между соседними по времени парами одного дня).
+  const resourceLessonByCell = useMemo(() => {
+    const map = new Map<string, ScheduledLessonDto>();
+    for (const l of lessons) {
+      const matches =
+        filterType === 'group' ? l.groupNames.includes(selectedValue)
+          : filterType === 'educator' ? l.educatorNames.includes(selectedValue)
+            : l.auditoriumNames.includes(selectedValue);
+      if (matches) map.set(`${l.date}_${l.timeSlotPair}`, l);
+    }
+    return map;
+  }, [lessons, filterType, selectedValue]);
+
+  // Собирает цепочку занятия (звенья сверху вниз по времени), идя по сцепленным
+  // соседним парам того же дня. Останавливается на временно разомкнутом стыке.
+  const buildChain = useCallback((lesson: ScheduledLessonDto): ScheduledLessonDto[] => {
+    const date = lesson.date;
+    const idx = SLOTS.findIndex((s) => s.id === lesson.timeSlotPair);
+    if (idx < 0) return [lesson];
+
+    const chained = (a?: ScheduledLessonDto, b?: ScheduledLessonDto) => {
+      const x = a?.curriculumSlotId, y = b?.curriculumSlotId;
+      return x != null && y != null && chainPairs.has(`${Math.min(x, y)}-${Math.max(x, y)}`);
+    };
+
+    const members = [lesson];
+    // вверх
+    let top = lesson, i = idx;
+    while (i > 0) {
+      const above = resourceLessonByCell.get(`${date}_${SLOTS[i - 1].id}`);
+      if (above && chained(top, above) && !detachedBoundaries.has(`${date}_${SLOTS[i - 1].id}`)) {
+        members.unshift(above); top = above; i--;
+      } else break;
+    }
+    // вниз
+    let bottom = lesson, j = idx;
+    while (j < SLOTS.length - 1) {
+      const below = resourceLessonByCell.get(`${date}_${SLOTS[j + 1].id}`);
+      if (below && chained(bottom, below) && !detachedBoundaries.has(`${date}_${SLOTS[j].id}`)) {
+        members.push(below); bottom = below; j++;
+      } else break;
+    }
+    return members;
+  }, [resourceLessonByCell, chainPairs, detachedBoundaries]);
+
+  // Подбор доступных ячеек для выбранного занятия/цепочки (то, что подсветится зелёным).
+  useEffect(() => {
+    if (!selectedLesson || !sessionId || !selectedLesson.placementId) {
+      setMoveTargets(new Map());
+      setSelectedChainIds([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingTargets(true);
+
+    // Если занятие — часть цепочки (и стык не разомкнут), двигаем цепочкой целиком.
+    const chain = buildChain(selectedLesson);
+    const chainIds = chain.map((l) => l.placementId).filter((x): x is string => !!x);
+    const isChainMove = chainIds.length > 1 && chainIds.length === chain.length;
+    setSelectedChainIds(isChainMove ? chainIds : []);
+
+    const optionsPromise = isChainMove
+        ? CQRSService.findChainMoveOptions({ placementIds: chainIds })
+        : CQRSService.findMoveOptions({
+            sessionId,
+            placementId: selectedLesson.placementId,
+            rootEntityId: rootEntityId ?? selectedLesson.educatorIds[0] ?? 1,
+            rootEntityType: rootEntityType ?? 'EDUCATOR',
+          });
+
+    optionsPromise
+        .then((options) => {
+          if (cancelled) return;
+          // Каждый вариант — это старт головы. Для цепочки раскрываем его в весь след
+          // (n подряд идущих пар того же дня), сопоставляя каждой ячейке старт головы.
+          // Для одиночного переноса след — сама ячейка (n = 1).
+          const span = isChainMove ? chainIds.length : 1;
+          const targets = new Map<string, TimeSlotPair>();
+          for (const o of options) {
+            const startIdx = SLOTS.findIndex((s) => s.id === o.timeSlot);
+            if (startIdx < 0) continue;
+            for (let k = 0; k < span && startIdx + k < SLOTS.length; k++) {
+              targets.set(`${o.date}_${SLOTS[startIdx + k].id}`, o.timeSlot);
+            }
+          }
+          setMoveTargets(targets);
+        })
+        .catch(() => { if (!cancelled) setMoveTargets(new Map()); })
+        .finally(() => { if (!cancelled) setLoadingTargets(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLesson, sessionId, rootEntityType, rootEntityId, buildChain]);
+
   const handleCellMove = async (dateStr: string, slotId: TimeSlotPair) => {
     if (!selectedLesson || !sessionId || moving) return;
-    if (!moveTargets.has(`${dateStr}_${slotId}`) || !selectedLesson.placementId) return;
+    // Клик мог прийтись на хвост следа цепочки — переносим по старту головы,
+    // а не по кликнутой ячейке.
+    const startSlot = moveTargets.get(`${dateStr}_${slotId}`);
+    if (!startSlot || !selectedLesson.placementId) return;
 
     const movedId = String(selectedLesson.id);
     setMoving(true);
     try {
-      const result = await CQRSService.moveLesson(sessionId, {
-        placementId: selectedLesson.placementId,
-        newDate: dateStr,
-        newSlot: slotId,
-        // аудитории оставляем за занятием
-        newAuditoriumIds: selectedLesson.auditoriumIds,
-        version: currentVersion,
-      });
+      const result = selectedChainIds.length > 1
+        ? await CQRSService.moveChain(sessionId, {
+            placementIds: selectedChainIds,
+            newStartDate: dateStr,
+            newStartSlot: startSlot,
+            version: currentVersion,
+          })
+        : await CQRSService.moveLesson(sessionId, {
+            placementId: selectedLesson.placementId,
+            newDate: dateStr,
+            newSlot: startSlot,
+            // аудитории оставляем за занятием
+            newAuditoriumIds: selectedLesson.auditoriumIds,
+            version: currentVersion,
+          });
       clearSelection();
       if (result.success) {
         // Query Side обновляется асинхронно — даём ему мгновение, затем перезагружаем.
@@ -268,9 +386,11 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                 {loadingTargets
                     ? 'Ищем доступные слоты…'
                     : moving
-                        ? 'Переносим занятие…'
+                        ? (selectedChainIds.length > 1 ? 'Переносим цепочку…' : 'Переносим занятие…')
                         : moveTargets.size > 0
-                            ? <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>
+                            ? (selectedChainIds.length > 1
+                                ? <>Зелёные — куда поставить цепочку из {selectedChainIds.length} пар (звено можно разомкнуть)</>
+                                : <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>)
                             : `Нет доступных слотов для «${selectedLesson.disciplineAbbreviation}»`}
               </span>
               <button
@@ -333,7 +453,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                       ))}
                     </tr>
 
-                    {SLOTS.map((slot) => (
+                    {SLOTS.map((slot, slotIdx) => (
                         <tr key={slot.id} className={cn("group transition-all duration-300", zoomClasses.cellHeight)}>
                           <td className={cn("border-r p-0.5 text-center sticky left-6 bg-white z-10 w-10 group-hover:bg-slate-50 transition-colors", borderClass)}>
                             <div className="font-black text-slate-800 text-[9px]">{slot.label}</div>
@@ -385,6 +505,10 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                             const isMoveTarget = !!selectedLesson && !lesson && moveTargets.has(gridKey);
                             const isTeacherBusy = !!selectedLesson && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
                             const isSourceCell = !!lesson && isSelectedLesson(lesson);
+                            // Звено выбранной цепочки — обводим синим вместе с источником,
+                            // чтобы было видно, что переносится вся связка целиком.
+                            const isChainMember = !!lesson?.placementId
+                                && selectedChainIds.includes(lesson.placementId);
                             const isExamOrCredit = !!lesson &&
                                 (lesson.kindOfStudy === 'EXAM' ||
                                     lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
@@ -413,6 +537,23 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                 ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
                                 : isDisciplineMatch ? disciplineBg : restingBg;
 
+                            // Сцепка: связано ли это занятие с соседними по времени парами
+                            // того же дня (slot выше / ниже). Цепочка — вертикально подряд.
+                            const lessonAbove = slotIdx > 0
+                                ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx - 1].id}`) : undefined;
+                            const lessonBelow = slotIdx < SLOTS.length - 1
+                                ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx + 1].id}`) : undefined;
+                            const chainedAbove = !!lesson && areSlotsChained(lesson.curriculumSlotId, lessonAbove?.curriculumSlotId);
+                            const chainedBelow = !!lesson && areSlotsChained(lesson.curriculumSlotId, lessonBelow?.curriculumSlotId);
+                            // Стык ниже этой ячейки = "date_slotId"; стык выше = по слоту сверху.
+                            const detachedBelow = chainedBelow && detachedBoundaries.has(`${dateStr}_${slot.id}`);
+                            const detachedAbove = chainedAbove && slotIdx > 0
+                                && detachedBoundaries.has(`${dateStr}_${SLOTS[slotIdx - 1].id}`);
+                            // «Скоба» рисуется только по неразомкнутым стыкам.
+                            const spineAbove = chainedAbove && !detachedAbove;
+                            const spineBelow = chainedBelow && !detachedBelow;
+                            const isChainedSpine = spineAbove || spineBelow;
+
                             return (
                                 <td
                                     key={weekIdx}
@@ -432,7 +573,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                         lesson && occupiedBg,
                                         lesson && isEditMode && 'cursor-pointer',
                                         lesson && !isEditMode && 'cursor-help',
-                                        isSourceCell && 'ring-2 ring-inset ring-blue-600'
+                                        (isSourceCell || isChainMember) && 'ring-2 ring-inset ring-blue-600'
                                     )}
                                     title={
                                       isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
@@ -441,6 +582,49 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                   : tooltipContent
                                     }
                                 >
+                                  {(isChainedSpine || chainedBelow) && (
+                                      <>
+                                        {/* Левая «скоба» вдоль неразомкнутых звеньев цепочки */}
+                                        {isChainedSpine && (
+                                            <div className={cn(
+                                                'absolute left-0 w-[2px] bg-slate-500/80 z-20 pointer-events-none',
+                                                spineAbove ? 'top-0' : 'top-1',
+                                                spineBelow ? 'bottom-0' : 'bottom-1',
+                                                !spineAbove && 'rounded-t-full',
+                                                !spineBelow && 'rounded-b-full'
+                                            )} />
+                                        )}
+                                        {/* Звено на стыке: в редактировании — кнопка размыкания/соединения */}
+                                        {chainedBelow && (
+                                            <button
+                                                type="button"
+                                                disabled={!isEditMode}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  if (!isEditMode) return;
+                                                  const key = `${dateStr}_${slot.id}`;
+                                                  setDetachedBoundaries((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(key)) next.delete(key); else next.add(key);
+                                                    return next;
+                                                  });
+                                                }}
+                                                title={isEditMode
+                                                    ? (detachedBelow ? 'Сцепка разомкнута — соединить' : 'Разомкнуть сцепку для отдельного переноса')
+                                                    : 'Сцепка занятий'}
+                                                className={cn(
+                                                    'absolute left-0 bottom-0 z-30 rounded-full ring-1 p-[1px] bg-white',
+                                                    detachedBelow ? 'ring-slate-300' : 'ring-slate-400',
+                                                    isEditMode ? 'pointer-events-auto cursor-pointer hover:ring-blue-500' : 'pointer-events-none'
+                                                )}
+                                            >
+                                              {detachedBelow
+                                                  ? <Unlink size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-400" />
+                                                  : <Link2 size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-600" />}
+                                            </button>
+                                        )}
+                                      </>
+                                  )}
                                   {lesson ? (
                                       <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", zoomClasses.fontSizeMain)}>
                                         {isEditMode && (

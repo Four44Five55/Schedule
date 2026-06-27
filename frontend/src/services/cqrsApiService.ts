@@ -13,7 +13,9 @@ import {
   CreateScheduleSessionRequest,
   MoveLessonRequest,
   MoveLessonResult,
-  FindMoveOptionsRequest
+  FindMoveOptionsRequest,
+  FindChainMoveOptionsRequest,
+  MoveChainRequest
 } from '../types/cqrs';
 
 /**
@@ -224,6 +226,37 @@ export const CQRSService = {
     return api
       .post<MoveOptionDto[]>('/schedule/find-move-options', request)
       .then(r => r.data);
+  },
+
+  /**
+   * Найти стартовые ячейки, куда помещается вся цепочка занятий.
+   */
+  findChainMoveOptions: (request: FindChainMoveOptionsRequest): Promise<MoveOptionDto[]> => {
+    return api
+      .post<MoveOptionDto[]>('/schedule/find-chain-move-options', request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Перенести цепочку занятий как единое целое (с optimistic lock).
+   * Возвращает контракт MoveLessonResult: success+newVersion либо conflict (409).
+   */
+  moveChain: async (
+    sessionId: string,
+    request: MoveChainRequest
+  ): Promise<MoveLessonResult> => {
+    try {
+      const response = await api.post<ScheduleSessionDto>(
+        `/schedule/command/sessions/${sessionId}/move-chain`,
+        request
+      );
+      return { success: true, newVersion: response.data.version };
+    } catch (error: any) {
+      if (error.response?.status === 409) {
+        return { success: false, conflict: error.response.data as ConflictResponse };
+      }
+      throw error;
+    }
   },
 };
 

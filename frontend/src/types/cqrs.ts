@@ -121,3 +121,22 @@ export interface FindMoveOptionsRequest {
   rootEntityId: number;
   rootEntityType: string;          // 'EDUCATOR' | 'GROUP' | 'AUDITORIUM'
 }
+
+/**
+ * Запрос на поиск стартовых ячеек для переноса цепочки.
+ * Звенья — в порядке следования по времени (сверху вниз).
+ */
+export interface FindChainMoveOptionsRequest {
+  placementIds: string[];
+}
+
+/**
+ * Запрос на перенос цепочки занятий как единого целого.
+ * Аудитории подбираются на бэке, поэтому их здесь нет.
+ */
+export interface MoveChainRequest {
+  placementIds: string[];          // звенья в порядке следования по времени
+  newStartDate: string;            // YYYY-MM-DD — день первого звена (весь день один)
+  newStartSlot: string;            // пара первого звена; остальные — следом
+  version: number;                 // оптимистичная блокировка
+}

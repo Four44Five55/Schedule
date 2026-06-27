@@ -12,6 +12,12 @@ java {
     sourceCompatibility = '21'
 }
 
+// Компилируем исходники как UTF-8 (иначе кириллица в строковых литералах
+// портится дефолтной кодировкой Windows ещё в .class)
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
 repositories {
     mavenCentral()
 }
@@ -76,6 +82,9 @@ bootRun {
     systemProperty 'dotenv.path', '../.env'
     // Передаем переменную окружения
     environment 'DOTENV_PATH', '../.env'
+    // Принудительно UTF-8 для вывода в консоль (System.out/err),
+    // иначе на Windows кириллица в логах будет в кодировке code page консоли
+    jvmArgs = ['-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8']
 }
 
 // Аналогичная настройка для bootJar

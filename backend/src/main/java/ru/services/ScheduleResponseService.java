@@ -103,7 +103,8 @@ public class ScheduleResponseService {
                 groupNames,
                 auditoriumNames,
                 auditoriumIds,
-                base.placementId()
+                base.placementId(),
+                base.curriculumSlotId()
         );
     }
 

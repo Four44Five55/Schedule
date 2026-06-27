@@ -25,6 +25,7 @@ import java.util.List;
  * @param auditoriumNames       Список названий аудиторий (например, ["101", "201"]).
  * @param auditoriumIds         Список ID аудиторий.
  * @param placementId           UUID размещения (Command Side) для операций переноса; null до сохранения в БД.
+ * @param curriculumSlotId      ID слота учебного плана — для определения сцепок занятий (SlotChain).
  */
 public record ScheduledLessonDto(
         Integer id,
@@ -44,6 +45,7 @@ public record ScheduledLessonDto(
         List<String> groupNames,
         List<String> auditoriumNames,
         List<Integer> auditoriumIds,
-        String placementId
+        String placementId,
+        Integer curriculumSlotId
 ) {
 }

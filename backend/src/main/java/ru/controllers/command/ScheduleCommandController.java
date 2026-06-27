@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.dto.command.CreateScheduleSessionRequest;
 import ru.dto.command.LessonPlacementDto;
+import ru.dto.command.MoveChainRequest;
 import ru.dto.command.MoveLessonRequest;
 import ru.dto.command.ScheduleSessionDto;
 import ru.entity.write.LessonPlacement;
@@ -15,6 +16,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import ru.exceptions.LessonMoveConflictException;
 import ru.mapper.command.LessonPlacementMapper;
 import ru.mapper.command.ScheduleSessionMapper;
+import ru.services.LessonChainMoveService;
 import ru.services.LessonMoveService;
 import ru.services.ScheduleGenerationService;
 
@@ -40,6 +42,7 @@ public class ScheduleCommandController {
 
     private final ScheduleGenerationService generationService;
     private final LessonMoveService lessonMoveService;
+    private final LessonChainMoveService lessonChainMoveService;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
 
@@ -150,6 +153,55 @@ public class ScheduleCommandController {
                 .body(new ConflictResponse(
                     "RESOURCE_CONFLICT",
                     "Невозможно перенести занятие: " + e.getMessage()
+                        + ". Обновите данные и выберите другой слот.",
+                    currentVersionOf(sessionId)
+                ));
+        }
+    }
+
+    /**
+     * Перенести цепочку занятий как единое целое с optimistic lock.
+     *
+     * POST /api/schedule/command/sessions/{sessionId}/move-chain
+     */
+    @PostMapping("/sessions/{sessionId}/move-chain")
+    public ResponseEntity<?> moveChain(
+        @PathVariable UUID sessionId,
+        @RequestBody MoveChainRequest request
+    ) {
+        log.info("Перенос цепочки: {} звеньев, newStartDate={}, version={}",
+                request.placementIds() != null ? request.placementIds().size() : 0,
+                request.newStartDate(), request.version());
+
+        try {
+            // Аудитории подбираются на бэке — в запросе их нет.
+            ScheduleSession session = lessonChainMoveService.moveChain(
+                request.placementIds(),
+                request.newStartDate(),
+                request.newStartSlot(),
+                request.version(),
+                "user"
+            );
+
+            return ResponseEntity.ok(sessionMapper.toDto(session));
+
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("❌ Optimistic lock conflict (цепочка): {}", e.getMessage());
+
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
+                .body(new ConflictResponse(
+                    "CONFLICT",
+                    "Расписание было изменено другим пользователем. Обновите страницу.",
+                    currentVersionOf(sessionId)
+                ));
+
+        } catch (LessonMoveConflictException e) {
+            log.warn("❌ Resource conflict при переносе цепочки: {}", e.getMessage());
+
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
+                .body(new ConflictResponse(
+                    "RESOURCE_CONFLICT",
+                    "Невозможно перенести цепочку: " + e.getMessage()
                         + ". Обновите данные и выберите другой слот.",
                     currentVersionOf(sessionId)
                 ));

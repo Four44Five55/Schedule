@@ -33,6 +33,7 @@ public interface ScheduledLessonMapper {
     @Mapping(target = "auditoriumIds", expression = "java(lesson.getAssignedAuditoriums() != null ? lesson.getAssignedAuditoriums().stream().map(a -> a.getId()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumNames", expression = "java(lesson.getAssignedAuditoriums() != null ? lesson.getAssignedAuditoriums().stream().map(a -> a.getName()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "placementId", ignore = true)
+    @Mapping(target = "curriculumSlotId", expression = "java(lesson.getCurriculumSlot() != null ? lesson.getCurriculumSlot().getId() : null)")
     ScheduledLessonDto toDto(Lesson lesson, CellForLesson cell);
 
     // id (Integer) на read-пути не несёт смысла — идентификация занятия идёт по
@@ -53,6 +54,7 @@ public interface ScheduledLessonMapper {
     @Mapping(target = "auditoriumIds", expression = "java(view.getAuditoriumId() != null ? java.util.List.of(view.getAuditoriumId()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumNames", expression = "java(view.getAuditoriumName() != null ? java.util.List.of(view.getAuditoriumName()) : java.util.Collections.emptyList())")
     @Mapping(target = "placementId", expression = "java(view.getPlacementId() != null ? view.getPlacementId().toString() : null)")
+    @Mapping(target = "curriculumSlotId", source = "curriculumSlotId")
     ScheduledLessonDto toDto(ScheduleView view);
 
     /**
@@ -82,5 +84,6 @@ public interface ScheduledLessonMapper {
     @Mapping(target = "auditoriumIds", expression = "java(placement.getAssignedAuditoriums() != null ? placement.getAssignedAuditoriums().stream().map(a -> a.getId()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "auditoriumNames", expression = "java(placement.getAssignedAuditoriums() != null ? placement.getAssignedAuditoriums().stream().map(a -> a.getName()).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())")
     @Mapping(target = "placementId", expression = "java(placement.getId() != null ? placement.getId().toString() : null)")
+    @Mapping(target = "curriculumSlotId", expression = "java(placement.getAssignment() != null && placement.getAssignment().getCurriculumSlot() != null ? placement.getAssignment().getCurriculumSlot().getId() : null)")
     ScheduledLessonDto toDto(LessonPlacement placement);
 }
