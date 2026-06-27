@@ -1,6 +1,8 @@
 // ============ CQRS TYPES ============
 // TypeScript типы для CQRS архитектуры (Command Query Responsibility Segregation)
 
+import type { TimeSlotPair } from './api';
+
 /**
  * Статус сессии расписания
  */
@@ -81,7 +83,7 @@ export interface ConflictResponse {
  */
 export interface MoveOptionDto {
   date: string;                   // YYYY-MM-DD
-  timeSlot: string;               // 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH'
+  timeSlot: TimeSlotPair;         // 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH'
 }
 
 /**

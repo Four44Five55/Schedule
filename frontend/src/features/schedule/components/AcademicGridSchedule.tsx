@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { ScheduledLessonDto, TimeSlotPair, ConstraintDto } from '../../../types/api';
-import { format, addDays, eachWeekOfInterval, isWithinInterval, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { isWithinInterval, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
-import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, ShieldAlert, X, Link2, Unlink } from 'lucide-react';
+import { X, Link2, Unlink, AlertTriangle } from 'lucide-react';
 import { CQRSService } from '../../../services/cqrsApiService';
 import { CurriculumService } from '../../../services/apiServices';
+import { AcademicGridShell, SLOTS, GridCellContext, zoomFontClasses } from '../../../components/grid/AcademicGridShell';
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];
@@ -23,22 +23,6 @@ interface AcademicGridScheduleProps {
   onMoveLesson?: (placementId: string) => void;
 }
 
-const DAYS = [
-  { id: 1, label: 'Пн' },
-  { id: 2, label: 'Вт' },
-  { id: 3, label: 'Ср' },
-  { id: 4, label: 'Чт' },
-  { id: 5, label: 'Пт' },
-  { id: 6, label: 'Сб' },
-];
-
-const SLOTS: { id: TimeSlotPair; label: string; time: string }[] = [
-  { id: 'FIRST', label: '1', time: '9:00' },
-  { id: 'SECOND', label: '2', time: '10:55' },
-  { id: 'THIRD', label: '3', time: '12:50' },
-  { id: 'FOURTH', label: '4', time: '16:20' },
-];
-
 export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             lessons,
                                                                             grid,
@@ -54,8 +38,6 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             rootEntityId,
                                                                             onMoveLesson
                                                                           }) => {
-  const [zoom, setZoom] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Перенос «по сетке»: выбираем занятие → подсвечиваем зелёным доступные ячейки →
   // клик по зелёной ячейке переносит занятие туда. Без модального окна.
@@ -298,387 +280,268 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     }
   };
 
-  const mondays = useMemo(() => {
-    return eachWeekOfInterval({ start: startDate, end: endDate }, { weekStartsOn: 1 });
-  }, [startDate, endDate]);
-
-  const monthHeaders = useMemo(() => {
-    const headers: { name: string; count: number }[] = [];
-    mondays.forEach((monday) => {
-      const monthName = format(monday, 'LLLL', { locale: ru });
-      if (headers.length > 0 && headers[headers.length - 1].name === monthName) {
-        headers[headers.length - 1].count++;
-      } else {
-        headers.push({ name: monthName, count: 1 });
-      }
-    });
-    return headers;
-  }, [mondays]);
-
   const borderClass = "border-slate-300";
-  const headerBorderClass = "border-slate-400";
-
-  const zoomClasses = {
-    cellHeight: zoom === 0 ? 'h-9' : zoom === 1 ? 'h-14' : 'h-24',
-    fontSizeMain: zoom === 0 ? 'text-[7px]' : zoom === 1 ? 'text-[10px]' : 'text-[12px]',
-    // Аббревиатура дисциплины — на 2pt крупнее основного текста ячейки.
-    fontSizeAbbr: zoom === 0 ? 'text-[9px]' : zoom === 1 ? 'text-[12px]' : 'text-[14px]',
-    fontSizeSub: zoom === 0 ? 'text-[6px]' : zoom === 1 ? 'text-[8px]' : 'text-[10px]',
-    containerMaxHeight: isFullscreen ? 'h-[90vh]' : 'max-h-[700px]'
-  };
 
   // У преподавателя в ячейке важны группы (он ведёт разные), поэтому контент
   // ячейки перестраиваем именно для его расписания.
   const isEducatorView = filterType === 'educator';
 
-  return (
-      <div className={cn(
-          "space-y-2 animate-fade-in transition-all duration-500",
-          isFullscreen && "fixed inset-0 z-[100] bg-slate-50 p-4 overflow-hidden flex flex-col"
-      )}>
-        <div className="flex items-center justify-between bg-slate-900 text-white p-1 px-3 rounded-xl shadow-lg shrink-0">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 border-r border-slate-700 pr-4 py-1">
-              <Calendar size={14} className="text-blue-400" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Академическая сетка</span>
-            </div>
+  // Рендер одной ячейки расписания через контекст ячейки (как у AcademicGridShell).
+  // Не зависит от способа обхода сетки — это шаг к переходу на общий каркас.
+  const renderScheduleCell = ({ date, dateStr, weekIdx, slot, slotIdx, zoom }: GridCellContext) => {
+    const fonts = zoomFontClasses(zoom);
+    const gridKey = `${dateStr}_${slot.id}`;
+    const lessonsInCell = grid[gridKey] || [];
 
-            <div className="flex items-center gap-1 bg-slate-800 rounded-lg p-0.5">
-              <button
-                  onClick={() => setZoom(Math.max(0, zoom - 1))}
-                  className="p-1 hover:bg-slate-700 rounded transition-all text-slate-400 hover:text-white"
-                  disabled={zoom === 0}
-              >
-                <ZoomOut size={14} />
-              </button>
-              <span className="text-[9px] font-black w-16 text-center text-slate-300">
-              {zoom === 0 ? 'MIN' : zoom === 1 ? 'MID' : 'MAX'}
-            </span>
-              <button
-                  onClick={() => setZoom(Math.min(2, zoom + 1))}
-                  className="p-1 hover:bg-slate-700 rounded transition-all text-slate-400 hover:text-white"
-                  disabled={zoom === 2}
-              >
-                <ZoomIn size={14} />
-              </button>
-            </div>
-          </div>
+    // 1. Сначала ищем в сетке
+    let lesson = lessonsInCell.find(l => {
+      if (filterType === 'group') return l.groupNames.includes(selectedValue);
+      if (filterType === 'educator') return l.educatorNames.includes(selectedValue);
+      if (filterType === 'auditorium') return l.auditoriumNames.includes(selectedValue);
+      return false;
+    });
 
-          <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all text-[9px] font-black uppercase tracking-tighter"
-          >
-            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            {isFullscreen ? 'Свернуть' : 'Развернуть'}
-          </button>
-        </div>
+    // 2. Если в сетке пусто (проблема ключа), ищем в плоском списке (fallback)
+    if (!lesson && lessons) {
+      lesson = lessons.find(l =>
+          l.date === dateStr &&
+          l.timeSlotPair === slot.id &&
+          (filterType === 'group' ? l.groupNames.includes(selectedValue) :
+              filterType === 'educator' ? l.educatorNames.includes(selectedValue) :
+                  l.auditoriumNames.includes(selectedValue))
+      );
+    }
 
-        {selectedLesson && (
-            <div
-                className={cn(
-                    'fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-3',
-                    'bg-slate-900/95 text-white rounded-xl px-4 py-2 shadow-2xl backdrop-blur',
-                    'transition-opacity duration-500',
-                    hintVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+    const activeConstraint = constraints.find(c => {
+      const start = parseISO(c.startDate);
+      const end = parseISO(c.endDate);
+      return isWithinInterval(date, { start, end });
+    });
+
+    // Конфликт: занятие стоит в день, на который у ресурса есть ограничение —
+    // так быть не должно, помечаем ячейку как ошибку.
+    const isConflict = !!lesson && !!activeConstraint;
+
+    const tooltipContent = lesson ? [
+      ...(isConflict ? [`⚠ КОНФЛИКТ: занятие в день ограничения «${activeConstraint?.fullName}»`] : []),
+      `Дисциплина: ${lesson.disciplineName}`,
+      `Тип: ${lesson.kindOfStudyName}`,
+      `Тема: Т.${lesson.themeNumber || '—'}`,
+      `Аудитория: ${lesson.auditoriumNames.join(', ')}`,
+      `Группы: ${lesson.groupNames.join(', ')}`
+    ].join('\n') : activeConstraint ? `ОГРАНИЧЕНИЕ: ${activeConstraint.fullName} (${activeConstraint.abbreviation})` : '';
+
+    // Доступная для переноса ячейка (подсвечивается зелёным) —
+    // только пустая для выбранного ресурса и из списка вариантов.
+    const isMoveTarget = !!selectedLesson && !lesson && moveTargets.has(gridKey);
+    const isTeacherBusy = !!selectedLesson && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
+    const isSourceCell = !!lesson && isSelectedLesson(lesson);
+    // Звено выбранной цепочки — обводим синим вместе с источником,
+    // чтобы было видно, что переносится вся связка целиком.
+    const isChainMember = !!lesson?.placementId
+        && selectedChainIds.includes(lesson.placementId);
+    const isExamOrCredit = !!lesson &&
+        (lesson.kindOfStudy === 'EXAM' ||
+            lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
+            lesson.kindOfStudy === 'CREDIT_WITHOUT_GRADE');
+
+    // Занятая ячейка, где препод выбранного занятия занят ДРУГИМ
+    // занятием (скрытая занятость, не видимая в этом виде) — жёлтая.
+    const isTeacherBusyHidden = !!selectedLesson && !!lesson && !isSourceCell &&
+        teacherBusyCells.has(gridKey) &&
+        !lesson.educatorIds.some((id) => selectedEducatorIds.has(id));
+    // Принадлежит ли занятие активной дисциплине (подсветка по виду).
+    const cellDiscipline = lesson?.disciplineName ?? null;
+    const isDisciplineMatch = !!cellDiscipline && cellDiscipline === activeDiscipline;
+
+    // Фон занятой ячейки: жёлтый (скрытая занятость) → цвет по виду
+    // для активной дисциплины → нейтральный серый в покое.
+    const disciplineBg = isExamOrCredit
+        ? 'bg-violet-150 text-slate-900 hover:bg-violet-200'
+        : lesson?.kindOfStudy === 'LECTURE'
+            ? 'bg-rose-150 text-slate-900 hover:bg-rose-200'
+            : 'bg-sky-150 text-slate-900 hover:bg-sky-200';
+    const restingBg = isExamOrCredit
+        ? 'bg-slate-300 text-slate-900 hover:bg-slate-400'
+        : 'bg-slate-100 text-slate-900 hover:bg-slate-200';
+    const occupiedBg = isTeacherBusyHidden
+        ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
+        : isDisciplineMatch ? disciplineBg : restingBg;
+
+    // Сцепка: связано ли это занятие с соседними по времени парами
+    // того же дня (slot выше / ниже). Цепочка — вертикально подряд.
+    const lessonAbove = slotIdx > 0
+        ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx - 1].id}`) : undefined;
+    const lessonBelow = slotIdx < SLOTS.length - 1
+        ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx + 1].id}`) : undefined;
+    const chainedAbove = !!lesson && areSlotsChained(lesson.curriculumSlotId, lessonAbove?.curriculumSlotId);
+    const chainedBelow = !!lesson && areSlotsChained(lesson.curriculumSlotId, lessonBelow?.curriculumSlotId);
+    // Стык ниже этой ячейки = "date_slotId"; стык выше = по слоту сверху.
+    const detachedBelow = chainedBelow && detachedBoundaries.has(`${dateStr}_${slot.id}`);
+    const detachedAbove = chainedAbove && slotIdx > 0
+        && detachedBoundaries.has(`${dateStr}_${SLOTS[slotIdx - 1].id}`);
+    // «Скоба» рисуется только по неразомкнутым стыкам.
+    const spineAbove = chainedAbove && !detachedAbove;
+    const spineBelow = chainedBelow && !detachedBelow;
+    const isChainedSpine = spineAbove || spineBelow;
+
+    return (
+        <td
+            key={weekIdx}
+            onClick={() => {
+              if (isMoveTarget) { handleCellMove(dateStr, slot.id); return; }
+              if (lesson) handleLessonClick(lesson);
+            }}
+            onMouseEnter={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(cellDiscipline) : undefined}
+            onMouseLeave={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(null) : undefined}
+            className={cn(
+                'border-r p-0.5 transition-all relative overflow-hidden',
+                borderClass,
+                !lesson && !isMoveTarget && !isTeacherBusy && 'bg-white hover:bg-slate-50/30',
+                !lesson && !isMoveTarget && !isTeacherBusy && activeConstraint && 'bg-rose-50/50',
+                isMoveTarget && 'bg-emerald-150 hover:bg-emerald-200 cursor-pointer',
+                isTeacherBusy && 'bg-amber-150',
+                lesson && !isConflict && occupiedBg,
+                isConflict && 'bg-red-100 text-red-900 hover:bg-red-200',
+                lesson && isEditMode && 'cursor-pointer',
+                lesson && !isEditMode && 'cursor-help',
+                isConflict && 'ring-2 ring-inset ring-red-500',
+                (isSourceCell || isChainMember) && !isConflict && 'ring-2 ring-inset ring-blue-600'
+            )}
+            title={
+              isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
+                  : isTeacherBusy ? 'Преподаватель занят в это время'
+                      : lesson && isEditMode ? 'Нажмите, чтобы выбрать занятие для переноса'
+                          : tooltipContent
+            }
+        >
+          {(isChainedSpine || chainedBelow) && (
+              <>
+                {/* Левая «скоба» вдоль неразомкнутых звеньев цепочки */}
+                {isChainedSpine && (
+                    <div className={cn(
+                        'absolute left-0 w-[2px] bg-slate-500/80 z-20 pointer-events-none',
+                        spineAbove ? 'top-0' : 'top-1',
+                        spineBelow ? 'bottom-0' : 'bottom-1',
+                        !spineAbove && 'rounded-t-full',
+                        !spineBelow && 'rounded-b-full'
+                    )} />
                 )}
-            >
-              <span className="text-[11px] font-bold whitespace-nowrap">
-                {loadingTargets
-                    ? 'Ищем доступные слоты…'
-                    : moving
-                        ? (selectedChainIds.length > 1 ? 'Переносим цепочку…' : 'Переносим занятие…')
-                        : moveTargets.size > 0
-                            ? (selectedChainIds.length > 1
-                                ? <>Зелёные — куда поставить цепочку из {selectedChainIds.length} пар (звено можно разомкнуть)</>
-                                : <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>)
-                            : `Нет доступных слотов для «${selectedLesson.disciplineAbbreviation}»`}
-              </span>
-              <button
-                  onClick={clearSelection}
-                  className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
+                {/* Звено на стыке: в редактировании — кнопка размыкания/соединения */}
+                {chainedBelow && (
+                    <button
+                        type="button"
+                        disabled={!isEditMode}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isEditMode) return;
+                          const key = `${dateStr}_${slot.id}`;
+                          setDetachedBoundaries((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(key)) next.delete(key); else next.add(key);
+                            return next;
+                          });
+                        }}
+                        title={isEditMode
+                            ? (detachedBelow ? 'Сцепка разомкнута — соединить' : 'Разомкнуть сцепку для отдельного переноса')
+                            : 'Сцепка занятий'}
+                        className={cn(
+                            'absolute left-0 bottom-0 z-30 rounded-full ring-1 p-[1px] bg-white',
+                            detachedBelow ? 'ring-slate-300' : 'ring-slate-400',
+                            isEditMode ? 'pointer-events-auto cursor-pointer hover:ring-blue-500' : 'pointer-events-none'
+                        )}
+                    >
+                      {detachedBelow
+                          ? <Unlink size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-400" />
+                          : <Link2 size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-600" />}
+                    </button>
+                )}
+              </>
+          )}
+          {isConflict && (
+              <div className="absolute top-0.5 left-0.5 z-30 text-red-600 pointer-events-none">
+                <AlertTriangle size={zoom === 0 ? 9 : zoom === 1 ? 11 : 13} />
+              </div>
+          )}
+          {lesson ? (
+              <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", fonts.main)}>
+                {isEditMode && (
+                    <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" />
+                )}
+                {isEducatorView ? (
+                    <>
+                      {/* Преподаватель: дисциплина+вид+тема / группы / аудитория */}
+                      <div className="flex items-baseline gap-1 whitespace-nowrap overflow-hidden border-b border-slate-300/50 pb-0.5 mb-0.5">
+                        <span className={cn("font-black tracking-tighter", fonts.abbr)}>
+                          {lesson.disciplineAbbreviation}
+                        </span>
+                        <span className={cn("font-bold opacity-60", fonts.sub)}>
+                          {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
+                        </span>
+                      </div>
+                      <div className="font-bold truncate flex-1 flex items-center">
+                        {lesson.groupNames.join(', ') || '—'}
+                      </div>
+                      <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", fonts.sub)}>
+                        {lesson.auditoriumNames.join(', ')}
+                      </div>
+                    </>
+                ) : (
+                    <>
+                      <div className="font-bold border-b border-slate-300/50 pb-0.5 mb-0.5 whitespace-nowrap overflow-hidden opacity-60">
+                        {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
+                      </div>
+                      <div className={cn("font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center", fonts.abbr)}>
+                        {lesson.disciplineAbbreviation}
+                      </div>
+                      <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", fonts.sub)}>
+                        {lesson.auditoriumNames[0]}
+                      </div>
+                    </>
+                )}
+              </div>
+          ) : activeConstraint ? (
+              <div className={cn("flex items-center justify-center h-full font-black text-slate-900 tracking-tighter", fonts.abbr)}>
+                {activeConstraint.abbreviation}
+              </div>
+          ) : null}
+        </td>
+    );
+  };
+
+  return (
+      <AcademicGridShell
+          startDate={startDate}
+          endDate={endDate}
+          renderCell={renderScheduleCell}
+          overlay={selectedLesson && (
+              <div
+                  className={cn(
+                      'fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-3',
+                      'bg-slate-900/95 text-white rounded-xl px-4 py-2 shadow-2xl backdrop-blur',
+                      'transition-opacity duration-500',
+                      hintVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  )}
               >
-                <X size={12} /> Esc
-              </button>
-            </div>
-        )}
-
-        <div className={cn(
-            "bg-white shadow-2xl rounded-xl border-2 border-slate-300 overflow-hidden flex flex-col transition-all duration-500",
-            zoomClasses.containerMaxHeight
-        )}>
-          <div className="overflow-auto custom-scrollbar flex-1">
-            <table className={cn("w-full border-collapse select-none", zoom === 0 ? "table-fixed" : "table-auto")}>
-              <thead>
-              <tr className="bg-slate-900 text-white">
-                <th className={cn("w-6 border-r p-0.5 text-[8px] font-black uppercase sticky left-0 bg-slate-900 z-30", headerBorderClass)} rowSpan={3}>Дн</th>
-                <th className={cn("w-10 border-r p-0.5 text-[8px] font-black uppercase sticky left-6 bg-slate-900 z-30", headerBorderClass)} rowSpan={3}>П</th>
-                {mondays.map((_, idx) => (
-                    <th key={idx} className={cn("border-r p-0.5 text-[7px] font-black bg-slate-800 text-slate-400", headerBorderClass)}>
-                      {idx + 1}
-                    </th>
-                ))}
-              </tr>
-              <tr className="bg-slate-100">
-                {monthHeaders.map((month, idx) => (
-                    <th key={idx} colSpan={month.count} className={cn("border-r p-0.5 text-center text-[8px] font-black uppercase tracking-widest text-slate-500", headerBorderClass)}>
-                      {month.name}
-                    </th>
-                ))}
-              </tr>
-              <tr className="bg-white border-b-2 border-slate-400">
-                {mondays.map((monday, idx) => (
-                    <th key={idx} className={cn("border-r p-0.5 text-[7px] font-bold text-slate-400", borderClass)}>
-                      {format(monday, 'dd.MM')}
-                    </th>
-                ))}
-              </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-300">
-              {DAYS.map((day) => (
-                  <React.Fragment key={day.id}>
-                    <tr className="bg-slate-50">
-                      <td className={cn("border-r text-center font-black text-[9px] text-slate-900 sticky left-0 bg-slate-100 z-20 w-6", headerBorderClass)} rowSpan={5}>
-                        <div className="rotate-90 whitespace-nowrap uppercase">
-                          {day.label}
-                        </div>
-                      </td>
-                      <td className={cn("border-r text-[7px] font-black text-slate-400 text-center sticky left-6 bg-slate-50 z-10 uppercase tracking-tighter h-5", borderClass)}>
-                        D
-                      </td>
-                      {mondays.map((monday, idx) => (
-                          <td key={idx} className={cn("border-r text-center text-[8px] font-black text-slate-700 bg-slate-50/50", borderClass)}>
-                            {format(addDays(monday, day.id - 1), 'd')}
-                          </td>
-                      ))}
-                    </tr>
-
-                    {SLOTS.map((slot, slotIdx) => (
-                        <tr key={slot.id} className={cn("group transition-all duration-300", zoomClasses.cellHeight)}>
-                          <td className={cn("border-r p-0.5 text-center sticky left-6 bg-white z-10 w-10 group-hover:bg-slate-50 transition-colors", borderClass)}>
-                            <div className="font-black text-slate-800 text-[9px]">{slot.label}</div>
-                            <div className="text-[6px] text-slate-400 font-mono leading-none">{slot.time}</div>
-                          </td>
-
-                          {mondays.map((monday, weekIdx) => {
-                            const targetDate = addDays(monday, day.id - 1);
-
-                            const dateStr = format(targetDate, 'yyyy-MM-dd');
-                            const gridKey = `${dateStr}_${slot.id}`;
-                            const lessonsInCell = grid[gridKey] || [];
-
-                            // 1. Сначала ищем в сетке
-                            let lesson = lessonsInCell.find(l => {
-                              if (filterType === 'group') return l.groupNames.includes(selectedValue);
-                              if (filterType === 'educator') return l.educatorNames.includes(selectedValue);
-                              if (filterType === 'auditorium') return l.auditoriumNames.includes(selectedValue);
-                              return false;
-                            });
-
-                            // 2. Если в сетке пусто (проблема ключа), ищем в плоском списке (fallback)
-                            if (!lesson && lessons) {
-                              lesson = lessons.find(l =>
-                                  l.date === dateStr &&
-                                  l.timeSlotPair === slot.id &&
-                                  (filterType === 'group' ? l.groupNames.includes(selectedValue) :
-                                      filterType === 'educator' ? l.educatorNames.includes(selectedValue) :
-                                          l.auditoriumNames.includes(selectedValue))
-                              );
-                            }
-
-                            const activeConstraint = constraints.find(c => {
-                              const start = parseISO(c.startDate);
-                              const end = parseISO(c.endDate);
-                              return isWithinInterval(targetDate, { start, end });
-                            });
-
-                            const tooltipContent = lesson ? [
-                              `Дисциплина: ${lesson.disciplineName}`,
-                              `Тип: ${lesson.kindOfStudyName}`,
-                              `Тема: Т.${lesson.themeNumber || '—'}`,
-                              `Аудитория: ${lesson.auditoriumNames.join(', ')}`,
-                              `Группы: ${lesson.groupNames.join(', ')}`
-                            ].join('\n') : activeConstraint ? `ОГРАНИЧЕНИЕ: ${activeConstraint.kindOfConstraint}` : '';
-
-                            // Доступная для переноса ячейка (подсвечивается зелёным) —
-                            // только пустая для выбранного ресурса и из списка вариантов.
-                            const isMoveTarget = !!selectedLesson && !lesson && moveTargets.has(gridKey);
-                            const isTeacherBusy = !!selectedLesson && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
-                            const isSourceCell = !!lesson && isSelectedLesson(lesson);
-                            // Звено выбранной цепочки — обводим синим вместе с источником,
-                            // чтобы было видно, что переносится вся связка целиком.
-                            const isChainMember = !!lesson?.placementId
-                                && selectedChainIds.includes(lesson.placementId);
-                            const isExamOrCredit = !!lesson &&
-                                (lesson.kindOfStudy === 'EXAM' ||
-                                    lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
-                                    lesson.kindOfStudy === 'CREDIT_WITHOUT_GRADE');
-
-                            // Занятая ячейка, где препод выбранного занятия занят ДРУГИМ
-                            // занятием (скрытая занятость, не видимая в этом виде) — жёлтая.
-                            const isTeacherBusyHidden = !!selectedLesson && !!lesson && !isSourceCell &&
-                                teacherBusyCells.has(gridKey) &&
-                                !lesson.educatorIds.some((id) => selectedEducatorIds.has(id));
-                            // Принадлежит ли занятие активной дисциплине (подсветка по виду).
-                            const cellDiscipline = lesson?.disciplineName ?? null;
-                            const isDisciplineMatch = !!cellDiscipline && cellDiscipline === activeDiscipline;
-
-                            // Фон занятой ячейки: жёлтый (скрытая занятость) → цвет по виду
-                            // для активной дисциплины → нейтральный серый в покое.
-                            const disciplineBg = isExamOrCredit
-                                ? 'bg-violet-150 text-slate-900 hover:bg-violet-200'
-                                : lesson?.kindOfStudy === 'LECTURE'
-                                    ? 'bg-rose-150 text-slate-900 hover:bg-rose-200'
-                                    : 'bg-sky-150 text-slate-900 hover:bg-sky-200';
-                            const restingBg = isExamOrCredit
-                                ? 'bg-slate-300 text-slate-600 hover:bg-slate-400'
-                                : 'bg-slate-100 text-slate-900 hover:bg-slate-200';
-                            const occupiedBg = isTeacherBusyHidden
-                                ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
-                                : isDisciplineMatch ? disciplineBg : restingBg;
-
-                            // Сцепка: связано ли это занятие с соседними по времени парами
-                            // того же дня (slot выше / ниже). Цепочка — вертикально подряд.
-                            const lessonAbove = slotIdx > 0
-                                ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx - 1].id}`) : undefined;
-                            const lessonBelow = slotIdx < SLOTS.length - 1
-                                ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx + 1].id}`) : undefined;
-                            const chainedAbove = !!lesson && areSlotsChained(lesson.curriculumSlotId, lessonAbove?.curriculumSlotId);
-                            const chainedBelow = !!lesson && areSlotsChained(lesson.curriculumSlotId, lessonBelow?.curriculumSlotId);
-                            // Стык ниже этой ячейки = "date_slotId"; стык выше = по слоту сверху.
-                            const detachedBelow = chainedBelow && detachedBoundaries.has(`${dateStr}_${slot.id}`);
-                            const detachedAbove = chainedAbove && slotIdx > 0
-                                && detachedBoundaries.has(`${dateStr}_${SLOTS[slotIdx - 1].id}`);
-                            // «Скоба» рисуется только по неразомкнутым стыкам.
-                            const spineAbove = chainedAbove && !detachedAbove;
-                            const spineBelow = chainedBelow && !detachedBelow;
-                            const isChainedSpine = spineAbove || spineBelow;
-
-                            return (
-                                <td
-                                    key={weekIdx}
-                                    onClick={() => {
-                                      if (isMoveTarget) { handleCellMove(dateStr, slot.id); return; }
-                                      if (lesson) handleLessonClick(lesson);
-                                    }}
-                                    onMouseEnter={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(cellDiscipline) : undefined}
-                                    onMouseLeave={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(null) : undefined}
-                                    className={cn(
-                                        'border-r p-0.5 transition-all relative overflow-hidden',
-                                        borderClass,
-                                        !lesson && !isMoveTarget && !isTeacherBusy && 'bg-white hover:bg-slate-50/30',
-                                        !lesson && !isMoveTarget && !isTeacherBusy && activeConstraint && 'bg-rose-50/50',
-                                        isMoveTarget && 'bg-emerald-150 hover:bg-emerald-200 cursor-pointer',
-                                        isTeacherBusy && 'bg-amber-150',
-                                        lesson && occupiedBg,
-                                        lesson && isEditMode && 'cursor-pointer',
-                                        lesson && !isEditMode && 'cursor-help',
-                                        (isSourceCell || isChainMember) && 'ring-2 ring-inset ring-blue-600'
-                                    )}
-                                    title={
-                                      isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
-                                          : isTeacherBusy ? 'Преподаватель занят в это время'
-                                              : lesson && isEditMode ? 'Нажмите, чтобы выбрать занятие для переноса'
-                                                  : tooltipContent
-                                    }
-                                >
-                                  {(isChainedSpine || chainedBelow) && (
-                                      <>
-                                        {/* Левая «скоба» вдоль неразомкнутых звеньев цепочки */}
-                                        {isChainedSpine && (
-                                            <div className={cn(
-                                                'absolute left-0 w-[2px] bg-slate-500/80 z-20 pointer-events-none',
-                                                spineAbove ? 'top-0' : 'top-1',
-                                                spineBelow ? 'bottom-0' : 'bottom-1',
-                                                !spineAbove && 'rounded-t-full',
-                                                !spineBelow && 'rounded-b-full'
-                                            )} />
-                                        )}
-                                        {/* Звено на стыке: в редактировании — кнопка размыкания/соединения */}
-                                        {chainedBelow && (
-                                            <button
-                                                type="button"
-                                                disabled={!isEditMode}
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  if (!isEditMode) return;
-                                                  const key = `${dateStr}_${slot.id}`;
-                                                  setDetachedBoundaries((prev) => {
-                                                    const next = new Set(prev);
-                                                    if (next.has(key)) next.delete(key); else next.add(key);
-                                                    return next;
-                                                  });
-                                                }}
-                                                title={isEditMode
-                                                    ? (detachedBelow ? 'Сцепка разомкнута — соединить' : 'Разомкнуть сцепку для отдельного переноса')
-                                                    : 'Сцепка занятий'}
-                                                className={cn(
-                                                    'absolute left-0 bottom-0 z-30 rounded-full ring-1 p-[1px] bg-white',
-                                                    detachedBelow ? 'ring-slate-300' : 'ring-slate-400',
-                                                    isEditMode ? 'pointer-events-auto cursor-pointer hover:ring-blue-500' : 'pointer-events-none'
-                                                )}
-                                            >
-                                              {detachedBelow
-                                                  ? <Unlink size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-400" />
-                                                  : <Link2 size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-600" />}
-                                            </button>
-                                        )}
-                                      </>
-                                  )}
-                                  {lesson ? (
-                                      <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", zoomClasses.fontSizeMain)}>
-                                        {isEditMode && (
-                                            <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" />
-                                        )}
-                                        {isEducatorView ? (
-                                            <>
-                                              {/* Преподаватель: дисциплина+вид+тема / группы / аудитория */}
-                                              <div className="flex items-baseline gap-1 whitespace-nowrap overflow-hidden border-b border-slate-300/50 pb-0.5 mb-0.5">
-                                                <span className={cn("font-black tracking-tighter", zoomClasses.fontSizeAbbr)}>
-                                                  {lesson.disciplineAbbreviation}
-                                                </span>
-                                                <span className={cn("font-bold opacity-60", zoomClasses.fontSizeSub)}>
-                                                  {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
-                                                </span>
-                                              </div>
-                                              <div className="font-bold truncate flex-1 flex items-center">
-                                                {lesson.groupNames.join(', ') || '—'}
-                                              </div>
-                                              <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", zoomClasses.fontSizeSub)}>
-                                                {lesson.auditoriumNames.join(', ')}
-                                              </div>
-                                            </>
-                                        ) : (
-                                            <>
-                                              <div className="font-bold border-b border-slate-300/50 pb-0.5 mb-0.5 whitespace-nowrap overflow-hidden opacity-60">
-                                                {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
-                                              </div>
-                                              <div className={cn("font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center", zoomClasses.fontSizeAbbr)}>
-                                                {lesson.disciplineAbbreviation}
-                                              </div>
-                                              <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", zoomClasses.fontSizeSub)}>
-                                                {lesson.auditoriumNames[0]}
-                                              </div>
-                                            </>
-                                        )}
-                                      </div>
-                                  ) : activeConstraint ? (
-                                      <div className="flex items-center justify-center h-full opacity-30">
-                                        <ShieldAlert size={zoom === 0 ? 10 : 14} className="text-rose-400" />
-                                      </div>
-                                  ) : null}
-                                </td>
-                            );
-                          })}
-                        </tr>
-                    ))}
-                  </React.Fragment>
-              ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
+                <span className="text-[11px] font-bold whitespace-nowrap">
+                  {loadingTargets
+                      ? 'Ищем доступные слоты…'
+                      : moving
+                          ? (selectedChainIds.length > 1 ? 'Переносим цепочку…' : 'Переносим занятие…')
+                          : moveTargets.size > 0
+                              ? (selectedChainIds.length > 1
+                                  ? <>Зелёные — куда поставить цепочку из {selectedChainIds.length} пар (звено можно разомкнуть)</>
+                                  : <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>)
+                              : `Нет доступных слотов для «${selectedLesson.disciplineAbbreviation}»`}
+                </span>
+                <button
+                    onClick={clearSelection}
+                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
+                >
+                  <X size={12} /> Esc
+                </button>
+              </div>
+          )}
+      />
   );
 };
