@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Layers, AlertCircle, Info } from 'lucide-react';
+import { X, Save, Loader2, Layers, AlertCircle, Info, Plus, Edit2 } from 'lucide-react';
 import { CurriculumSlotDto, KindOfStudy, ThemeLessonDto, AuditoriumDto, AuditoriumPoolDto } from '../../../types/api';
 import { ResourceService, CurriculumService } from '../../../services/apiServices';
 import { SlotFormValues } from '../planSource';
@@ -40,6 +40,22 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
     const [auditoriumPools, setAuditoriumPools] = useState<AuditoriumPoolDto[]>([]);
     const [loadingData, setLoadingData] = useState(true);
 
+    // Inline-создание темы прямо из формы занятия (тема глобальна на дисциплину).
+    const [showNewTheme, setShowNewTheme] = useState(false);
+    const [newThemeNumber, setNewThemeNumber] = useState('');
+    const [newThemeTitle, setNewThemeTitle] = useState('');
+    const [creatingTheme, setCreatingTheme] = useState(false);
+    const [themeError, setThemeError] = useState<string | null>(null);
+
+    // Inline-правка названия/номера уже выбранной темы (тема глобальна — меняется везде).
+    const [showEditTheme, setShowEditTheme] = useState(false);
+    const [editThemeNumber, setEditThemeNumber] = useState('');
+    const [editThemeTitle, setEditThemeTitle] = useState('');
+    const [savingTheme, setSavingTheme] = useState(false);
+    const [editThemeError, setEditThemeError] = useState<string | null>(null);
+
+    const selectedTheme = themeLessons.find(t => t.id === themeLessonId) ?? null;
+
     // Состояние отправки
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -69,9 +85,10 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
             .finally(() => setLoadingData(false));
     }, [disciplineId]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
+    // keepOpen=true — «Сохранить и добавить ещё»: окно не закрываем, готовим форму к
+    // следующему занятию (позиция++, тема сбрасывается, вид/аудитории сохраняем —
+    // обычно подряд добавляют однотипные занятия).
+    const persist = async (keepOpen: boolean) => {
         // Валидация
         let hasError = false;
 
@@ -104,7 +121,12 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                 priorityAuditoriumId: priorityAuditoriumId || undefined,
                 allowedAuditoriumPoolId: allowedAuditoriumPoolId || undefined,
             });
-            onClose();
+            if (keepOpen) {
+                setPosition(p => p + 1);
+                setThemeLessonId(null);
+            } else {
+                onClose();
+            }
         } catch (err: any) {
             console.error('Ошибка сохранения слота:', err);
             if (err.response?.status === 400) {
@@ -115,6 +137,72 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
             }
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        persist(false);
+    };
+
+    const handleCreateTheme = async () => {
+        if (!newThemeNumber.trim()) {
+            setThemeError('Укажите номер темы');
+            return;
+        }
+        setCreatingTheme(true);
+        setThemeError(null);
+        try {
+            const created = await CurriculumService.createTheme({
+                themeNumber: newThemeNumber.trim(),
+                title: newThemeTitle.trim() || undefined,
+                disciplineId,
+            });
+            setThemeLessons(prev => [...prev, created]);
+            setThemeLessonId(created.id);
+            setShowNewTheme(false);
+            setNewThemeNumber('');
+            setNewThemeTitle('');
+        } catch (err: any) {
+            const data = err?.response?.data;
+            // 409 — тема с таким номером уже есть у дисциплины.
+            setThemeError(typeof data === 'string' ? data : (data?.message || 'Не удалось создать тему.'));
+        } finally {
+            setCreatingTheme(false);
+        }
+    };
+
+    const openEditTheme = () => {
+        if (!selectedTheme) return;
+        setEditThemeNumber(selectedTheme.themeNumber);
+        setEditThemeTitle(selectedTheme.title ?? '');
+        setEditThemeError(null);
+        setShowNewTheme(false);
+        setShowEditTheme(true);
+    };
+
+    const handleUpdateTheme = async () => {
+        if (!selectedTheme) return;
+        if (!editThemeNumber.trim()) {
+            setEditThemeError('Укажите номер темы');
+            return;
+        }
+        setSavingTheme(true);
+        setEditThemeError(null);
+        try {
+            const updated = await CurriculumService.updateTheme(selectedTheme.id, {
+                themeNumber: editThemeNumber.trim(),
+                title: editThemeTitle.trim() || undefined,
+                disciplineId,
+            });
+            // Тема глобальна — обновляем её в списке (подпись в селекте поменяется сразу).
+            setThemeLessons(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+            setShowEditTheme(false);
+        } catch (err: any) {
+            const data = err?.response?.data;
+            setEditThemeError(typeof data === 'string' ? data : (data?.message || 'Не удалось сохранить тему.'));
+        } finally {
+            setSavingTheme(false);
         }
     };
 
@@ -219,7 +307,29 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
 
                                     {/* Тема занятия */}
                                     <div className="space-y-1.5">
-                                        <label className="block text-xs font-medium text-slate-600">Тема занятия (опционально)</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="block text-xs font-medium text-slate-600">Тема занятия (опционально)</label>
+                                            <div className="flex items-center gap-3">
+                                                {selectedTheme && !showNewTheme && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => (showEditTheme ? setShowEditTheme(false) : openEditTheme())}
+                                                        disabled={saving}
+                                                        className="flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-800 disabled:opacity-50"
+                                                    >
+                                                        {showEditTheme ? <><X size={12} /> Отмена</> : <><Edit2 size={12} /> Изменить</>}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setShowNewTheme(v => !v); setShowEditTheme(false); setThemeError(null); }}
+                                                    disabled={saving}
+                                                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                                >
+                                                    {showNewTheme ? <><X size={12} /> Отмена</> : <><Plus size={12} /> Новая тема</>}
+                                                </button>
+                                            </div>
+                                        </div>
                                         <select
                                             value={themeLessonId || ''}
                                             onChange={(e) => setThemeLessonId(e.target.value ? Number(e.target.value) : null)}
@@ -233,6 +343,75 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                                                 </option>
                                             ))}
                                         </select>
+
+                                        {/* Inline-создание темы: номер + название → сразу в список и выбрано */}
+                                        {showNewTheme && (
+                                            <div className="mt-2 p-3 border border-blue-200 rounded-xl bg-blue-50 space-y-2">
+                                                {themeError && (
+                                                    <div className="text-xs text-red-600 font-medium">{themeError}</div>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        value={newThemeNumber}
+                                                        onChange={(e) => { setNewThemeNumber(e.target.value); setThemeError(null); }}
+                                                        placeholder="№ темы"
+                                                        className="w-24 shrink-0 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        disabled={creatingTheme}
+                                                    />
+                                                    <input
+                                                        value={newThemeTitle}
+                                                        onChange={(e) => setNewThemeTitle(e.target.value)}
+                                                        placeholder="Название (опционально)"
+                                                        className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        disabled={creatingTheme}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCreateTheme}
+                                                        disabled={creatingTheme || !newThemeNumber.trim()}
+                                                        className="shrink-0 flex items-center gap-1 px-3 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                                                    >
+                                                        {creatingTheme ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                                        Создать
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Inline-правка выбранной темы: меняет тему глобально (во всех занятиях) */}
+                                        {showEditTheme && selectedTheme && (
+                                            <div className="mt-2 p-3 border border-slate-300 rounded-xl bg-slate-50 space-y-2">
+                                                {editThemeError && (
+                                                    <div className="text-xs text-red-600 font-medium">{editThemeError}</div>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        value={editThemeNumber}
+                                                        onChange={(e) => { setEditThemeNumber(e.target.value); setEditThemeError(null); }}
+                                                        placeholder="№ темы"
+                                                        className="w-24 shrink-0 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        disabled={savingTheme}
+                                                    />
+                                                    <input
+                                                        value={editThemeTitle}
+                                                        onChange={(e) => setEditThemeTitle(e.target.value)}
+                                                        placeholder="Название темы"
+                                                        className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        disabled={savingTheme}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleUpdateTheme}
+                                                        disabled={savingTheme || !editThemeNumber.trim()}
+                                                        className="shrink-0 flex items-center gap-1 px-3 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-900 disabled:opacity-50 transition-colors"
+                                                    >
+                                                        {savingTheme ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                        Сохранить
+                                                    </button>
+                                                </div>
+                                                <p className="text-[11px] text-slate-400">Тема глобальна — изменение затронет все занятия с ней.</p>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Обязательная аудитория */}
@@ -299,10 +478,21 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                             type="button"
                             onClick={onClose}
                             disabled={saving}
-                            className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-white transition-colors disabled:opacity-50"
+                            className="px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-white transition-colors disabled:opacity-50"
                         >
                             Отмена
                         </button>
+                        {/* Поток создания: сохранить и сразу начать следующее занятие (окно не закрывается). */}
+                        {!isEditMode && (
+                            <button
+                                type="button"
+                                onClick={() => persist(true)}
+                                disabled={saving || loadingData}
+                                className="flex-1 px-4 py-2.5 border border-blue-300 text-blue-700 bg-white rounded-xl font-bold text-sm hover:bg-blue-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} /> Сохранить и ещё
+                            </button>
+                        )}
                         <button
                             type="submit"
                             disabled={saving || loadingData}

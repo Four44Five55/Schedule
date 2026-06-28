@@ -226,10 +226,28 @@ export interface ThemeLessonDto {
   disciplineName: string;
 }
 
+export interface ThemeLessonCreateDto {
+  themeNumber: string;
+  title?: string;
+  disciplineId: number;
+}
+
+export interface ThemeLessonUpdateDto {
+  themeNumber: string;
+  title?: string;
+  disciplineId: number;
+}
+
 export interface SlotChainDto {
   id: number;
   slotA: { id: number; position: number; kindOfStudyName: string };
   slotB: { id: number; position: number; kindOfStudyName: string };
+}
+
+// Сцепка двух слотов: занятия идут неразрывно (slotB сразу после slotA).
+export interface SlotChainCreateDto {
+  slotAId: number;
+  slotBId: number;
 }
 
 export interface StudyStreamDto {

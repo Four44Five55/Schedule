@@ -35,4 +35,7 @@
     <!-- Порядковый семестр на discipline_course + новый уникальный ключ -->
     <include file="010-add-discipline-course-semester.sql" relativeToChangelogFile="true"/>
 
+    <!-- UNIQUE(course, position) на curriculum_slot → DEFERRABLE: чинит вставку слота в середину -->
+    <include file="011-curriculum-slot-position-deferrable.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
