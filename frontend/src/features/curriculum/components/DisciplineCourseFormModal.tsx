@@ -7,6 +7,7 @@ import { cn } from '../../../utils/cn';
 interface DisciplineCourseFormModalProps {
     course: DisciplineCourseDto | null;
     disciplineId?: number; // Для создания нового курса
+    lockedPeriodId?: number; // Жёстко привязать курс к периоду (контекст планировщика)
     onClose: () => void;
     onSaved: (course: DisciplineCourseDto) => void;
 }
@@ -14,6 +15,7 @@ interface DisciplineCourseFormModalProps {
 export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps> = ({
     course,
     disciplineId: propDisciplineId,
+    lockedPeriodId,
     onClose,
     onSaved
 }) => {
@@ -23,7 +25,7 @@ export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps>
     const [disciplineId, setDisciplineId] = useState<number>(
         course?.discipline?.id || propDisciplineId || 0
     );
-    const [studyPeriodId, setStudyPeriodId] = useState<number | null>(null);
+    const [studyPeriodId, setStudyPeriodId] = useState<number | null>(lockedPeriodId ?? null);
     const [semester, setSemester] = useState(course?.semester || 1);
 
     // Списки для выбора
@@ -51,11 +53,13 @@ export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps>
                 setDisciplines(discs);
                 setStudyPeriods(periods);
 
-                // Если редактирование, устанавливаем значения
-                if (course && course.studyPeriod) {
+                // Приоритет: жёстко привязанный период (контекст планировщика) →
+                // период редактируемого курса → первый из списка по умолчанию.
+                if (lockedPeriodId != null) {
+                    setStudyPeriodId(lockedPeriodId);
+                } else if (course && course.studyPeriod) {
                     setStudyPeriodId(course.studyPeriod.id);
                 } else if (periods.length > 0) {
-                    // По умолчанию выбираем активный период
                     setStudyPeriodId(periods[0].id);
                 }
             })
@@ -196,9 +200,10 @@ export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps>
                                             "w-full px-4 py-2.5 border rounded-xl text-sm font-medium transition-all outline-none appearance-none bg-white",
                                             studyPeriodError
                                                 ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-                                                : "border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                                : "border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
+                                            lockedPeriodId != null && "bg-slate-100 cursor-not-allowed"
                                         )}
-                                        disabled={saving}
+                                        disabled={saving || lockedPeriodId != null}
                                     >
                                         <option value="">Выберите период</option>
                                         {studyPeriods.map(p => (

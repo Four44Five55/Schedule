@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
+import { DisciplineCourseFormModal } from '../../curriculum/components/DisciplineCourseFormModal';
 
 type TabType = 'courses' | 'streams' | 'assignments' | 'generation';
 
@@ -52,6 +53,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     return saved ? Number(saved) : null;
   });
   const [showPeriodForm, setShowPeriodForm] = useState(false);
+  const [showCourseForm, setShowCourseForm] = useState(false);
 
   const [allCourses, setAllCourses] = useState<DisciplineCourseDto[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<Set<number>>(new Set());
@@ -108,6 +110,18 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     setPeriods(prev => [...prev, created]);
     setSelectedPeriodId(created.id);
     setShowPeriodForm(false);
+  };
+
+  // Обновить список курсов периода БЕЗ сброса выбора (в отличие от смены периода).
+  const reloadCourses = useCallback(() => {
+    if (selectedPeriodId != null) {
+      CurriculumService.getCourses(selectedPeriodId).then(setAllCourses);
+    }
+  }, [selectedPeriodId]);
+
+  const handleCourseSaved = () => {
+    setShowCourseForm(false);
+    reloadCourses();
   };
 
   useEffect(() => {
@@ -206,6 +220,15 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
         <PeriodFormModal onClose={() => setShowPeriodForm(false)} onCreated={handlePeriodCreated} />
       )}
 
+      {showCourseForm && selectedPeriodId != null && (
+        <DisciplineCourseFormModal
+          course={null}
+          lockedPeriodId={selectedPeriodId}
+          onClose={() => setShowCourseForm(false)}
+          onSaved={handleCourseSaved}
+        />
+      )}
+
       <div className="flex gap-1 border-b border-slate-200">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
@@ -230,13 +253,29 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
         ) : (
           <>
             {activeTab === 'courses' && (
-              <CourseSelector
-                disciplines={disciplines}
-                allCourses={allCourses}
-                selectedCourses={selectedCourses}
-                courseSlots={courseSlots}
-                onToggle={toggleCourse}
-              />
+              <div>
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+                  <span className="text-xs text-slate-500">
+                    {selectedPeriod ? `Курсы периода «${selectedPeriod.name}»` : 'Сначала выберите учебный период'}
+                  </span>
+                  {/* Наполнение плана. Сейчас — ручное добавление; сюда же позже встанет
+                      приоритетная кнопка «Скопировать из периода» (клон учебного плана). */}
+                  <button
+                    onClick={() => setShowCourseForm(true)}
+                    disabled={!selectedPeriod}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Plus size={13} /> Новый курс
+                  </button>
+                </div>
+                <CourseSelector
+                  disciplines={disciplines}
+                  allCourses={allCourses}
+                  selectedCourses={selectedCourses}
+                  courseSlots={courseSlots}
+                  onToggle={toggleCourse}
+                />
+              </div>
             )}
             {activeTab === 'streams' && (
               <StreamsTab
