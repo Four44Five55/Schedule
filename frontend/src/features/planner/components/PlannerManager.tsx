@@ -653,8 +653,7 @@ const AssignmentsTab: React.FC<{
       } else {
         await CurriculumService.createAssignment({
           curriculumSlotId: form.slotId,
-          studyStreamId: form.streamId as number,
-          educatorIds: form.educatorIds,
+          assignments: [{ studyStreamId: form.streamId as number, educatorIds: form.educatorIds }],
         });
       }
       closeForm();

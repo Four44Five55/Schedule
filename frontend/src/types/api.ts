@@ -276,10 +276,15 @@ export interface AssignmentDto {
   educators: { id: number; name: string }[];
 }
 
-export interface AssignmentCreateDto {
-  curriculumSlotId: number;
+// Создание назначений для ОДНОГО слота: бэк принимает батч (поддержка деления
+// подгрупп — несколько потоков/преподавателей на один слот).
+export interface AssignmentDetailDto {
   studyStreamId: number;
   educatorIds: number[];
+}
+export interface AssignmentCreateDto {
+  curriculumSlotId: number;
+  assignments: AssignmentDetailDto[];
 }
 
 export interface AssignmentUpdateDto {
