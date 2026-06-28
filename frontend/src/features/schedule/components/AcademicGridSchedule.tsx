@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { ScheduledLessonDto, TimeSlotPair, ConstraintDto } from '../../../types/api';
-import { isWithinInterval, parseISO } from 'date-fns';
-import { cn } from '../../../utils/cn';
-import { X, Link2, Unlink, AlertTriangle } from 'lucide-react';
-import { CQRSService } from '../../../services/cqrsApiService';
-import { CurriculumService } from '../../../services/apiServices';
-import { AcademicGridShell, SLOTS, GridCellContext, zoomFontClasses } from '../../../components/grid/AcademicGridShell';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {ConstraintDto, ScheduledLessonDto, TimeSlotPair} from '../../../types/api';
+import {isWithinInterval, parseISO} from 'date-fns';
+import {cn} from '../../../utils/cn';
+import {AlertTriangle, Link2, Unlink, X} from 'lucide-react';
+import {CQRSService} from '../../../services/cqrsApiService';
+import {CurriculumService} from '../../../services/apiServices';
+import {AcademicGridShell, GridCellContext, SLOTS, zoomFontClasses} from '../../../components/grid/AcademicGridShell';
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];

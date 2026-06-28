@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { parseISO } from 'date-fns';
+import { parseISO, format } from 'date-fns';
 import { ConstraintsService, ResourceService } from '../../../services/apiServices';
 import {
   ConstraintDto, GroupDto, EducatorDto, AuditoriumDto, StudyPeriodDto, KindOfConstraints,
 } from '../../../types/api';
-import { Users, UserSquare2, School, Search, Loader2, ShieldAlert } from 'lucide-react';
+import { Users, UserSquare2, School, Search, Loader2, ShieldAlert, Plus, Trash2 } from 'lucide-react';
 import { ConstraintsGridSchedule } from './ConstraintsGridSchedule';
+import { ConstraintFormModal } from './ConstraintFormModal';
 import { CONSTRAINT_STYLES, FALLBACK_CONSTRAINT_STYLE } from '../constraintStyles';
 import { cn } from '../../../utils/cn';
 
@@ -32,6 +33,9 @@ export const ConstraintsManager: React.FC = () => {
   const [constraints, setConstraints] = useState<ConstraintDto[]>([]);
   const [loadingConstraints, setLoadingConstraints] = useState(false);
   const [loadingResources, setLoadingResources] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  // Триггер перечитывания ограничений после создания/удаления.
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // Справочники и периоды — один раз при монтировании.
   useEffect(() => {
@@ -66,7 +70,7 @@ export const ConstraintsManager: React.FC = () => {
       .catch(() => { if (!cancelled) setConstraints([]); })
       .finally(() => { if (!cancelled) setLoadingConstraints(false); });
     return () => { cancelled = true; };
-  }, [selectedId, filterType]);
+  }, [selectedId, filterType, refreshTick]);
 
   const entities: NamedEntity[] = useMemo(() => {
     const list = filterType === 'group' ? resources.groups
@@ -94,6 +98,17 @@ export const ConstraintsManager: React.FC = () => {
     if (!selectedPeriod) return null;
     return { start: parseISO(selectedPeriod.startDate), end: parseISO(selectedPeriod.endDate) };
   }, [selectedPeriod]);
+
+  const handleDelete = async (id: number) => {
+    try {
+      if (filterType === 'educator') await ConstraintsService.deleteEducatorConstraint(id);
+      else if (filterType === 'group') await ConstraintsService.deleteGroupConstraint(id);
+      else await ConstraintsService.deleteAuditoriumConstraint(id);
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      console.error('Не удалось удалить ограничение', e);
+    }
+  };
 
   if (loadingResources) {
     return <div className="p-8 text-center animate-pulse text-slate-400">Загрузка справочников...</div>;
@@ -136,6 +151,15 @@ export const ConstraintsManager: React.FC = () => {
           </select>
 
           {loadingConstraints && <Loader2 size={14} className="animate-spin text-blue-600 shrink-0" />}
+
+          <button
+            onClick={() => setShowModal(true)}
+            disabled={selectedId === ''}
+            title={selectedId === '' ? 'Сначала выберите объект' : 'Добавить ограничение'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 transition-colors disabled:opacity-50 shrink-0"
+          >
+            <Plus size={14} /> Добавить
+          </button>
         </div>
 
         {/* Легенда видов ограничений (только встретившиеся) */}
@@ -163,6 +187,47 @@ export const ConstraintsManager: React.FC = () => {
       ) : (
         <EmptyState
           label={!selectedEntity ? 'Выберите объект для просмотра ограничений' : 'Выберите учебный период'}
+        />
+      )}
+
+      {/* Список ограничений выбранной сущности с удалением */}
+      {selectedEntity && constraints.length > 0 && (
+        <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
+          <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 mb-3">
+            Ограничения · {selectedEntity.name}
+          </h3>
+          <ul className="space-y-1.5">
+            {constraints.map((c) => (
+              <li key={c.id} className="flex items-center gap-3 text-xs bg-slate-50 rounded-lg px-3 py-2">
+                <span className={cn('w-2.5 h-2.5 rounded-sm shrink-0', (CONSTRAINT_STYLES[c.kindOfConstraint] ?? FALLBACK_CONSTRAINT_STYLE).dot)} />
+                <span className="font-black text-slate-800 shrink-0">{c.abbreviation}</span>
+                <span className="text-slate-600 shrink-0">{c.fullName}</span>
+                <span className="text-slate-500 font-mono shrink-0">
+                  {format(parseISO(c.startDate), 'dd.MM.yyyy')} – {format(parseISO(c.endDate), 'dd.MM.yyyy')}
+                </span>
+                {c.description && <span className="text-slate-400 truncate flex-1">{c.description}</span>}
+                <button
+                  onClick={() => handleDelete(c.id)}
+                  title="Удалить ограничение"
+                  className="ml-auto p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {showModal && selectedEntity && (
+        <ConstraintFormModal
+          entityType={filterType}
+          entityId={selectedEntity.id}
+          entityLabel={selectedEntity.name}
+          defaultStartDate={selectedPeriod?.startDate}
+          defaultEndDate={selectedPeriod?.startDate}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); setRefreshTick((t) => t + 1); }}
         />
       )}
     </div>

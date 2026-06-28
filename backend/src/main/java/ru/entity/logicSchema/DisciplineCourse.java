@@ -30,14 +30,27 @@ public class DisciplineCourse {
     @JoinColumn(name = "study_period_id")
     private StudyPeriod studyPeriod;
 
+    /**
+     * Порядковый семестр учебной программы (1..12), на котором изучается дисциплина.
+     *
+     * <p>В отличие от {@link #studyPeriod} (календарный период с конкретными датами),
+     * это «номер семестра» когорты. Одна дисциплина в одном календарном периоде может
+     * читаться разным курсам на разных порядковых семестрах с разным учебным планом,
+     * поэтому семестр входит в идентичность курса: уникальность —
+     * (discipline, studyPeriod, semester). Согласуется с {@link ru.entity.logicSchema.StudyStream#getSemester()}.</p>
+     */
+    @Column(name = "semester", nullable = false)
+    private int semester;
+
     @OneToMany(mappedBy = "disciplineCourse", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
     private List<CurriculumSlot> curriculumSlots = new ArrayList<>();
 
     // Конструктор для удобства
-    public DisciplineCourse(Discipline discipline,StudyPeriod studyPeriod) {
+    public DisciplineCourse(Discipline discipline, StudyPeriod studyPeriod, int semester) {
         this.discipline = discipline;
         this.studyPeriod = studyPeriod;
+        this.semester = semester;
     }
 
     @Override

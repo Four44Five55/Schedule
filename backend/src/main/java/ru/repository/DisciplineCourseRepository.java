@@ -15,8 +15,20 @@ public interface DisciplineCourseRepository extends JpaRepository<DisciplineCour
     boolean existsByDisciplineIdAndStudyPeriodId(Integer disciplineId, Integer studyPeriodId);
 
     /**
+     * Проверяет дубль курса с учётом семестра: одна дисциплина в одном периоде может
+     * существовать на разных семестрах, поэтому уникальность — (discipline, period, semester).
+     */
+    boolean existsByDisciplineIdAndStudyPeriodIdAndSemester(Integer disciplineId, Integer studyPeriodId, int semester);
+
+    /**
      * Находит все курсы для указанной дисциплины и сортирует их по дате начала учебного периода.
      * Spring Data JPA сгенерирует SQL: SELECT * FROM discipline_course WHERE discipline_id = ? ORDER BY study_period.start_date ASC
      */
     List<DisciplineCourse> findByDisciplineIdOrderByStudyPeriod_StartDate(Integer disciplineId);
+
+    /**
+     * Находит все курсы указанного учебного периода (для генерации/планирования «по периоду»).
+     * Сортировка по дисциплине и семестру — стабильный порядок для UI.
+     */
+    List<DisciplineCourse> findByStudyPeriodIdOrderByDiscipline_NameAscSemesterAsc(Integer studyPeriodId);
 }

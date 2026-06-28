@@ -33,18 +33,34 @@ public class DisciplineCourseService {
         Discipline discipline = disciplineService.getEntityById(createDto.disciplineId());
         StudyPeriod studyPeriod = studyPeriodService.getEntityById(createDto.studyPeriodId());
 
-        // 2. Проверка на дубликаты по новой логике
-        if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodId(discipline.getId(), studyPeriod.getId())) {
-            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "' и периода '" + studyPeriod.getName() + "' уже существует.");
+        // 2. Проверка на дубликаты с учётом семестра: одна дисциплина в одном периоде
+        //    может существовать на разных семестрах (разный учебный план когорт).
+        if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodIdAndSemester(
+                discipline.getId(), studyPeriod.getId(), createDto.semester())) {
+            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "', периода '"
+                    + studyPeriod.getName() + "' и семестра " + createDto.semester() + " уже существует.");
         }
 
         // 3. Создаем и сохраняем новый курс
         DisciplineCourse newCourse = new DisciplineCourse();
         newCourse.setDiscipline(discipline);
         newCourse.setStudyPeriod(studyPeriod);
+        newCourse.setSemester(createDto.semester());
         DisciplineCourse savedCourse = disciplineCourseRepository.save(newCourse);
 
         return disciplineCourseMapper.toDto(savedCourse);
+    }
+
+    /**
+     * Возвращает все курсы указанного учебного периода — основа генерации/планирования
+     * «по периоду»: период определяет набор дисциплин и календарные даты.
+     */
+    @Transactional(readOnly = true)
+    public List<DisciplineCourseDto> findAllByStudyPeriod(Integer studyPeriodId) {
+        return disciplineCourseRepository
+                .findByStudyPeriodIdOrderByDiscipline_NameAscSemesterAsc(studyPeriodId).stream()
+                .map(disciplineCourseMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)

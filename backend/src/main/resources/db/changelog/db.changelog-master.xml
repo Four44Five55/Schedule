@@ -32,4 +32,7 @@
     <!-- Краткие описания (COMMENT ON COLUMN) для ключевых полей -->
     <include file="009-add-column-comments.sql" relativeToChangelogFile="true"/>
 
+    <!-- Порядковый семестр на discipline_course + новый уникальный ключ -->
+    <include file="010-add-discipline-course-semester.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

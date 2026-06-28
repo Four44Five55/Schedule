@@ -91,6 +91,9 @@ export interface MoveOptionDto {
  */
 export interface CreateScheduleSessionRequest {
   name: string;
+  /** Учебный период генерации — источник дат и набора курсов. */
+  studyPeriodId: number;
+  /** Опциональный поднабор курсов периода; пусто — все курсы периода. */
   courseIds: number[];
 }
 

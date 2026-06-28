@@ -14,7 +14,7 @@ import java.util.List;
  * Использует MapStruct для автоматической генерации реализации.
  * componentModel = "spring" позволяет внедрять этот маппер как Spring Bean.
  */
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING, uses = StudyPeriodMapper.class)
 public interface DisciplineCourseMapper {
 
     /**

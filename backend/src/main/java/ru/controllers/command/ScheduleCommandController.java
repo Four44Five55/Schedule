@@ -70,10 +70,12 @@ public class ScheduleCommandController {
      */
     @PostMapping("/sessions/generate")
     public ResponseEntity<ScheduleSessionDto> generateSchedule(@RequestBody CreateScheduleSessionRequest request) {
-        log.info("Генерация расписания: name={}, courses={}", request.name(), request.courseIds());
+        log.info("Генерация расписания: name={}, period={}, courses={}",
+                request.name(), request.studyPeriodId(), request.courseIds());
 
         ScheduleSession session = generationService.generateSchedule(
             request.name(),
+            request.studyPeriodId(),
             request.courseIds(),
             "admin"
         );

@@ -31,9 +31,13 @@ import {
   AuditoriumPurposeDto,
   AuditoriumPoolDto,
   StudyPeriodDto,
+  StudyPeriodCreateDto,
   EducatorConstraintDto,
   GroupConstraintDto,
   AuditoriumConstraintDto,
+  EducatorConstraintCreateDto,
+  GroupConstraintCreateDto,
+  AuditoriumConstraintCreateDto,
   ScheduleResultDto,
   StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
@@ -82,6 +86,8 @@ export const ResourceService = {
   getAuditoriumPurposes: () => api.get<AuditoriumPurposeDto[]>('/auditorium-purposes').then((r) => r.data),
   getAuditoriumPools: () => api.get<AuditoriumPoolDto[]>('/auditorium-pools').then((r) => r.data),
   getStudyPeriods: () => api.get<StudyPeriodDto[]>('/study-periods').then((r) => r.data),
+  createStudyPeriod: (data: StudyPeriodCreateDto) =>
+      api.post<StudyPeriodDto>('/study-periods', data).then((r) => r.data),
 
   /**
    * Получить активный учебный период (содержит сегодняшнюю дату).
@@ -100,7 +106,10 @@ export const CurriculumService = {
   updateDiscipline: (id: number, data: DisciplineUpdateDto) => api.put<DisciplineDto>(`/disciplines/${id}`, data).then((r) => r.data),
   deleteDiscipline: (id: number) => api.delete(`/disciplines/${id}`).then(() => {}),
 
-  getCourses: () => api.get<DisciplineCourseDto[]>('/discipline-courses').then((r) => r.data),
+  getCourses: (studyPeriodId?: number) =>
+      api.get<DisciplineCourseDto[]>('/discipline-courses', {
+        params: studyPeriodId != null ? { studyPeriodId } : undefined,
+      }).then((r) => r.data),
   getCourse: (id: number) => api.get<DisciplineCourseDto>(`/discipline-courses/${id}`).then((r) => r.data),
   getCoursesByDiscipline: (disciplineId: number) => api.get<DisciplineCourseDto[]>(`/discipline-courses/by-discipline/${disciplineId}`).then((r) => r.data),
   createCourse: (data: DisciplineCourseCreateDto) => api.post<DisciplineCourseDto>('/discipline-courses', data).then((r) => r.data),
@@ -131,6 +140,15 @@ export const ConstraintsService = {
 
   getAuditoriumConstraints: () => api.get<AuditoriumConstraintDto[]>('/auditorium-constraints').then((r) => r.data).catch(() => []),
   getAuditoriumConstraintsByAuditorium: (id: number) => api.get<AuditoriumConstraintDto[]>(`/auditorium-constraints/by-auditorium/${id}`).then((r) => r.data).catch(() => []),
+
+  createEducatorConstraint: (data: EducatorConstraintCreateDto) => api.post<EducatorConstraintDto>('/educator-constraints', data).then((r) => r.data),
+  deleteEducatorConstraint: (id: number) => api.delete(`/educator-constraints/${id}`).then(() => {}),
+
+  createGroupConstraint: (data: GroupConstraintCreateDto) => api.post<GroupConstraintDto>('/group-constraints', data).then((r) => r.data),
+  deleteGroupConstraint: (id: number) => api.delete(`/group-constraints/${id}`).then(() => {}),
+
+  createAuditoriumConstraint: (data: AuditoriumConstraintCreateDto) => api.post<AuditoriumConstraintDto>('/auditorium-constraints', data).then((r) => r.data),
+  deleteAuditoriumConstraint: (id: number) => api.delete(`/auditorium-constraints/${id}`).then(() => {}),
 };
 
 // ============ 5. ГЕНЕРАЦИЯ ============

@@ -147,20 +147,29 @@ export default function App() {
   // ========== Расписание ==========
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleGenerateSchedule = async (courseIds: number[]) => {
+  const handleGenerateSchedule = async (courseIds: number[], period?: StudyPeriodDto) => {
     setIsGenerating(true);
     try {
+      // Период обязателен для генерации. Планировщик передаёт выбранный явно;
+      // прочие вызовы (например, дашборд) fallback'ятся на активный период.
+      const targetPeriod = period ?? await ResourceService.getActiveStudyPeriod();
+      if (!targetPeriod) {
+        alert('Не выбран учебный период. Создайте/выберите период в планировщике.');
+        return;
+      }
+
       await CQRSService.generateSchedule({
         name: 'Генерация от ' + new Date().toLocaleString('ru-RU'),
+        studyPeriodId: targetPeriod.id,
         courseIds: courseIds
       });
 
-      const activePeriod = await ResourceService.getActiveStudyPeriod();
-      if (activePeriod) {
-        const result = await ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
-        setScheduleLessons(result.lessons);
-        setScheduleGrid(result.grid || {});
-      }
+      // Показываем именно сгенерированный период (а не «активный на сегодня»),
+      // чтобы можно было готовить будущий семестр.
+      setSchedulePeriod(targetPeriod);
+      const result = await ScheduleService.loadExisting(targetPeriod.startDate, targetPeriod.endDate);
+      setScheduleLessons(result.lessons);
+      setScheduleGrid(result.grid || {});
 
       setActiveTab('schedule');
     } catch (err) {

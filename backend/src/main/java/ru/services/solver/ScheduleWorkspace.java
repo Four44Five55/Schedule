@@ -25,6 +25,12 @@ public final class ScheduleWorkspace {
     @Getter
     private final ResourceAvailabilityManager resourceManager;
 
+    /** Календарные границы периода планирования (источник дат для солвера). */
+    @Getter
+    private final LocalDate startDate;
+    @Getter
+    private final LocalDate endDate;
+
     /**
      * Создает новое рабочее пространство для планирования.
      *
@@ -43,6 +49,8 @@ public final class ScheduleWorkspace {
             List<Auditorium> allAuditoriums,
             AllConstraints allConstraints
     ) {
+        this.startDate = startDate;
+        this.endDate = endDate;
         this.grid = new ScheduleGrid(startDate, endDate);
         this.resourceManager = new ResourceAvailabilityManager(allEducators, allGroups, allAuditoriums, allConstraints);
     }

@@ -19,8 +19,16 @@ public class DisciplineCourseController {
     private final DisciplineCourseService disciplineCourseService;
     private final DisciplineCourseRepository disciplineCourseRepository;
     private final DisciplineCourseMapper disciplineCourseMapper;
+    /**
+     * Список курсов. Если задан {@code studyPeriodId} — только курсы этого учебного
+     * периода (для планировщика «по периоду»), иначе все курсы.
+     */
     @GetMapping
-    public ResponseEntity<List<DisciplineCourseDto>> getAll() {
+    public ResponseEntity<List<DisciplineCourseDto>> getAll(
+            @RequestParam(value = "studyPeriodId", required = false) Integer studyPeriodId) {
+        if (studyPeriodId != null) {
+            return ResponseEntity.ok(disciplineCourseService.findAllByStudyPeriod(studyPeriodId));
+        }
         return ResponseEntity.ok(
                 disciplineCourseRepository.findAll().stream()
                         .map(disciplineCourseMapper::toDto)

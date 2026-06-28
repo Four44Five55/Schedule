@@ -138,6 +138,14 @@ export interface StudyPeriodDto {
   endDate: string;
 }
 
+export interface StudyPeriodCreateDto {
+  name: string;
+  studyYear: number;
+  periodType: PeriodType;
+  startDate: string;
+  endDate: string;
+}
+
 // ============ CURRICULUM ============
 export interface DisciplineDto {
   id: number;
@@ -150,7 +158,7 @@ export interface DisciplineCourseDto {
   id: number;
   semester: number;
   discipline: { id: number; name: string; abbreviation: string };
-  studyPeriod?: { id: number; name: string; studyYear: number; periodType: string };
+  studyPeriod?: StudyPeriodDto;
 }
 
 export interface DisciplineCreateDto {
@@ -296,6 +304,30 @@ export type ConstraintDto =
     | EducatorConstraintDto
     | GroupConstraintDto
     | AuditoriumConstraintDto;
+
+export interface EducatorConstraintCreateDto {
+  educatorId: number;
+  kindOfConstraint: KindOfConstraints;
+  startDate: string;
+  endDate: string;
+  description?: string;
+}
+
+export interface GroupConstraintCreateDto {
+  groupId: number;
+  kindOfConstraint: KindOfConstraints;
+  startDate: string;
+  endDate: string;
+  description?: string;
+}
+
+export interface AuditoriumConstraintCreateDto {
+  auditoriumId: number;
+  kindOfConstraint: KindOfConstraints;
+  startDate: string;
+  endDate: string;
+  description?: string;
+}
 
 // ============ SCHEDULE ============
 export interface ScheduledLessonDto {

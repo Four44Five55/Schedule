@@ -5,16 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.entity.*;
-import ru.entity.logicSchema.DisciplineCourse;
-import ru.services.constraints.AllConstraints;
 import ru.services.constraints.ConstraintService;
 import ru.services.distribution.DistributionDiscipline;
 import ru.services.factories.CellForLessonFactory;
-import ru.services.factories.LessonFactory;
+import ru.services.generation.GenerationScope;
+import ru.services.generation.GenerationScopeResolver;
 import ru.services.solver.ScheduleWorkspace;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 @Slf4j
@@ -25,10 +22,8 @@ public class ScheduleGenerationService {
     private final EducatorService educatorService;
     private final GroupService groupService;
     private final AuditoriumService auditoriumService;
-    private final DisciplineCourseService disciplineCourseService;
     private final ConstraintService constraintService;
-    private final LessonFactory lessonFactory;
-    private final LessonSortingService lessonSorterService;
+    private final GenerationScopeResolver scopeResolver;
     private final DistributionDiscipline distributionDiscipline;
     private final AssignmentService assignmentService;
 
@@ -39,77 +34,28 @@ public class ScheduleGenerationService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     /**
-     * Основной метод, запускающий процесс генерации расписания для одного курса.
+     * Строит workspace и запускает распределение для уже разрешённой области генерации.
+     *
+     * <p>Единый источник дат — {@link GenerationScope#period()}: и кэш ячеек, и сам
+     * workspace инициализируются календарными рамками выбранного периода (раньше
+     * период неявно брался из «первого курса», а конец семестра был захардкожен).</p>
      */
-    @Transactional(readOnly = true)
-    public ScheduleWorkspace generateForCourse(Integer courseId) {
-        DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
-        //создание кеша всех ячеек для периода
-        CellForLessonFactory.initializeCellCache(
-                course.getStudyPeriod().getStartDate(),
-                course.getStudyPeriod().getEndDate()
-        );
+    private ScheduleWorkspace generateWorkspace(GenerationScope scope) {
+        StudyPeriod period = scope.period();
 
-        List<Educator> allEducators = educatorService.getAllEntities();
-        List<Group> allGroups = groupService.getAllEntities();
-        List<Auditorium> allAuditoriums = auditoriumService.getAllEntities();
-        AllConstraints allConstraints = constraintService.loadAllConstraints();
+        // Кэш всех ячеек на рамки периода
+        CellForLessonFactory.initializeCellCache(period.getStartDate(), period.getEndDate());
 
-
-        List<Lesson> lessonsToPlace = lessonFactory.createLessonsForCourse(courseId);
-
-        // --- 2. ИНИЦИАЛИЗАЦИЯ ЯДРА РЕШАТЕЛЯ ---
         ScheduleWorkspace workspace = new ScheduleWorkspace(
-                course.getStudyPeriod().getStartDate(),
-                course.getStudyPeriod().getEndDate(),
-                allEducators,
-                allGroups,
-                allAuditoriums,
-                allConstraints
-        );
-        List<Lesson> sortedLessons = lessonSorterService.getSortedLessons(lessonsToPlace);
-        distributionDiscipline.distribute(workspace, sortedLessons, allEducators);
-
-
-/*        // --- 3. ЗАПУСК АЛГОРИТМА ---
-        LegacyAlgorithmRunner runner = new LegacyAlgorithmRunner(workspace, lessonsToPlace, lessonSorterService);
-        runner.run(); // Запускаем адаптированный алгоритм*/
-
-        // --- 4. ВОЗВРАТ РЕЗУЛЬТАТА ---
-        return workspace;
-    }
-
-    @Transactional(readOnly = true)
-    public ScheduleWorkspace generateForCourseList(List<Integer> courseIds) {
-        // 1. Инициализация (берем период первого курса)
-        DisciplineCourse firstCourse = disciplineCourseService.getEntityById(courseIds.getFirst());
-        CellForLessonFactory.initializeCellCache(
-                firstCourse.getStudyPeriod().getStartDate(),
-                firstCourse.getStudyPeriod().getEndDate()
-        );
-
-        // 2. Создаем Общий Workspace
-        ScheduleWorkspace workspace = new ScheduleWorkspace(
-                firstCourse.getStudyPeriod().getStartDate(),
-                firstCourse.getStudyPeriod().getEndDate(),
+                period.getStartDate(),
+                period.getEndDate(),
                 educatorService.getAllEntities(),
                 groupService.getAllEntities(),
                 auditoriumService.getAllEntities(),
                 constraintService.loadAllConstraints()
         );
 
-        // 3. Загружаем ВСЕ уроки
-        List<Lesson> allLessons = new ArrayList<>();
-        for (Integer id : courseIds) {
-            List<Lesson> courseLessons = lessonFactory.createLessonsForCourse(id);
-            // Сразу сортируем их по позиции, чтобы в DistributionDiscipline они пришли в порядке
-            courseLessons.sort(Comparator.comparingInt(l -> l.getCurriculumSlot().getPosition()));
-            allLessons.addAll(courseLessons);
-        }
-
-        // 4. Запускаем распределение
-        distributionDiscipline.distribute(workspace, allLessons, educatorService.getAllEntities());
-
+        distributionDiscipline.distribute(workspace, scope.lessons(), educatorService.getAllEntities());
         return workspace;
     }
 
@@ -142,17 +88,19 @@ public class ScheduleGenerationService {
      * </ol>
      *
      * @param name Название расписания
-     * @param courseIds Список ID курсов
+     * @param studyPeriodId Учебный период генерации (источник дат и набора курсов)
+     * @param courseIds Опциональный поднабор курсов периода (пусто/null — все курсы периода)
      * @param user Пользователь
      * @return Сессия сгенерированного расписания
      */
     @Transactional
     public ru.entity.write.ScheduleSession generateSchedule(
             String name,
+            Integer studyPeriodId,
             List<Integer> courseIds,
             String user
     ) {
-        log.info("Генерация расписания: name={}, courses={}", name, courseIds);
+        log.info("Генерация расписания: name={}, period={}, courses={}", name, studyPeriodId, courseIds);
 
         // 1. Создаём сессию
         ru.entity.write.ScheduleSession session = new ru.entity.write.ScheduleSession(name, user);
@@ -160,8 +108,9 @@ public class ScheduleGenerationService {
         session = sessionRepo.save(session);
 
         try {
-            // 2. Генерируем workspace
-            ru.services.solver.ScheduleWorkspace workspace = generateForCourseList(courseIds);
+            // 2. Разрешаем область генерации (период → даты + курсы + уроки) и строим workspace
+            GenerationScope scope = scopeResolver.resolve(studyPeriodId, courseIds);
+            ru.services.solver.ScheduleWorkspace workspace = generateWorkspace(scope);
 
             // 3. ✅ ОЧИЩАЕМ СТАРЫЕ PLACEMENTS (если сессия перегенерируется)
             List<ru.entity.write.LessonPlacement> oldPlacements = placementRepo.findBySessionId(session.getId());

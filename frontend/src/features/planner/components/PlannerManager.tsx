@@ -1,17 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   DisciplineDto, DisciplineCourseDto, CurriculumSlotDto,
-  StudyStreamDto, EducatorDto, AssignmentDto, GroupDto
+  StudyStreamDto, EducatorDto, AssignmentDto, GroupDto,
+  StudyPeriodDto, StudyPeriodCreateDto, PeriodType
 } from '../../../types/api';
 import { CurriculumService, ResourceService } from '../../../services/apiServices';
 import {
   ChevronRight, Check, Plus, Users, Calendar, Play,
-  Settings, Trash2, Edit2, X, BookOpen
+  Settings, Trash2, Edit2, X, BookOpen, CalendarPlus, Loader2
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
 
 type TabType = 'courses' | 'streams' | 'assignments' | 'generation';
+
+const PERIOD_TYPE_OPTIONS: { value: PeriodType; label: string }[] = [
+  { value: 'FALL_SEMESTER', label: 'Осенний семестр' },
+  { value: 'SPRING_SEMESTER', label: 'Весенний семестр' },
+  { value: 'FALL_EXAM_SESSION', label: 'Осенняя сессия' },
+  { value: 'SPRING_EXAM_SESSION', label: 'Весенняя сессия' },
+];
 
 const KIND_COLORS: Record<string, string> = {
   LECTURE: 'bg-violet-100 text-violet-700',
@@ -27,12 +35,17 @@ interface PlannerManagerProps {
   disciplines: DisciplineDto[];
   educators: EducatorDto[];
   groups: GroupDto[];
-  onGenerate: (courseIds: number[]) => void;
+  onGenerate: (courseIds: number[], period: StudyPeriodDto) => void;
   isGenerating: boolean;
 }
 
 export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, educators, groups, onGenerate, isGenerating }) => {
   const [activeTab, setActiveTab] = useState<TabType>('courses');
+
+  // Учебный период — первичный контекст планировщика: он задаёт набор курсов и даты.
+  const [periods, setPeriods] = useState<StudyPeriodDto[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
+  const [showPeriodForm, setShowPeriodForm] = useState(false);
 
   const [allCourses, setAllCourses] = useState<DisciplineCourseDto[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<Set<number>>(new Set());
@@ -41,18 +54,42 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   const [streams, setStreams] = useState<StudyStreamDto[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // courses здесь нет в App, а streams редактируются прямо в планировщике —
-  // поэтому грузим только их; educators и groups приходят пропсами из App.
+  const selectedPeriod = periods.find(p => p.id === selectedPeriodId) ?? null;
+
+  // Периоды + потоки грузим один раз; по умолчанию выбираем активный период
+  // (а если активного нет — первый из списка). educators/groups приходят пропсами.
   useEffect(() => {
-    setLoading(true);
     Promise.all([
-      CurriculumService.getCourses(),
+      ResourceService.getStudyPeriods(),
+      ResourceService.getActiveStudyPeriod(),
       ResourceService.getStreams(),
-    ]).then(([courses, str]) => {
-      setAllCourses(courses);
+    ]).then(([allPeriods, active, str]) => {
+      setPeriods(allPeriods);
       setStreams(str);
-    }).finally(() => setLoading(false));
+      setSelectedPeriodId(active?.id ?? allPeriods[0]?.id ?? null);
+    });
   }, []);
+
+  // Курсы зависят от выбранного периода: меняется период — перезагружаем курсы и
+  // сбрасываем выбор (курсы другого периода не должны «прилипать»).
+  useEffect(() => {
+    if (selectedPeriodId == null) {
+      setAllCourses([]);
+      setSelectedCourses(new Set());
+      return;
+    }
+    setLoading(true);
+    setSelectedCourses(new Set());
+    CurriculumService.getCourses(selectedPeriodId)
+      .then(setAllCourses)
+      .finally(() => setLoading(false));
+  }, [selectedPeriodId]);
+
+  const handlePeriodCreated = (created: StudyPeriodDto) => {
+    setPeriods(prev => [...prev, created]);
+    setSelectedPeriodId(created.id);
+    setShowPeriodForm(false);
+  };
 
   useEffect(() => {
     if (selectedCourses.size === 0) {
@@ -124,6 +161,32 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
         )}
       </div>
 
+      {/* Учебный период — контекст всего планировщика */}
+      <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
+        <Calendar size={16} className="text-blue-600 shrink-0" />
+        <label className="text-xs font-semibold text-slate-600 shrink-0">Учебный период</label>
+        <select
+          value={selectedPeriodId ?? ''}
+          onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
+          className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">— выберите период —</option>
+          {periods.map(p => (
+            <option key={p.id} value={p.id}>{p.name} ({p.studyYear})</option>
+          ))}
+        </select>
+        <button
+          onClick={() => setShowPeriodForm(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+        >
+          <CalendarPlus size={14} /> Новый период
+        </button>
+      </div>
+
+      {showPeriodForm && (
+        <PeriodFormModal onClose={() => setShowPeriodForm(false)} onCreated={handlePeriodCreated} />
+      )}
+
       <div className="flex gap-1 border-b border-slate-200">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
@@ -178,6 +241,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
               <GenerationTab
                 selectedCourses={selectedCourses}
                 totalSlots={totalSlots}
+                selectedPeriod={selectedPeriod}
                 onGenerate={onGenerate}
                 isGenerating={isGenerating}
               />
@@ -711,9 +775,18 @@ const AssignmentsTab: React.FC<{
 const GenerationTab: React.FC<{
   selectedCourses: Set<number>;
   totalSlots: number;
-  onGenerate: (courseIds: number[]) => void;
+  selectedPeriod: StudyPeriodDto | null;
+  onGenerate: (courseIds: number[], period: StudyPeriodDto) => void;
   isGenerating: boolean;
-}> = ({ selectedCourses, totalSlots, onGenerate, isGenerating }) => {
+}> = ({ selectedCourses, totalSlots, selectedPeriod, onGenerate, isGenerating }) => {
+  if (!selectedPeriod) {
+    return (
+      <div className="py-16 text-center text-slate-400 text-sm">
+        <Calendar className="mx-auto mb-3 opacity-20" size={36} />
+        <p>Выберите учебный период вверху страницы</p>
+      </div>
+    );
+  }
   if (selectedCourses.size === 0) {
     return (
       <div className="py-16 text-center text-slate-400 text-sm">
@@ -727,6 +800,10 @@ const GenerationTab: React.FC<{
     <div className="p-5 space-y-5">
       <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
         <h4 className="font-semibold text-blue-900 text-sm mb-3">Параметры генерации</h4>
+        <div className="mb-3 text-sm text-blue-900">
+          Период: <span className="font-bold">{selectedPeriod.name}</span>
+          <span className="text-blue-500"> · {selectedPeriod.startDate} — {selectedPeriod.endDate}</span>
+        </div>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="bg-white rounded-lg p-3 border border-blue-100 text-center">
             <div className="text-2xl font-black text-blue-600">{selectedCourses.size}</div>
@@ -758,7 +835,7 @@ const GenerationTab: React.FC<{
       </div>
 
       <button
-        onClick={() => onGenerate(Array.from(selectedCourses))}
+        onClick={() => onGenerate(Array.from(selectedCourses), selectedPeriod)}
         disabled={isGenerating}
         className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors text-sm"
       >
@@ -771,6 +848,140 @@ const GenerationTab: React.FC<{
           После завершения вы будете перенаправлены в раздел «Расписание»
         </p>
       )}
+    </div>
+  );
+};
+
+// ─── PeriodFormModal ─────────────────────────────────────────────────────────
+
+const PeriodFormModal: React.FC<{
+  onClose: () => void;
+  onCreated: (period: StudyPeriodDto) => void;
+}> = ({ onClose, onCreated }) => {
+  const [name, setName] = useState('');
+  const [studyYear, setStudyYear] = useState(new Date().getFullYear());
+  const [periodType, setPeriodType] = useState<PeriodType>('FALL_SEMESTER');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSave = name.trim() && startDate && endDate && !saving;
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    if (startDate > endDate) {
+      setError('Дата начала не может быть позже даты окончания.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const payload: StudyPeriodCreateDto = {
+        name: name.trim(), studyYear, periodType, startDate, endDate,
+      };
+      const created = await ResourceService.createStudyPeriod(payload);
+      onCreated(created);
+    } catch (err: any) {
+      const data = err?.response?.data;
+      setError(typeof data === 'string' ? data : (data?.message || 'Не удалось создать период.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg"><CalendarPlus size={20} className="text-blue-600" /></div>
+            <h2 className="text-lg font-black text-slate-900">Новый учебный период</h2>
+          </div>
+          <button onClick={onClose} disabled={saving} className="p-1 hover:bg-slate-200 rounded-lg transition-colors">
+            <X size={20} className="text-slate-500" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Название *</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Осенний семестр 2026/2027"
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Учебный год *</label>
+              <input
+                type="number"
+                min={2020}
+                value={studyYear}
+                onChange={e => setStudyYear(Number(e.target.value))}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Тип периода *</label>
+              <select
+                value={periodType}
+                onChange={e => setPeriodType(e.target.value as PeriodType)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {PERIOD_TYPE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Дата начала *</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Дата окончания *</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-white transition-colors disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Сохранение...</> : <><Check size={16} /> Создать</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
