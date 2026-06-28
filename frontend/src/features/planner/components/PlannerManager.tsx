@@ -21,6 +21,8 @@ const PERIOD_TYPE_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: 'SPRING_EXAM_SESSION', label: 'Весенняя сессия' },
 ];
 
+const PERIOD_STORAGE_KEY = 'unischedule.planner.selectedPeriodId';
+
 const KIND_COLORS: Record<string, string> = {
   LECTURE: 'bg-violet-100 text-violet-700',
   EXAM: 'bg-red-100 text-red-700',
@@ -43,8 +45,12 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   const [activeTab, setActiveTab] = useState<TabType>('courses');
 
   // Учебный период — первичный контекст планировщика: он задаёт набор курсов и даты.
+  // Выбор переживает уход с вкладки и F5 (localStorage), как фильтры в др. разделах.
   const [periods, setPeriods] = useState<StudyPeriodDto[]>([]);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(() => {
+    const saved = localStorage.getItem(PERIOD_STORAGE_KEY);
+    return saved ? Number(saved) : null;
+  });
   const [showPeriodForm, setShowPeriodForm] = useState(false);
 
   const [allCourses, setAllCourses] = useState<DisciplineCourseDto[]>([]);
@@ -56,8 +62,8 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
 
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId) ?? null;
 
-  // Периоды + потоки грузим один раз; по умолчанию выбираем активный период
-  // (а если активного нет — первый из списка). educators/groups приходят пропсами.
+  // Периоды + потоки грузим один раз. Сохранённый выбор имеет приоритет (если такой
+  // период ещё существует); иначе — активный период, иначе первый из списка.
   useEffect(() => {
     Promise.all([
       ResourceService.getStudyPeriods(),
@@ -66,9 +72,22 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     ]).then(([allPeriods, active, str]) => {
       setPeriods(allPeriods);
       setStreams(str);
-      setSelectedPeriodId(active?.id ?? allPeriods[0]?.id ?? null);
+      setSelectedPeriodId(prev =>
+        prev != null && allPeriods.some(p => p.id === prev)
+          ? prev
+          : (active?.id ?? allPeriods[0]?.id ?? null)
+      );
     });
   }, []);
+
+  // Персист выбранного периода между вкладками и перезагрузками.
+  useEffect(() => {
+    if (selectedPeriodId != null) {
+      localStorage.setItem(PERIOD_STORAGE_KEY, String(selectedPeriodId));
+    } else {
+      localStorage.removeItem(PERIOD_STORAGE_KEY);
+    }
+  }, [selectedPeriodId]);
 
   // Курсы зависят от выбранного периода: меняется период — перезагружаем курсы и
   // сбрасываем выбор (курсы другого периода не должны «прилипать»).
