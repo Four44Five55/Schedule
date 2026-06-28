@@ -170,6 +170,12 @@ public class CurriculumSlotService {
                 .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + id + " не найден."));
     }
 
+    /** [СЛУЖЕБНЫЙ] Слоты курса (сущности), упорядоченные по позиции. */
+    @Transactional(readOnly = true)
+    public List<CurriculumSlot> getEntitiesByCourseId(Integer courseId) {
+        return curriculumSlotRepository.findByDisciplineCourseIdOrderByPosition(courseId);
+    }
+
     /**
      * [СЛУЖЕБНЫЙ МЕТОД] Находит предыдущую лекцию.
      */

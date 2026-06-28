@@ -17,7 +17,9 @@ import ru.repository.AssignmentRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Сервис для управления "Назначениями" (Assignments).
@@ -44,16 +46,57 @@ public class AssignmentService {
             StudyStream stream = studyStreamService.getEntityById(detail.studyStreamId());
             List<Educator> educators = educatorService.getAllEntitiesByIds(detail.educatorIds());
 
-            // 3. Создаем и наполняем новую сущность Assignment
-            Assignment newAssignment = new Assignment();
-            newAssignment.setCurriculumSlot(slot);
-            newAssignment.setStudyStream(stream);
-            newAssignment.setEducators(new HashSet<>(educators));
-
-            createdAssignments.add(assignmentRepository.save(newAssignment));
+            // 3. Создаём и сохраняем (сборка вынесена для переиспользования в applyToCourse)
+            createdAssignments.add(assignmentRepository.save(buildAssignment(slot, stream, educators)));
         }
 
         return assignmentMapper.toDtoList(createdAssignments);
+    }
+
+    /**
+     * Назначает поток + преподавателей на ВСЕ занятия курса. Удобство для типового
+     * случая «один преподаватель ведёт поток через весь курс»: проставить разом,
+     * а исключения потом править точечно.
+     *
+     * <p>Политика для уже назначенных на этот поток слотов: {@code overwrite=false}
+     * (по умолчанию) — пропускаем (ручные исключения не трогаем, операция идемпотентна);
+     * {@code overwrite=true} — заменяем состав преподавателей существующего назначения
+     * (та же строка, ссылки не рвутся). Материализуем по слотам — отдельной
+     * «курс-уровневой» сущности назначения нет.</p>
+     */
+    @Transactional
+    public List<AssignmentDto> applyToCourse(Integer courseId, Integer studyStreamId,
+                                             List<Integer> educatorIds, boolean overwrite) {
+        StudyStream stream = studyStreamService.getEntityById(studyStreamId);
+        List<Educator> educators = educatorService.getAllEntitiesByIds(educatorIds);
+        List<CurriculumSlot> slots = curriculumSlotService.getEntitiesByCourseId(courseId);
+
+        // Уже назначенные на этот поток слоты курса — один запрос, без N+1.
+        Map<Integer, Assignment> existingBySlot = assignmentRepository.findAllByCourseIdWithDetails(courseId).stream()
+                .filter(a -> a.getStudyStream().getId().equals(studyStreamId))
+                .collect(Collectors.toMap(a -> a.getCurriculumSlot().getId(), a -> a));
+
+        List<Assignment> affected = new ArrayList<>();
+        for (CurriculumSlot slot : slots) {
+            Assignment existing = existingBySlot.get(slot.getId());
+            if (existing == null) {
+                affected.add(assignmentRepository.save(buildAssignment(slot, stream, educators)));
+            } else if (overwrite) {
+                existing.setEducators(new HashSet<>(educators));
+                affected.add(assignmentRepository.save(existing));
+            }
+            // overwrite=false и назначение уже есть → SKIP
+        }
+        return assignmentMapper.toDtoList(affected);
+    }
+
+    /** Сборка сущности назначения из уже разрешённых связей (DRY для create/applyToCourse). */
+    private Assignment buildAssignment(CurriculumSlot slot, StudyStream stream, List<Educator> educators) {
+        Assignment newAssignment = new Assignment();
+        newAssignment.setCurriculumSlot(slot);
+        newAssignment.setStudyStream(stream);
+        newAssignment.setEducators(new HashSet<>(educators));
+        return newAssignment;
     }
 
     @Transactional

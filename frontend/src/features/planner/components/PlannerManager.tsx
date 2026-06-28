@@ -597,9 +597,12 @@ const StreamsTab: React.FC<{
 
 interface AssignmentFormState {
   slotId: number;
+  courseId: number;
   assignmentId: number | null;
   streamId: number | '';
   educatorIds: number[];
+  applyAll: boolean;    // применить ко всем занятиям курса (только при создании)
+  overwrite: boolean;   // при applyAll — перезаписывать уже назначенные слоты
 }
 
 const AssignmentsTab: React.FC<{
@@ -615,16 +618,19 @@ const AssignmentsTab: React.FC<{
   const [form, setForm] = useState<AssignmentFormState | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const openCreate = (slotId: number) => {
-    setForm({ slotId, assignmentId: null, streamId: '', educatorIds: [] });
+  const openCreate = (slotId: number, courseId: number) => {
+    setForm({ slotId, courseId, assignmentId: null, streamId: '', educatorIds: [], applyAll: false, overwrite: false });
   };
 
-  const openEdit = (assignment: AssignmentDto) => {
+  const openEdit = (assignment: AssignmentDto, courseId: number) => {
     setForm({
       slotId: assignment.curriculumSlot.id,
+      courseId,
       assignmentId: assignment.id,
       streamId: assignment.studyStream.id,
       educatorIds: assignment.educators.map(e => e.id),
+      applyAll: false,
+      overwrite: false,
     });
   };
 
@@ -649,6 +655,14 @@ const AssignmentsTab: React.FC<{
         await CurriculumService.updateAssignment(form.assignmentId, {
           studyStreamId: form.streamId as number,
           educatorIds: form.educatorIds,
+        });
+      } else if (form.applyAll) {
+        // Проставить этот поток+преподавателей на все занятия курса (bulk на бэке).
+        await CurriculumService.applyAssignmentToCourse({
+          courseId: form.courseId,
+          studyStreamId: form.streamId as number,
+          educatorIds: form.educatorIds,
+          overwrite: form.overwrite,
         });
       } else {
         await CurriculumService.createAssignment({
@@ -730,7 +744,7 @@ const AssignmentsTab: React.FC<{
                           )}
                         </div>
                         <button
-                          onClick={() => isFormOpen ? closeForm() : openCreate(slot.id)}
+                          onClick={() => isFormOpen ? closeForm() : openCreate(slot.id, courseId)}
                           className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 hover:bg-blue-50 rounded transition-colors"
                         >
                           {isFormOpen ? <X size={12} /> : <Plus size={12} />}
@@ -756,7 +770,7 @@ const AssignmentsTab: React.FC<{
                               </div>
                               <div className="flex items-center gap-1 ml-2 shrink-0">
                                 <button
-                                  onClick={() => openEdit(a)}
+                                  onClick={() => openEdit(a, courseId)}
                                   className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                 >
                                   <Edit2 size={13} />
@@ -815,6 +829,33 @@ const AssignmentsTab: React.FC<{
                               </div>
                             </div>
                           </div>
+
+                          {/* Массовое назначение — только при создании (не при правке). */}
+                          {!form?.assignmentId && (
+                            <div className="space-y-1.5">
+                              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={form?.applyAll ?? false}
+                                  onChange={e => setForm(prev => prev ? { ...prev, applyAll: e.target.checked, overwrite: e.target.checked ? prev.overwrite : false } : prev)}
+                                  className="w-3.5 h-3.5"
+                                />
+                                <span>Применить ко всем занятиям курса (этот поток)</span>
+                              </label>
+                              {form?.applyAll && (
+                                <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer pl-5">
+                                  <input
+                                    type="checkbox"
+                                    checked={form?.overwrite ?? false}
+                                    onChange={e => setForm(prev => prev ? { ...prev, overwrite: e.target.checked } : prev)}
+                                    className="w-3.5 h-3.5"
+                                  />
+                                  <span>Перезаписать уже назначенные (иначе пропускаются)</span>
+                                </label>
+                              )}
+                            </div>
+                          )}
+
                           <div className="flex gap-2">
                             <button
                               onClick={handleSave}
@@ -822,7 +863,7 @@ const AssignmentsTab: React.FC<{
                               className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                             >
                               <Check size={12} />
-                              {saving ? 'Сохранение...' : form?.assignmentId ? 'Обновить' : 'Создать'}
+                              {saving ? 'Сохранение...' : form?.assignmentId ? 'Обновить' : form?.applyAll ? 'Применить к курсу' : 'Создать'}
                             </button>
                             <button
                               onClick={closeForm}

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.dto.assignment.ApplyAssignmentToCourseDto;
 import ru.dto.assignment.AssignmentCreateDto;
 import ru.dto.assignment.AssignmentDto;
 import ru.dto.assignment.AssignmentUpdateDto;
@@ -41,6 +42,16 @@ public class AssignmentController {
     public ResponseEntity<List<AssignmentDto>> create(@Valid @RequestBody AssignmentCreateDto dto) {
         List<AssignmentDto> created = assignmentService.createAssignments(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+    /**
+     * Назначить поток+преподавателей на все занятия курса (типовой случай — один
+     * преподаватель на весь курс). overwrite управляет уже назначенными слотами.
+     */
+    @PostMapping("/apply-to-course")
+    public ResponseEntity<List<AssignmentDto>> applyToCourse(@Valid @RequestBody ApplyAssignmentToCourseDto dto) {
+        List<AssignmentDto> result = assignmentService.applyToCourse(
+                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.overwrite());
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
     @PutMapping("/{id}")
     public ResponseEntity<AssignmentDto> update(@PathVariable Integer id, @Valid @RequestBody AssignmentUpdateDto dto) {

@@ -45,7 +45,10 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
 
-    implementation("jakarta.validation:jakarta.validation-api:4.0.0-M1")
+    // Валидация: стартер тянет hibernate-validator + согласованную с Spring Boot
+    // версию jakarta.validation-api и включает реальную работу @Valid/@NotNull/@NotEmpty
+    // в Spring MVC (раньше был только API без движка — аннотации не срабатывали).
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     runtimeOnly 'org.postgresql:postgresql'
 

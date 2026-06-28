@@ -28,6 +28,7 @@ import {
   SlotChainCreateDto,
   AssignmentDto,
   AssignmentCreateDto,
+  ApplyAssignmentToCourseDto,
   AssignmentUpdateDto,
   LocationDto,
   BuildingDto,
@@ -135,6 +136,7 @@ export const CurriculumService = {
   deleteChain: (id: number) => api.delete(`/slot-chains/${id}`).then(() => {}),
   getAssignmentsByCourse: (courseId: number) => api.get<AssignmentDto[]>(`/assignments/by-course/${courseId}`).then((r) => r.data).catch(() => []),
   createAssignment: (data: AssignmentCreateDto) => api.post<AssignmentDto[]>('/assignments', data).then((r) => r.data),
+  applyAssignmentToCourse: (data: ApplyAssignmentToCourseDto) => api.post<AssignmentDto[]>('/assignments/apply-to-course', data).then((r) => r.data),
   updateAssignment: (id: number, data: AssignmentUpdateDto) => api.put<AssignmentDto>(`/assignments/${id}`, data).then((r) => r.data),
   deleteAssignment: (id: number) => api.delete(`/assignments/${id}`).then(() => {}),
 };
