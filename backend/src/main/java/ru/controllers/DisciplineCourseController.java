@@ -4,11 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.dto.disciplineCourse.CourseCloneRequestDto;
 import ru.dto.disciplineCourse.DisciplineCourseCreateDto;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
 import ru.repository.DisciplineCourseRepository;
 import ru.mapper.DisciplineCourseMapper;
+import ru.services.CurriculumCloneService;
 import ru.services.DisciplineCourseService;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -17,6 +19,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DisciplineCourseController {
     private final DisciplineCourseService disciplineCourseService;
+    private final CurriculumCloneService curriculumCloneService;
     private final DisciplineCourseRepository disciplineCourseRepository;
     private final DisciplineCourseMapper disciplineCourseMapper;
     /**
@@ -49,6 +52,20 @@ public class DisciplineCourseController {
     public ResponseEntity<DisciplineCourseDto> create(@Valid @RequestBody DisciplineCourseCreateDto dto) {
         DisciplineCourseDto created = disciplineCourseService.createCourse(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+    /**
+     * Клон учебного плана: глубокая копия выбранных курсов в целевой период. Атомарно —
+     * дубль курса (discipline+semester) в целевом периоде откатывает всю операцию (409).
+     * Глобального ControllerAdvice нет, поэтому статус маппим здесь (как в ScheduleCommandController).
+     */
+    @PostMapping("/clone")
+    public ResponseEntity<?> clone(@Valid @RequestBody CourseCloneRequestDto dto) {
+        try {
+            List<DisciplineCourseDto> created = curriculumCloneService.cloneCourses(dto);
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+        }
     }
     @PutMapping("/{id}")
     public ResponseEntity<DisciplineCourseDto> update(@PathVariable Integer id, @Valid @RequestBody DisciplineCourseUpdateDto dto) {

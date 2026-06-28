@@ -8,13 +8,6 @@ import ru.entity.logicSchema.SlotChain;
 
 import java.util.List;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-import ru.entity.logicSchema.SlotChain;
-import java.util.List;
-
 @Repository
 public interface SlotChainRepository extends JpaRepository<SlotChain, Integer> {
 
@@ -30,4 +23,11 @@ public interface SlotChainRepository extends JpaRepository<SlotChain, Integer> {
     @Query("SELECT CASE WHEN sc.slotA.id = :slotId THEN sc.slotB.id ELSE sc.slotA.id END " +
             "FROM SlotChain sc WHERE sc.slotA.id = :slotId OR sc.slotB.id = :slotId")
     List<Integer> findDirectlyLinkedSlotIds(@Param("slotId") Integer slotId);
+
+    /**
+     * Все сцепки указанного курса. Сцепки внутрикурсовые (это гарантируется при создании),
+     * поэтому достаточно фильтра по курсу slotA. Используется при клоне плана для ремапа.
+     */
+    @Query("SELECT sc FROM SlotChain sc WHERE sc.slotA.disciplineCourse.id = :courseId")
+    List<SlotChain> findByCourseId(@Param("courseId") Integer courseId);
 }

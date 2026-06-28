@@ -6,6 +6,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { ChevronRight, FileText, School, Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { CurriculumSlotFormModal } from './CurriculumSlotFormModal';
+import { courseSlotSource } from '../planSource';
 
 export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ disciplines }) => {
   const [selectedDiscipline, setSelectedDiscipline] = useState<DisciplineDto | null>(null);
@@ -70,17 +71,8 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
     }
   };
 
-  const handleSlotSaved = (_slot: CurriculumSlotDto) => {
-    setShowSlotForm(false);
-    setSelectedSlot(null);
-    // Перезагружаем слоты
-    if (selectedCourseId) {
-      CurriculumService.getSlotsByCourse(selectedCourseId).then(setSlots);
-    }
-  };
-
   // Вычисляем следующую доступную позицию
-  const nextPosition = slots.length > 0 ? Math.max(...slots.map(s => s.position)) + 1 : 0;
+  const nextPosition = slots.length > 0 ? Math.max(...slots.map(s => s.position)) + 1 : 1;
 
   return (
     <>
@@ -232,13 +224,18 @@ export const CurriculumManager: React.FC<{ disciplines: DisciplineDto[] }> = ({ 
     </div>
 
     {/* Модальное окно для создания/редактирования слота */}
-    {showSlotForm && selectedCourseId && (
+    {showSlotForm && selectedCourseId && selectedDiscipline && (
       <CurriculumSlotFormModal
         slot={selectedSlot}
-        disciplineCourseId={selectedCourseId}
+        disciplineId={selectedDiscipline.id}
         nextPosition={nextPosition}
         onClose={() => { setShowSlotForm(false); setSelectedSlot(null); }}
-        onSaved={handleSlotSaved}
+        onSave={async (values) => {
+          const src = courseSlotSource(selectedCourseId);
+          if (selectedSlot) await src.update(selectedSlot.id, values);
+          else await src.create(values);
+          setSlots(await CurriculumService.getSlotsByCourse(selectedCourseId));
+        }}
       />
     )}
   </>

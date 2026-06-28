@@ -182,6 +182,13 @@ export interface DisciplineCourseUpdateDto {
   studyPeriodId: number;
 }
 
+// Клон учебного плана: глубокая копия выбранных курсов в целевой период (бэкенд
+// копирует слоты + сцепки; темы/назначения не копируются).
+export interface CourseCloneRequestDto {
+  sourceCourseIds: number[];
+  targetPeriodId: number;
+}
+
 export interface CurriculumSlotDto {
   id: number;
   disciplineCourseId: number;

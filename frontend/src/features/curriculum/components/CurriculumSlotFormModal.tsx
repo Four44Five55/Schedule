@@ -1,24 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Layers, AlertCircle, Info } from 'lucide-react';
-import { CurriculumSlotDto, CurriculumSlotCreateDto, CurriculumSlotUpdateDto, KindOfStudy, ThemeLessonDto, AuditoriumDto, AuditoriumPoolDto } from '../../../types/api';
-import { CurriculumService, ResourceService } from '../../../services/apiServices';
+import { CurriculumSlotDto, KindOfStudy, ThemeLessonDto, AuditoriumDto, AuditoriumPoolDto } from '../../../types/api';
+import { ResourceService, CurriculumService } from '../../../services/apiServices';
+import { SlotFormValues } from '../planSource';
 import { useEnums } from '../../../context/EnumContext';
 import { cn } from '../../../utils/cn';
 
 interface CurriculumSlotFormModalProps {
     slot: CurriculumSlotDto | null;
-    disciplineCourseId: number;
-    nextPosition: number; // Следующая доступная позиция в курсе
+    /** Дисциплина (для списка тем). Модал не знает о курсе/шаблоне — запись идёт через onSave. */
+    disciplineId: number;
+    nextPosition: number; // Следующая доступная позиция (считает редактор)
     onClose: () => void;
-    onSaved: (slot: CurriculumSlotDto) => void;
+    /** Стратегия сохранения: редактор связывает её с источником плана (курс/шаблон). */
+    onSave: (values: SlotFormValues) => Promise<void>;
 }
 
 export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = ({
     slot,
-    disciplineCourseId,
+    disciplineId,
     nextPosition,
     onClose,
-    onSaved
+    onSave
 }) => {
     const isEditMode = slot !== null;
     const { kindOfStudy: kindsOfStudyEnum } = useEnums();
@@ -45,45 +48,26 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
     const [positionError, setPositionError] = useState<string | null>(null);
     const [kindOfStudyError, setKindOfStudyError] = useState<string | null>(null);
 
-    // Загрузка данных
+    // Загрузка справочников. Темы — напрямую по дисциплине (без round-trip за курсом).
     useEffect(() => {
-        if (!disciplineCourseId) {
-            console.error('No disciplineCourseId provided');
-            setThemeLessons([]);
-            setAuditoriums([]);
-            setAuditoriumPools([]);
-            setLoadingData(false);
-            return;
-        }
-
         setLoadingData(true);
-        console.log('Loading data for course:', disciplineCourseId);
-
-        // Загружаем курс, чтобы получить ID дисциплины
-        CurriculumService.getCourse(disciplineCourseId)
-            .then(course => {
-                console.log('Course loaded:', course);
-                // Загружаем темы для дисциплины курса
-                return Promise.all([
-                    CurriculumService.getThemesByDiscipline(course.discipline.id).catch(() => []),
-                    ResourceService.getAuditoriums(),
-                    ResourceService.getAuditoriumPools()
-                ]);
-            })
+        Promise.all([
+            CurriculumService.getThemesByDiscipline(disciplineId).catch(() => []),
+            ResourceService.getAuditoriums(),
+            ResourceService.getAuditoriumPools()
+        ])
             .then(([themes, auds, pools]) => {
-                console.log('Data loaded:', { themesCount: themes.length, audsCount: auds.length, poolsCount: pools.length });
                 setThemeLessons(themes);
                 setAuditoriums(auds);
                 setAuditoriumPools(pools);
             })
-            .catch((error) => {
-                console.error('Error loading data:', error);
+            .catch(() => {
                 setThemeLessons([]);
                 setAuditoriums([]);
                 setAuditoriumPools([]);
             })
             .finally(() => setLoadingData(false));
-    }, [disciplineCourseId]);
+    }, [disciplineId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -91,8 +75,8 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
         // Валидация
         let hasError = false;
 
-        if (position < 0) {
-            setPositionError('Позиция должна быть 0 или больше');
+        if (position < 1) {
+            setPositionError('Позиция должна быть 1 или больше');
             hasError = true;
         } else {
             setPositionError(null);
@@ -111,29 +95,16 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
         setError(null);
 
         try {
-            let saved: CurriculumSlotDto;
-            if (isEditMode && slot) {
-                const payload: CurriculumSlotUpdateDto = {
-                    kindOfStudy: kindOfStudy as KindOfStudy,
-                    themeLessonId: themeLessonId || undefined,
-                    requiredAuditoriumId: requiredAuditoriumId || undefined,
-                    priorityAuditoriumId: priorityAuditoriumId || undefined,
-                    allowedAuditoriumPoolId: allowedAuditoriumPoolId || undefined
-                };
-                saved = await CurriculumService.updateSlot(slot.id, payload);
-            } else {
-                const payload: CurriculumSlotCreateDto = {
-                    disciplineCourseId,
-                    position,
-                    kindOfStudy: kindOfStudy as KindOfStudy,
-                    themeLessonId: themeLessonId || undefined,
-                    requiredAuditoriumId: requiredAuditoriumId || undefined,
-                    priorityAuditoriumId: priorityAuditoriumId || undefined,
-                    allowedAuditoriumPoolId: allowedAuditoriumPoolId || undefined
-                };
-                saved = await CurriculumService.createSlot(payload);
-            }
-            onSaved(saved);
+            // Запись делегируется стратегии (источник плана): модал не знает курс/шаблон.
+            await onSave({
+                position,
+                kindOfStudy: kindOfStudy as KindOfStudy,
+                themeLessonId: themeLessonId || undefined,
+                requiredAuditoriumId: requiredAuditoriumId || undefined,
+                priorityAuditoriumId: priorityAuditoriumId || undefined,
+                allowedAuditoriumPoolId: allowedAuditoriumPoolId || undefined,
+            });
+            onClose();
         } catch (err: any) {
             console.error('Ошибка сохранения слота:', err);
             if (err.response?.status === 400) {
@@ -197,7 +168,7 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Позиция *</label>
                                     <input
                                         type="number"
-                                        min="0"
+                                        min="1"
                                         value={position}
                                         onChange={(e) => { setPosition(Number(e.target.value)); setPositionError(null); }}
                                         className={cn(

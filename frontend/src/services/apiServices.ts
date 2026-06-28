@@ -15,6 +15,7 @@ import {
   DisciplineCourseDto,
   DisciplineCourseCreateDto,
   DisciplineCourseUpdateDto,
+  CourseCloneRequestDto,
   EnumDto,
   StudyStreamDto,
   CurriculumSlotDto,
@@ -115,6 +116,7 @@ export const CurriculumService = {
   createCourse: (data: DisciplineCourseCreateDto) => api.post<DisciplineCourseDto>('/discipline-courses', data).then((r) => r.data),
   updateCourse: (id: number, data: DisciplineCourseUpdateDto) => api.put<DisciplineCourseDto>(`/discipline-courses/${id}`, data).then((r) => r.data),
   deleteCourse: (id: number) => api.delete(`/discipline-courses/${id}`).then(() => {}),
+  cloneCourses: (data: CourseCloneRequestDto) => api.post<DisciplineCourseDto[]>('/discipline-courses/clone', data).then((r) => r.data),
 
   getSlotsByCourse: (courseId: number) => api.get<CurriculumSlotDto[]>(`/curriculum-slots/by-course/${courseId}`).then((r) => r.data),
   getSlot: (id: number) => api.get<CurriculumSlotDto>(`/curriculum-slots/${id}`).then((r) => r.data),
