@@ -45,6 +45,7 @@ public class EducatorConstraintController {
         entity.setStartDate(dto.startDate());
         entity.setEndDate(dto.endDate());
         entity.setDescription(dto.description());
+        entity.setTimeSlot(dto.timeSlot());
         EducatorConstraint saved = repository.save(entity);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
@@ -63,7 +64,8 @@ public class EducatorConstraintController {
                 c.getKindOfConstraint().getFullName(),
                 c.getStartDate(),
                 c.getEndDate(),
-                c.getDescription()
+                c.getDescription(),
+                c.getTimeSlot()
         );
     }
 }

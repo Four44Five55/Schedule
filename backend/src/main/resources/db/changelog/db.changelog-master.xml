@@ -38,4 +38,7 @@
     <!-- UNIQUE(course, position) на curriculum_slot → DEFERRABLE: чинит вставку слота в середину -->
     <include file="011-curriculum-slot-position-deferrable.sql" relativeToChangelogFile="true"/>
 
+    <!-- Пер-парные ограничения: nullable time_slot в трёх таблицах ограничений -->
+    <include file="012-add-constraint-time-slot.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

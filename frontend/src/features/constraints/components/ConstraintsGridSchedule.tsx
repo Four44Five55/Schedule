@@ -1,7 +1,7 @@
 import React from 'react';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { ConstraintDto } from '../../../types/api';
+import { ConstraintDto, TimeSlotPair } from '../../../types/api';
 import { AcademicGridShell } from '../../../components/grid/AcademicGridShell';
 import { cn } from '../../../utils/cn';
 import { useConstraintLookup } from '../hooks/useConstraintLookup';
@@ -13,6 +13,11 @@ interface ConstraintsGridScheduleProps {
   endDate: Date;
   /** Подпись сущности для заголовка тулбара (напр. «Иванов И.И.»). */
   entityLabel?: string;
+  /**
+   * Если задан — ячейки кликабельны: клик отдаёт дату + пару для создания ограничения.
+   * Без него сетка остаётся read-only (как в прежних потребителях).
+   */
+  onCellSelect?: (dateStr: string, slot: TimeSlotPair) => void;
 }
 
 /** Формат периода ограничения для тултипа. */
@@ -34,36 +39,44 @@ const buildTooltip = (dayConstraints: ConstraintDto[]): string =>
  *
  * Переиспользует презентационный каркас {@link AcademicGridShell} (содержимое
  * ячейки задаётся через render-prop) и чистый хук {@link useConstraintLookup}
- * для маппинга диапазонов дат в дни. Ограничение покрывает день целиком, поэтому
- * аббревиатура выводится в каждой паре этого дня.
+ * для маппинга диапазонов дат в дни. Целодневное ограничение (timeSlot пуст)
+ * выводится во всех парах дня; пер-парное — только в своей паре. Если передан
+ * onCellSelect, клик по ячейке создаёт ограничение на конкретную (день, пара).
  */
 export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = ({
   constraints,
   startDate,
   endDate,
   entityLabel,
+  onCellSelect,
 }) => {
   const lookup = useConstraintLookup(constraints);
+  const editable = !!onCellSelect;
 
   return (
     <AcademicGridShell
       startDate={startDate}
       endDate={endDate}
       title={entityLabel ? `Ограничения · ${entityLabel}` : 'Ограничения'}
-      renderCell={({ dateStr, zoom }) => {
+      renderCell={({ dateStr, slot, zoom }) => {
+        // Ячейку (день+пара) покрывают целодневные ограничения (timeSlot пуст)
+        // и точечные, выставленные ровно на эту пару.
         const dayConstraints = lookup.get(dateStr);
-        const primary = dayConstraints?.[0];
+        const cellConstraints = dayConstraints?.filter((c) => !c.timeSlot || c.timeSlot === slot.id);
+        const primary = cellConstraints?.[0];
         const style = primary ? CONSTRAINT_STYLES[primary.kindOfConstraint] ?? FALLBACK_CONSTRAINT_STYLE : null;
         const abbrSize = zoom === 0 ? 'text-[9px]' : zoom === 1 ? 'text-[12px]' : 'text-[14px]';
-        const extraCount = dayConstraints ? dayConstraints.length - 1 : 0;
+        const extraCount = cellConstraints ? cellConstraints.length - 1 : 0;
 
         return (
           <td
             className={cn(
               'border-r border-slate-300 p-0.5 text-center align-middle transition-colors',
-              primary ? cn(style!.cell, 'cursor-help') : 'bg-white hover:bg-slate-50/30'
+              primary ? cn(style!.cell, 'cursor-help') : 'bg-white hover:bg-slate-50/30',
+              editable && !primary && 'cursor-pointer hover:bg-blue-50/60'
             )}
-            title={primary ? buildTooltip(dayConstraints!) : undefined}
+            title={primary ? buildTooltip(cellConstraints!) : undefined}
+            onClick={editable ? () => onCellSelect!(dateStr, slot.id) : undefined}
           >
             {primary && (
               <span className={cn('font-black tracking-tighter leading-none', abbrSize, style!.text)}>

@@ -40,14 +40,8 @@ public class ConstraintServiceImpl implements ConstraintService {
         for (EducatorConstraint constraint : educatorConstraints) {
             Integer educatorId = constraint.getEducator().getId();
             List<ConstraintData> dataList = educatorConstraintsMap.computeIfAbsent(educatorId, k -> new ArrayList<>());
-
-            // "Разворачиваем" диапазон дат в конкретные ячейки CellForLesson
-            for (LocalDate date = constraint.getStartDate(); !date.isAfter(constraint.getEndDate()); date = date.plusDays(1)) {
-                // Если ограничение на весь день, добавляем все пары
-                for (TimeSlotPair pair : TimeSlotPair.values()) {
-                    dataList.add(new ConstraintData(new CellForLesson(date, pair), constraint.getKindOfConstraint()));
-                }
-            }
+            expandToCells(dataList, constraint.getStartDate(), constraint.getEndDate(),
+                    constraint.getTimeSlot(), constraint.getKindOfConstraint());
         }
 
         // === Обработка ограничений для ГРУПП ===
@@ -55,12 +49,8 @@ public class ConstraintServiceImpl implements ConstraintService {
         for (GroupConstraint constraint : groupConstraints) {
             Integer groupId = constraint.getGroup().getId();
             List<ConstraintData> dataList = groupConstraintsMap.computeIfAbsent(groupId, k -> new ArrayList<>());
-
-            for (LocalDate date = constraint.getStartDate(); !date.isAfter(constraint.getEndDate()); date = date.plusDays(1)) {
-                for (TimeSlotPair pair : TimeSlotPair.values()) {
-                    dataList.add(new ConstraintData(new CellForLesson(date, pair), constraint.getKindOfConstraint()));
-                }
-            }
+            expandToCells(dataList, constraint.getStartDate(), constraint.getEndDate(),
+                    constraint.getTimeSlot(), constraint.getKindOfConstraint());
         }
 
         // === Обработка ограничений для АУДИТОРИЙ ===
@@ -68,14 +58,31 @@ public class ConstraintServiceImpl implements ConstraintService {
         for (AuditoriumConstraint constraint : auditoriumConstraints) {
             Integer auditoriumId = constraint.getAuditorium().getId();
             List<ConstraintData> dataList = auditoriumConstraintsMap.computeIfAbsent(auditoriumId, k -> new ArrayList<>());
-
-            for (LocalDate date = constraint.getStartDate(); !date.isAfter(constraint.getEndDate()); date = date.plusDays(1)) {
-                for (TimeSlotPair pair : TimeSlotPair.values()) {
-                    dataList.add(new ConstraintData(new CellForLesson(date, pair), constraint.getKindOfConstraint()));
-                }
-            }
+            expandToCells(dataList, constraint.getStartDate(), constraint.getEndDate(),
+                    constraint.getTimeSlot(), constraint.getKindOfConstraint());
         }
 
         return new AllConstraints(educatorConstraintsMap, groupConstraintsMap, auditoriumConstraintsMap);
+    }
+
+    /**
+     * Разворачивает одно ограничение (диапазон дат + опциональная пара) в конкретные
+     * ячейки {@link CellForLesson} и добавляет их в {@code dataList}.
+     *
+     * <p>Если {@code timeSlot} задан — ограничение действует только на эту пару каждого
+     * дня диапазона; если {@code null} — на весь день (все пары). Доменное ядро уже
+     * работает пер-ячейка, поэтому здесь только проекция диапазона в ячейки.</p>
+     */
+    private void expandToCells(List<ConstraintData> dataList, LocalDate startDate, LocalDate endDate,
+                               TimeSlotPair timeSlot, ru.enums.KindOfConstraints kind) {
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            if (timeSlot != null) {
+                dataList.add(new ConstraintData(new CellForLesson(date, timeSlot), kind));
+            } else {
+                for (TimeSlotPair pair : TimeSlotPair.values()) {
+                    dataList.add(new ConstraintData(new CellForLesson(date, pair), kind));
+                }
+            }
+        }
     }
 }

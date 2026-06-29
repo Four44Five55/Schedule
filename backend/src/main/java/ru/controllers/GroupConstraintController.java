@@ -44,6 +44,7 @@ public class GroupConstraintController {
         entity.setStartDate(dto.startDate());
         entity.setEndDate(dto.endDate());
         entity.setDescription(dto.description());
+        entity.setTimeSlot(dto.timeSlot());
         GroupConstraint saved = repository.save(entity);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
@@ -62,7 +63,8 @@ public class GroupConstraintController {
                 c.getKindOfConstraint().getFullName(),
                 c.getStartDate(),
                 c.getEndDate(),
-                c.getDescription()
+                c.getDescription(),
+                c.getTimeSlot()
         );
     }
 }

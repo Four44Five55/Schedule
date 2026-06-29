@@ -312,6 +312,8 @@ export interface EducatorConstraintDto {
   startDate: string;
   endDate: string;
   description?: string;
+  /** Пара ограничения; отсутствует/undefined = весь день. */
+  timeSlot?: TimeSlotPair;
 }
 
 export interface GroupConstraintDto {
@@ -324,6 +326,8 @@ export interface GroupConstraintDto {
   startDate: string;
   endDate: string;
   description?: string;
+  /** Пара ограничения; отсутствует/undefined = весь день. */
+  timeSlot?: TimeSlotPair;
 }
 
 export interface AuditoriumConstraintDto {
@@ -336,6 +340,8 @@ export interface AuditoriumConstraintDto {
   startDate: string;
   endDate: string;
   description?: string;
+  /** Пара ограничения; отсутствует/undefined = весь день. */
+  timeSlot?: TimeSlotPair;
 }
 
 /** Любое ограничение (преподавателя, группы или аудитории) — общие поля. */
@@ -350,6 +356,8 @@ export interface EducatorConstraintCreateDto {
   startDate: string;
   endDate: string;
   description?: string;
+  /** Пара ограничения; опускается = весь день. */
+  timeSlot?: TimeSlotPair;
 }
 
 export interface GroupConstraintCreateDto {
@@ -358,6 +366,8 @@ export interface GroupConstraintCreateDto {
   startDate: string;
   endDate: string;
   description?: string;
+  /** Пара ограничения; опускается = весь день. */
+  timeSlot?: TimeSlotPair;
 }
 
 export interface AuditoriumConstraintCreateDto {
@@ -366,6 +376,8 @@ export interface AuditoriumConstraintCreateDto {
   startDate: string;
   endDate: string;
   description?: string;
+  /** Пара ограничения; опускается = весь день. */
+  timeSlot?: TimeSlotPair;
 }
 
 // ============ SCHEDULE ============

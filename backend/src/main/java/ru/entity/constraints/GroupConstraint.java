@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import ru.entity.Group;
 import ru.enums.KindOfConstraints;
+import ru.enums.TimeSlotPair;
 
 import java.time.LocalDate;
 
@@ -33,4 +34,9 @@ public class GroupConstraint {
 
     @Column(name = "description")
     private String description;
+
+    /** Пара ограничения; null = весь день (все пары). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "time_slot")
+    private TimeSlotPair timeSlot;
 }

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { X, Save, Loader2, ShieldAlert, AlertCircle } from 'lucide-react';
-import { ConstraintDto, KindOfConstraints } from '../../../types/api';
+import { ConstraintDto, KindOfConstraints, TimeSlotPair } from '../../../types/api';
 import { ConstraintsService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
+import { SLOTS } from '../../../components/grid/AcademicGridShell';
 import { cn } from '../../../utils/cn';
 
 type EntityType = 'group' | 'educator' | 'auditorium';
@@ -15,6 +16,8 @@ interface ConstraintFormModalProps {
   /** Предзаполнение периода (yyyy-MM-dd). */
   defaultStartDate?: string;
   defaultEndDate?: string;
+  /** Предвыбранная пара (например, при клике по ячейке сетки); undefined = весь день. */
+  defaultTimeSlot?: TimeSlotPair;
   onClose: () => void;
   onSaved: (created: ConstraintDto) => void;
 }
@@ -30,6 +33,7 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
   entityLabel,
   defaultStartDate,
   defaultEndDate,
+  defaultTimeSlot,
   onClose,
   onSaved,
 }) => {
@@ -38,6 +42,8 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
   const [kind, setKind] = useState<KindOfConstraints | ''>('');
   const [startDate, setStartDate] = useState(defaultStartDate ?? '');
   const [endDate, setEndDate] = useState(defaultEndDate ?? '');
+  // '' = ограничение на весь день (все пары); иначе — только выбранная пара.
+  const [timeSlot, setTimeSlot] = useState<TimeSlotPair | ''>(defaultTimeSlot ?? '');
   const [description, setDescription] = useState('');
 
   const [saving, setSaving] = useState(false);
@@ -53,7 +59,7 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
     setSaving(true);
     setError(null);
     try {
-      const base = { kindOfConstraint: kind, startDate, endDate, description: description.trim() || undefined };
+      const base = { kindOfConstraint: kind, startDate, endDate, description: description.trim() || undefined, timeSlot: timeSlot || undefined };
       let saved: ConstraintDto;
       if (entityType === 'educator') {
         saved = await ConstraintsService.createEducatorConstraint({ educatorId: entityId, ...base });
@@ -134,6 +140,21 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Окончание *</label>
                 <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setError(null); }} className={inputCls} disabled={saving} />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Пара</label>
+              <select
+                value={timeSlot}
+                onChange={(e) => setTimeSlot(e.target.value as TimeSlotPair | '')}
+                className={cn(inputCls, "cursor-pointer")}
+                disabled={saving}
+              >
+                <option value="">Весь день (все пары)</option>
+                {SLOTS.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label} пара ({s.time})</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">

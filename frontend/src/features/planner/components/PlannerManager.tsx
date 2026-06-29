@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DisciplineDto, DisciplineCourseDto, CurriculumSlotDto,
   StudyStreamDto, EducatorDto, AssignmentDto, GroupDto,
@@ -6,10 +6,12 @@ import {
 } from '../../../types/api';
 import { CurriculumService, ResourceService } from '../../../services/apiServices';
 import {
-  Plus, Users, Calendar, Play, Settings, BookOpen, CalendarPlus, Copy
+  Plus, Users, Calendar, Play, Settings, BookOpen, CalendarPlus, Copy, ShieldAlert
 } from 'lucide-react';
+import { parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { DisciplineCourseFormModal } from '../../curriculum/components/DisciplineCourseFormModal';
+import { ConstraintsWorkspace } from '../../constraints/components/ConstraintsWorkspace';
 import { CourseSelector } from './CourseSelector';
 import { StreamsTab } from './StreamsTab';
 import { AssignmentsTab } from './AssignmentsTab';
@@ -17,7 +19,7 @@ import { GenerationTab } from './GenerationTab';
 import { PeriodFormModal } from './PeriodFormModal';
 import { ClonePlanFromPeriodModal } from './ClonePlanFromPeriodModal';
 
-type TabType = 'courses' | 'streams' | 'assignments' | 'generation';
+type TabType = 'courses' | 'streams' | 'assignments' | 'constraints' | 'generation';
 
 const PERIOD_STORAGE_KEY = 'unischedule.planner.selectedPeriodId';
 
@@ -138,8 +140,9 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     setCourseAssignments(map);
   }, [selectedCourses]);
 
+  // Назначения нужны и для вкладки «Назначения», и для «Ограничения» (круг участников).
   useEffect(() => {
-    if (activeTab === 'assignments') {
+    if (activeTab === 'assignments' || activeTab === 'constraints') {
       loadAssignments();
     }
   }, [activeTab, loadAssignments]);
@@ -166,10 +169,25 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
 
   const totalSlots = Array.from(courseSlots.values()).flat().length;
 
+  // Круг участников выбранных курсов — для ограничений в планировщике (только их сущности).
+  // Преподаватели и группы выводятся из назначений; аудитории пока не скоупим (=все).
+  const constraintScope = useMemo(() => {
+    const educatorIds = new Set<number>();
+    const groupIds = new Set<number>();
+    selectedCourses.forEach(courseId => {
+      (courseAssignments.get(courseId) ?? []).forEach(a => {
+        a.educators.forEach(e => educatorIds.add(e.id));
+        streams.find(s => s.id === a.studyStream.id)?.groups.forEach(g => groupIds.add(g.id));
+      });
+    });
+    return { educatorIds: Array.from(educatorIds), groupIds: Array.from(groupIds) };
+  }, [selectedCourses, courseAssignments, streams]);
+
   const tabs: { id: TabType; label: string; icon: React.ElementType }[] = [
     { id: 'courses', label: 'Курсы', icon: BookOpen },
     { id: 'streams', label: 'Потоки', icon: Users },
     { id: 'assignments', label: 'Назначения', icon: Settings },
+    { id: 'constraints', label: 'Ограничения', icon: ShieldAlert },
     { id: 'generation', label: 'Генерация', icon: Play },
   ];
 
@@ -312,6 +330,22 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
                 educators={educators}
                 onRefresh={loadAssignments}
               />
+            )}
+            {activeTab === 'constraints' && (
+              <div className="p-4">
+                {selectedPeriod ? (
+                  <ConstraintsWorkspace
+                    startDate={parseISO(selectedPeriod.startDate)}
+                    endDate={parseISO(selectedPeriod.endDate)}
+                    scope={constraintScope}
+                  />
+                ) : (
+                  <div className="py-16 text-center text-slate-400 text-sm">
+                    <Calendar className="mx-auto mb-3 opacity-20" size={36} />
+                    <p>Выберите учебный период вверху страницы</p>
+                  </div>
+                )}
+              </div>
             )}
             {activeTab === 'generation' && (
               <GenerationTab
