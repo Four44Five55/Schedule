@@ -15,6 +15,8 @@ public record LessonPlacementDto(
     LocalDate scheduledDate,
     String scheduledSlot,
     Set<Integer> auditoriumIds,
+    boolean locked,
+    String source,
     LocalDateTime createdAt,
     String createdBy,
     LocalDateTime updatedAt,

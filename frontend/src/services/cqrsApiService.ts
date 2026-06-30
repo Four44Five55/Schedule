@@ -15,7 +15,8 @@ import {
   MoveLessonResult,
   FindMoveOptionsRequest,
   FindChainMoveOptionsRequest,
-  MoveChainRequest
+  MoveChainRequest,
+  UnplacedLessonDto
 } from '../types/cqrs';
 
 /**
@@ -57,6 +58,61 @@ export const CQRSService = {
   generateSchedule: (request: CreateScheduleSessionRequest): Promise<ScheduleSessionDto> => {
     return api
       .post<ScheduleSessionDto>('/schedule/command/sessions/generate', request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Перегенерация расписания с сохранением закреплённых занятий (Фича 2, Фаза A).
+   *
+   * Закреплённые (locked) занятия остаются на местах, распределитель
+   * перераскладывает остальное «вокруг» них.
+   *
+   * @param sessionId - ID перегенерируемой сессии (источник пинов)
+   * @param request - период и курсы (как при обычной генерации)
+   * @returns сессия со статусом READY_FOR_EDIT
+   */
+  regenerateKeepingLocked: (
+    sessionId: string,
+    request: CreateScheduleSessionRequest
+  ): Promise<ScheduleSessionDto> => {
+    return api
+      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/regenerate`, request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Закрепить/открепить занятие (пин, Фича 2). Закрепляет всю цепочку занятия.
+   *
+   * @param placementId - UUID размещения
+   * @param locked - true закрепить, false открепить
+   * @returns сессия-владелец (с актуальной version)
+   */
+  setLock: (placementId: string, locked: boolean): Promise<ScheduleSessionDto> => {
+    return api
+      .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/lock`, { locked })
+      .then(r => r.data);
+  },
+
+  /**
+   * Получить/создать рабочую сессию для учебного периода (Путь 2, Фаза B).
+   *
+   * Возвращает живую сессию периода или создаёт пустой черновик — «вход» для
+   * ручной раскладки семестра, для которого расписание ещё не генерировалось.
+   */
+  getSessionForPeriod: (studyPeriodId: number): Promise<ScheduleSessionDto> => {
+    return api
+      .post<ScheduleSessionDto>(`/schedule/command/sessions/for-period/${studyPeriodId}`)
+      .then(r => r.data);
+  },
+
+  /**
+   * Неразмещённые занятия выбранных курсов (палитра ручной раскладки, Фаза B).
+   */
+  getUnplaced: (sessionId: string, courseIds: number[]): Promise<UnplacedLessonDto[]> => {
+    return api
+      .get<UnplacedLessonDto[]>(`/schedule/command/sessions/${sessionId}/unplaced`, {
+        params: { courseIds: courseIds.join(',') }
+      })
       .then(r => r.data);
   },
 

@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import ru.entity.Auditorium;
 import ru.entity.Assignment;
+import ru.enums.PlacementSource;
 import ru.enums.TimeSlotPair;
 
 import java.time.LocalDate;
@@ -70,6 +71,22 @@ public class LessonPlacement {
     )
     private Set<Auditorium> assignedAuditoriums = new HashSet<>();
 
+    // ========== Пин (Фича 2: ручное размещение) ==========
+
+    /**
+     * Пин: {@code true} — размещение закреплено, распределитель его не двигает
+     * и не удаляет при (ре)генерации (Фаза 0 засевает такие как «уже размещённые»).
+     */
+    @Column(name = "locked", nullable = false)
+    private boolean locked = false;
+
+    /**
+     * Происхождение размещения: алгоритм или диспетчер.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 20)
+    private PlacementSource source = PlacementSource.GENERATED;
+
     // ========== Аудит (кто, когда, что изменил) ==========
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -119,7 +136,39 @@ public class LessonPlacement {
         this.updatedBy = user;
     }
 
+    /**
+     * Конструктор с явным происхождением и признаком закрепления.
+     *
+     * <p>Для ручного размещения (Фича 2): {@code source=MANUAL, locked=true}.
+     * Базовый конструктор оставляет дефолт {@code GENERATED, locked=false}.</p>
+     */
+    public LessonPlacement(
+            Assignment assignment,
+            LocalDate scheduledDate,
+            TimeSlotPair scheduledSlot,
+            ScheduleSession session,
+            String user,
+            PlacementSource source,
+            boolean locked
+    ) {
+        this(assignment, scheduledDate, scheduledSlot, session, user);
+        this.source = source;
+        this.locked = locked;
+    }
+
     // ========== Методы для обновления ==========
+
+    /**
+     * Закрепить/снять закрепление размещения (пин).
+     *
+     * @param locked новое значение признака закрепления
+     * @param user   автор изменения (для аудита)
+     */
+    public void setLock(boolean locked, String user) {
+        this.locked = locked;
+        this.updatedAt = LocalDateTime.now();
+        this.updatedBy = user;
+    }
 
     /**
      * Обновить размещение (например, при переносе занятия).

@@ -12,6 +12,8 @@ import ru.services.solver.ScheduleWorkspace;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -69,12 +71,36 @@ public class DistributionDiscipline {
     }
 
     /**
-     * Factory-метод для создания и запуска распределения.
+     * Factory-метод для создания и запуска распределения (без засеянных пинов).
      */
     public void distribute(ScheduleWorkspace workspace,
                            List<Lesson> lessons,
                            List<Educator> educators) {
+        distribute(workspace, lessons, educators, Collections.emptyList());
+    }
+
+    /**
+     * Запуск распределения с засеянными закреплёнными занятиями (Фаза 0, Фича 2).
+     *
+     * <p>{@code prePlaced} — занятия, которые вызывающий уже принудительно разместил в
+     * {@code workspace} (через {@link ru.services.WorkspacePlacementSeeder}). Они
+     * помечаются распределёнными И закреплёнными: фазы 1–2 их пропускают
+     * ({@code isLessonDistributed}), а мутаторы (оптимизатор) не двигают
+     * ({@code isLocked}). Занятость их ресурсов уже в workspace, поэтому генерация
+     * естественно раскладывает остальное «вокруг» них.</p>
+     *
+     * <p>OCP: существующие фазы не меняются — пины приходят как входное состояние
+     * контекста. {@code prePlaced} не обязан пересекаться с {@code lessons}
+     * (для частичной регенерации пины других дисциплин в {@code lessons} не входят).</p>
+     */
+    public void distribute(ScheduleWorkspace workspace,
+                           List<Lesson> lessons,
+                           List<Educator> educators,
+                           Collection<Lesson> prePlaced) {
         initialize(workspace, lessons, educators);
+        for (Lesson locked : prePlaced) {
+            context.markPrePlacedLocked(locked);
+        }
         distributeLessons();
     }
 

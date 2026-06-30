@@ -88,6 +88,19 @@ public interface ScheduleSessionRepository extends org.springframework.data.jpa.
     List<ScheduleSession> findActiveSessions(@Param("archivedStatus") SessionStatus archivedStatus);
 
     /**
+     * Активные (неархивные) сессии конкретного учебного периода (Путь 2).
+     *
+     * @param periodId       учебный период
+     * @param archivedStatus статус «архив»
+     * @return список активных сессий периода, по убыванию updatedAt
+     */
+    @Query("SELECT s FROM ScheduleSession s WHERE s.studyPeriod.id = :periodId " +
+           "AND s.status != :archivedStatus ORDER BY s.updatedAt DESC")
+    List<ScheduleSession> findActiveSessionsByPeriod(
+            @Param("periodId") Integer periodId,
+            @Param("archivedStatus") SessionStatus archivedStatus);
+
+    /**
      * Найти сессии созданные пользователем.
      *
      * @param user Имя пользователя

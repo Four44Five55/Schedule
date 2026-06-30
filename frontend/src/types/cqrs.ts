@@ -69,6 +69,29 @@ export interface ScheduleViewDto {
 }
 
 /**
+ * Неразмещённое занятие для палитры ручной раскладки (Фаза B).
+ */
+export interface UnplacedLessonDto {
+  assignmentId: number;
+  curriculumSlotId: number;
+  courseId: number;
+  disciplineName: string;
+  disciplineAbbreviation: string;
+  kindOfStudy: string;
+  kindOfStudyName: string;
+  kindOfStudyAbbr: string;
+  position: number;
+  themeNumber?: string;
+  themeTitle?: string;
+  studyStreamId: number;
+  streamName: string;
+  groupIds: number[];
+  groupNames: string[];
+  educatorIds: number[];
+  educatorNames: string[];
+}
+
+/**
  * Ответ при конфликте optimistic lock
  */
 export interface ConflictResponse {

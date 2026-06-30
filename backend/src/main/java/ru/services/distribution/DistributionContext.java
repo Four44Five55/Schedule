@@ -25,6 +25,11 @@ public class DistributionContext {
     private final List<Lesson> distributedLessons;
     private final Set<Lesson> distributedLessonsSet;
 
+    // Закреплённые (пины, Фича 2): подмножество распределённых, которое распределителю
+    // запрещено двигать/снимать. «Распределено» (фазы пропускают) ≠ «закреплено»
+    // (мутаторам нельзя): сгенерированное распределено, но не закреплено.
+    private final Set<Lesson> lockedLessons;
+
     // Маппинг занятия → целевая дата (рассчитывается в фазе 1 для равномерности)
     private Map<Lesson, LocalDate> lessonToDateMap;
 
@@ -36,6 +41,7 @@ public class DistributionContext {
         this.educators = new ArrayList<>(educators);
         this.distributedLessons = new ArrayList<>();
         this.distributedLessonsSet = new HashSet<>();
+        this.lockedLessons = new HashSet<>();
         this.lessonToDateMap = new HashMap<>();
     }
 
@@ -83,6 +89,23 @@ public class DistributionContext {
      */
     public boolean isLessonDistributed(Lesson lesson) {
         return distributedLessonsSet.contains(lesson);
+    }
+
+    /**
+     * Помечает занятие как засеянный пин: распределённое (фазы 1–2 пропустят) И
+     * закреплённое (мутаторам, например {@code LocalSearchOptimizer}, трогать нельзя).
+     * Вызывается оркестратором для каждого залоченного занятия перед фазами.
+     */
+    public void markPrePlacedLocked(Lesson lesson) {
+        addDistributedLesson(lesson);
+        lockedLessons.add(lesson);
+    }
+
+    /**
+     * Закреплено ли занятие (пин) — нельзя двигать/снимать при оптимизации.
+     */
+    public boolean isLocked(Lesson lesson) {
+        return lockedLessons.contains(lesson);
     }
 
     /**

@@ -6,9 +6,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.dto.command.CreateScheduleSessionRequest;
 import ru.dto.command.LessonPlacementDto;
+import ru.dto.command.LockPlacementRequest;
 import ru.dto.command.MoveChainRequest;
 import ru.dto.command.MoveLessonRequest;
 import ru.dto.command.ScheduleSessionDto;
+import ru.dto.manualPlacement.ManualPlacementRequest;
+import ru.dto.manualPlacement.PlacementOptionsRequest;
+import ru.dto.manualPlacement.UnplacedLessonDto;
+import ru.dto.moveLesson.MoveOptionDto;
 import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 import ru.enums.SessionStatus;
@@ -18,6 +23,8 @@ import ru.mapper.command.LessonPlacementMapper;
 import ru.mapper.command.ScheduleSessionMapper;
 import ru.services.LessonChainMoveService;
 import ru.services.LessonMoveService;
+import ru.services.LessonPinService;
+import ru.services.ManualPlacementService;
 import ru.services.ScheduleGenerationService;
 
 import java.util.List;
@@ -43,6 +50,8 @@ public class ScheduleCommandController {
     private final ScheduleGenerationService generationService;
     private final LessonMoveService lessonMoveService;
     private final LessonChainMoveService lessonChainMoveService;
+    private final LessonPinService lessonPinService;
+    private final ManualPlacementService manualPlacementService;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
 
@@ -84,6 +93,32 @@ public class ScheduleCommandController {
     }
 
     /**
+     * Перегенерация расписания с сохранением закреплённых занятий (Фича 2, Фаза A).
+     *
+     * <p>POST /api/schedule/command/sessions/{sessionId}/regenerate</p>
+     *
+     * <p>Закреплённые ({@code locked}) занятия сессии остаются на местах, распределитель
+     * перераскладывает остальное «вокруг» них.</p>
+     */
+    @PostMapping("/sessions/{sessionId}/regenerate")
+    public ResponseEntity<ScheduleSessionDto> regenerate(
+        @PathVariable UUID sessionId,
+        @RequestBody CreateScheduleSessionRequest request
+    ) {
+        log.info("Перегенерация (сохранив замки): sessionId={}, period={}, courses={}",
+                sessionId, request.studyPeriodId(), request.courseIds());
+
+        ScheduleSession session = generationService.regenerateKeepingLocked(
+            sessionId,
+            request.studyPeriodId(),
+            request.courseIds(),
+            "admin"
+        );
+
+        return ResponseEntity.ok(sessionMapper.toDto(session));
+    }
+
+    /**
      * Получить сессию по ID.
      *
      * GET /api/schedule/command/sessions/{sessionId}
@@ -110,6 +145,20 @@ public class ScheduleCommandController {
         return generationService.getOrCreateEditableSession("user")
             .map(session -> ResponseEntity.ok(sessionMapper.toDto(session)))
             .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
+     * Получить/создать рабочую сессию для периода (Путь 2, Фаза B — ручная раскладка).
+     *
+     * <p>POST /api/schedule/command/sessions/for-period/{studyPeriodId}</p>
+     *
+     * <p>Возвращает живую сессию периода или создаёт пустой черновик. Позволяет
+     * раскладывать вручную семестр, для которого расписание ещё не генерировалось.</p>
+     */
+    @PostMapping("/sessions/for-period/{studyPeriodId}")
+    public ResponseEntity<ScheduleSessionDto> getSessionForPeriod(@PathVariable Integer studyPeriodId) {
+        ScheduleSession session = generationService.getOrCreateSessionForPeriod(studyPeriodId, "user");
+        return ResponseEntity.ok(sessionMapper.toDto(session));
     }
 
     /**
@@ -208,6 +257,91 @@ public class ScheduleCommandController {
                     currentVersionOf(sessionId)
                 ));
         }
+    }
+
+    /**
+     * Неразмещённые занятия выбранных курсов (палитра ручной раскладки, Фаза B).
+     *
+     * GET /api/schedule/command/sessions/{sessionId}/unplaced?courseIds=1,2,3
+     */
+    @GetMapping("/sessions/{sessionId}/unplaced")
+    public ResponseEntity<List<UnplacedLessonDto>> getUnplaced(
+        @PathVariable UUID sessionId,
+        @RequestParam(required = false) List<Integer> courseIds
+    ) {
+        List<UnplacedLessonDto> unplaced = manualPlacementService.findUnplaced(
+            sessionId, courseIds == null ? List.of() : courseIds);
+        return ResponseEntity.ok(unplaced);
+    }
+
+    /**
+     * Куда можно поставить занятие из палитры (подсветка ячеек, Фаза B).
+     *
+     * POST /api/schedule/command/sessions/{sessionId}/placement-options
+     */
+    @PostMapping("/sessions/{sessionId}/placement-options")
+    public ResponseEntity<List<MoveOptionDto>> placementOptions(
+        @PathVariable UUID sessionId,
+        @RequestBody PlacementOptionsRequest request
+    ) {
+        List<MoveOptionDto> options = manualPlacementService.findPlacementOptions(
+            sessionId, request.assignmentId(), request.rootEntityType(),
+            request.rootEntityId(), request.studyPeriodId());
+        return ResponseEntity.ok(options);
+    }
+
+    /**
+     * Ручная установка занятия в слот (Фаза B). Создаёт MANUAL/locked размещение.
+     *
+     * POST /api/schedule/command/sessions/{sessionId}/placements
+     */
+    @PostMapping("/sessions/{sessionId}/placements")
+    public ResponseEntity<?> placeManually(
+        @PathVariable UUID sessionId,
+        @RequestBody ManualPlacementRequest request
+    ) {
+        log.info("Ручная установка: sessionId={}, assignmentId={}, date={}, slot={}",
+                sessionId, request.assignmentId(), request.date(), request.slot());
+        try {
+            ScheduleSession session = manualPlacementService.place(
+                sessionId, request.assignmentId(), request.date(), request.slot(),
+                request.studyPeriodId(), "user");
+            return ResponseEntity.ok(sessionMapper.toDto(session));
+        } catch (LessonMoveConflictException e) {
+            log.warn("❌ Конфликт ручной установки: {}", e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
+                .body(new ConflictResponse(
+                    "RESOURCE_CONFLICT",
+                    "Невозможно разместить занятие: " + e.getMessage() + ". Выберите другой слот.",
+                    currentVersionOf(sessionId)));
+        }
+    }
+
+    /**
+     * Снять размещение (вернуть занятие в палитру неразмещённых).
+     *
+     * DELETE /api/schedule/command/placements/{placementId}
+     */
+    @DeleteMapping("/placements/{placementId}")
+    public ResponseEntity<ScheduleSessionDto> removePlacement(@PathVariable UUID placementId) {
+        ScheduleSession session = manualPlacementService.remove(placementId, "user");
+        return ResponseEntity.ok(sessionMapper.toDto(session));
+    }
+
+    /**
+     * Закрепить/открепить занятие (пин, Фича 2). Закрепляет всю цепочку занятия.
+     *
+     * PATCH /api/schedule/command/placements/{placementId}/lock
+     */
+    @PatchMapping("/placements/{placementId}/lock")
+    public ResponseEntity<ScheduleSessionDto> setLock(
+        @PathVariable UUID placementId,
+        @RequestBody LockPlacementRequest request
+    ) {
+        log.info("Закрепление: placementId={}, locked={}", placementId, request.locked());
+
+        ScheduleSession session = lessonPinService.setLock(placementId, request.locked(), "user");
+        return ResponseEntity.ok(sessionMapper.toDto(session));
     }
 
     /**

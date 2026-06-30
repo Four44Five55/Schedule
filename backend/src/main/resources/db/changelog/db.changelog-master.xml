@@ -41,4 +41,13 @@
     <!-- Пер-парные ограничения: nullable time_slot в трёх таблицах ограничений -->
     <include file="012-add-constraint-time-slot.sql" relativeToChangelogFile="true"/>
 
+    <!-- Фича 2 (пины): флаг locked + source на lesson_placement -->
+    <include file="013-add-placement-lock-source.sql" relativeToChangelogFile="true"/>
+
+    <!-- Фича 2 (пины): проекция locked + source в read-модель schedule_view -->
+    <include file="014-add-view-lock-source.sql" relativeToChangelogFile="true"/>
+
+    <!-- Фича 2 (Путь 2): привязка сессии расписания к учебному периоду -->
+    <include file="015-add-session-study-period.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

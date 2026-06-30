@@ -81,12 +81,51 @@ public class MoveLessonSuggestionService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Доступные ячейки для занятия, которого ещё НЕТ в сетке (ручная установка, Фаза B).
+     *
+     * <p>Отличие от {@link #findMoveSuggestions}: занятие не размещено, поэтому изымать
+     * и восстанавливать его не нужно — просто прогоняем тот же каскадный фильтр
+     * (корневой ресурс → остальные участники → аудиторный фонд) по всем ячейкам.</p>
+     *
+     * @param workspace воркспейс на рамках периода (с засеянными размещениями сессии)
+     * @param lesson    занятие, собранное из assignment ({@code WorkspacePlacementSeeder.buildLesson})
+     * @param rootType  тип корневой сущности ('EDUCATOR' | 'GROUP' | 'AUDITORIUM')
+     * @param rootId    id корневой сущности (через которую открыта сетка)
+     * @return валидные {@code (date, slot)} для установки
+     */
+    public List<MoveOptionDto> findPlacementSuggestions(ScheduleWorkspace workspace, Lesson lesson,
+                                                        String rootType, Integer rootId) {
+        List<CellForLesson> candidates = new ArrayList<>(CellForLessonFactory.getAllCells());
+
+        SchedulableResource rootResource = getRootResourceByType(workspace, rootType, rootId);
+        candidates.removeIf(cell -> !rootResource.isFree(cell));
+
+        List<SchedulableResource> otherParticipants = getParticipantsExceptRoot(workspace, lesson, rootId);
+        for (SchedulableResource participant : otherParticipants) {
+            if (candidates.isEmpty()) break;
+            candidates.removeIf(cell -> !participant.isFree(cell));
+        }
+
+        if (!candidates.isEmpty()) {
+            candidates.removeIf(cell -> workspace.findAvailableAuditoriumsFor(lesson, cell).isEmpty());
+        }
+
+        return candidates.stream()
+                .map(cell -> new MoveOptionDto(cell.getDate(), cell.getTimeSlotPair()))
+                .collect(Collectors.toList());
+    }
+
     // Вспомогательные методы
     private SchedulableResource getRootResource(ScheduleWorkspace ws, MoveSuggestionRequest req) {
-        return switch (req.rootEntityType()) {
-            case "EDUCATOR" -> ws.getResourceManager().getEducatorResource(req.rootEntityId());
-            case "GROUP" -> ws.getResourceManager().getGroupResource(req.rootEntityId());
-            case "AUDITORIUM" -> ws.getResourceManager().getAuditoriumResource(req.rootEntityId());
+        return getRootResourceByType(ws, req.rootEntityType(), req.rootEntityId());
+    }
+
+    private SchedulableResource getRootResourceByType(ScheduleWorkspace ws, String rootType, Integer rootId) {
+        return switch (rootType) {
+            case "EDUCATOR" -> ws.getResourceManager().getEducatorResource(rootId);
+            case "GROUP" -> ws.getResourceManager().getGroupResource(rootId);
+            case "AUDITORIUM" -> ws.getResourceManager().getAuditoriumResource(rootId);
             default -> throw new IllegalArgumentException("Unknown entity type");
         };
     }

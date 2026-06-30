@@ -245,6 +245,20 @@ public interface ScheduleViewRepository extends org.springframework.data.jpa.rep
     void deleteByStudyStreamIdIn(@Param("streamIds") List<Integer> streamIds);
 
     /**
+     * Удалить все записи view в диапазоне дат (Путь 2: скоуп проекции по периоду).
+     *
+     * <p>При перегенерации расписания периода чистим только его строки (а не весь
+     * view), чтобы расписания других семестров не затирались.</p>
+     *
+     * @param start начало периода
+     * @param end   конец периода
+     */
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM ScheduleView s WHERE s.scheduledDate BETWEEN :start AND :end")
+    void deleteByPeriod(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    /**
      * Получить все занятия за период.
      * Используется для загрузки существующего расписания на фронтенд.
      *

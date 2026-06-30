@@ -4,6 +4,7 @@ import lombok.Getter;
 import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,14 +41,36 @@ public class ScheduleGeneratedEvent {
     private final List<LessonPlacement> placements;
 
     /**
-     * Создаёт событие о генерации расписания.
+     * Рамки периода для скоупа проекции (Путь 2). Если заданы — проектор чистит
+     * только строки view в этом диапазоне дат; {@code null} — легаси (весь view).
+     */
+    private final LocalDate periodStart;
+    private final LocalDate periodEnd;
+
+    /**
+     * Создаёт событие о генерации расписания со скоупом периода (Путь 2).
+     *
+     * @param sessionId   ID сессии
+     * @param placements  Список размещений
+     * @param periodStart начало периода (для скоупа проекции; может быть null)
+     * @param periodEnd   конец периода
+     */
+    public ScheduleGeneratedEvent(UUID sessionId, List<LessonPlacement> placements,
+                                  LocalDate periodStart, LocalDate periodEnd) {
+        this.sessionId = sessionId;
+        this.placements = placements;
+        this.periodStart = periodStart;
+        this.periodEnd = periodEnd;
+    }
+
+    /**
+     * Создаёт событие о генерации расписания (без скоупа периода — легаси).
      *
      * @param sessionId ID сессии
      * @param placements Список размещений
      */
     public ScheduleGeneratedEvent(UUID sessionId, List<LessonPlacement> placements) {
-        this.sessionId = sessionId;
-        this.placements = placements;
+        this(sessionId, placements, null, null);
     }
 
     /**

@@ -106,11 +106,16 @@ public class ScheduleSynchronizer {
         log.info("🔄 Синхронизация Query Side для session: {} ({} placements)",
                 event.getSessionId(), event.getPlacementsCount());
 
-        // Read-model — это проекция ОДНОГО живого расписания. Перед перепроекцией
-        // полностью очищаем view, чтобы исключить наложение прежних (теперь
-        // архивированных) сессий. Парная логика на Command-стороне:
+        // Перед перепроекцией чистим прежние строки, чтобы исключить наложение
+        // архивированных сессий. Парная логика на Command-стороне:
         // ScheduleGenerationService.archivePreviousSessions.
-        viewRepository.deleteAllInBatch();
+        // Путь 2: чистим ТОЛЬКО строки периода (по диапазону дат) — расписания других
+        // семестров не затрагиваются. Без рамок (легаси) — весь view, как раньше.
+        if (event.getPeriodStart() != null && event.getPeriodEnd() != null) {
+            viewRepository.deleteByPeriod(event.getPeriodStart(), event.getPeriodEnd());
+        } else {
+            viewRepository.deleteAllInBatch();
+        }
 
         int syncedCount = 0;
         int createdCount = 0;
@@ -328,6 +333,7 @@ public class ScheduleSynchronizer {
             }
         }
 
+        applyPinMetadata(view, placement);
         view.setLastUpdated(LocalDateTime.now());
 
         log.debug("Создана ScheduleView: date={}, slot={}, discipline={}",
@@ -395,6 +401,7 @@ public class ScheduleSynchronizer {
             view.setGroup(group.getId(), group.getName());
         }
 
+        applyPinMetadata(view, placement);
         view.setLastUpdated(LocalDateTime.now());
 
         log.debug("Создана ScheduleView для группы: date={}, slot={}, group={}, discipline={}",
@@ -422,6 +429,7 @@ public class ScheduleSynchronizer {
             );
         }
 
+        applyPinMetadata(view, placement);
         view.setLastUpdated(LocalDateTime.now());
 
         log.debug("Обновлена ScheduleView: date={}, slot={}",
@@ -451,6 +459,7 @@ public class ScheduleSynchronizer {
             );
         }
 
+        applyPinMetadata(view, placement);
         view.setLastUpdated(LocalDateTime.now());
 
         log.debug("Обновлена ScheduleView для группы: date={}, slot={}, group={}",
@@ -458,6 +467,16 @@ public class ScheduleSynchronizer {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * Денормализует признак закрепления и происхождение из {@link LessonPlacement}
+     * в read-модель (Фича 2: индикатор замка на фронте). Единая точка, чтобы
+     * create/update × group/no-group не расходились.
+     */
+    private void applyPinMetadata(ScheduleView view, LessonPlacement placement) {
+        view.setLocked(placement.isLocked());
+        view.setSource(placement.getSource() != null ? placement.getSource().name() : "GENERATED");
+    }
 
     /**
      * Извлечь название дисциплины из Assignment.

@@ -6,12 +6,13 @@ import {
 } from '../../../types/api';
 import { CurriculumService, ResourceService } from '../../../services/apiServices';
 import {
-  Plus, Users, Calendar, Play, Settings, BookOpen, CalendarPlus, Copy, ShieldAlert
+  Plus, Users, Calendar, Play, Settings, BookOpen, CalendarPlus, Copy, ShieldAlert, CalendarRange
 } from 'lucide-react';
 import { parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { DisciplineCourseFormModal } from '../../curriculum/components/DisciplineCourseFormModal';
 import { ConstraintsWorkspace } from '../../constraints/components/ConstraintsWorkspace';
+import { ManualPlacementWorkspace } from './ManualPlacementWorkspace';
 import { CourseSelector } from './CourseSelector';
 import { StreamsTab } from './StreamsTab';
 import { AssignmentsTab } from './AssignmentsTab';
@@ -19,7 +20,7 @@ import { GenerationTab } from './GenerationTab';
 import { PeriodFormModal } from './PeriodFormModal';
 import { ClonePlanFromPeriodModal } from './ClonePlanFromPeriodModal';
 
-type TabType = 'courses' | 'streams' | 'assignments' | 'constraints' | 'generation';
+type TabType = 'courses' | 'streams' | 'assignments' | 'constraints' | 'schedule' | 'generation';
 
 const PERIOD_STORAGE_KEY = 'unischedule.planner.selectedPeriodId';
 
@@ -188,6 +189,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     { id: 'streams', label: 'Потоки', icon: Users },
     { id: 'assignments', label: 'Назначения', icon: Settings },
     { id: 'constraints', label: 'Ограничения', icon: ShieldAlert },
+    { id: 'schedule', label: 'Расписание', icon: CalendarRange },
     { id: 'generation', label: 'Генерация', icon: Play },
   ];
 
@@ -339,6 +341,28 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
                     endDate={parseISO(selectedPeriod.endDate)}
                     scope={constraintScope}
                   />
+                ) : (
+                  <div className="py-16 text-center text-slate-400 text-sm">
+                    <Calendar className="mx-auto mb-3 opacity-20" size={36} />
+                    <p>Выберите учебный период вверху страницы</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {activeTab === 'schedule' && (
+              <div className="p-4">
+                {selectedPeriod ? (
+                  selectedCourses.size > 0 ? (
+                    <ManualPlacementWorkspace
+                      period={selectedPeriod}
+                      courseIds={Array.from(selectedCourses)}
+                    />
+                  ) : (
+                    <div className="py-16 text-center text-slate-400 text-sm">
+                      <BookOpen className="mx-auto mb-3 opacity-20" size={36} />
+                      <p>Выберите курсы во вкладке «Курсы» — их занятия появятся в палитре</p>
+                    </div>
+                  )
                 ) : (
                   <div className="py-16 text-center text-slate-400 text-sm">
                     <Calendar className="mx-auto mb-3 opacity-20" size={36} />

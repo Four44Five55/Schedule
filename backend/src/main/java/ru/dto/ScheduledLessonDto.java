@@ -26,6 +26,8 @@ import java.util.List;
  * @param auditoriumIds         Список ID аудиторий.
  * @param placementId           UUID размещения (Command Side) для операций переноса; null до сохранения в БД.
  * @param curriculumSlotId      ID слота учебного плана — для определения сцепок занятий (SlotChain).
+ * @param locked                Пин: занятие закреплено вручную (распределитель его не двигает).
+ * @param source                Происхождение: "GENERATED" | "MANUAL".
  */
 public record ScheduledLessonDto(
         Integer id,
@@ -46,6 +48,8 @@ public record ScheduledLessonDto(
         List<String> auditoriumNames,
         List<Integer> auditoriumIds,
         String placementId,
-        Integer curriculumSlotId
+        Integer curriculumSlotId,
+        boolean locked,
+        String source
 ) {
 }

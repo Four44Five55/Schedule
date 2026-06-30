@@ -26,11 +26,15 @@ interface ScheduleManagerProps {
   endDate: Date;
   onLessonChange?: (lessons: ScheduledLessonDto[], grid: Record<string, ScheduledLessonDto[]>) => void;
   currentSession?: ScheduleSessionDto | null;
+  // Расширенный функционал Фичи 2 (пины): тумблер замка + «перегенерировать,
+  // сохранив закреплённые». Включается только в планировщике; раздел «Расписание»
+  // остаётся со старым функционалом (просмотр + перенос).
+  pinningEnabled?: boolean;
 }
 
 type FilterType = 'group' | 'educator' | 'auditorium';
 
-export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid = {}, startDate, endDate, onLessonChange, currentSession: sessionProp }) => {
+export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid = {}, startDate, endDate, onLessonChange, currentSession: sessionProp, pinningEnabled = false }) => {
   // Тип фильтра и выбранный объект переживают обновление страницы (localStorage),
   // иначе F5 сбрасывает открытое расписание и его приходится выбирать заново.
   const [filterType, setFilterType] = useState<FilterType>(() => {
@@ -200,6 +204,60 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
     }
   };
 
+  // Перезагрузка расписания за текущий период (Query Side обновляется асинхронно —
+  // вызывающий выжидает перед этим).
+  const reloadPeriodSchedule = async () => {
+    if (!selectedPeriod) return;
+    try {
+      const result = await ScheduleService.loadExisting(selectedPeriod.startDate, selectedPeriod.endDate);
+      if (result.status === 'loaded') {
+        onLessonChange?.(result.lessons, result.grid || {});
+      }
+    } catch (err) {
+      console.error('Не удалось перезагрузить расписание:', err);
+    }
+  };
+
+  // Закрепить/открепить занятие (пин). Проекция во view асинхронна — выждем и перезагрузим.
+  const handleToggleLock = async (lesson: ScheduledLessonDto) => {
+    if (!lesson.placementId) return;
+    try {
+      await CQRSService.setLock(lesson.placementId, !lesson.locked);
+      setActionMessage(lesson.locked ? 'Откреплено' : '🔒 Закреплено');
+      setTimeout(() => { reloadPeriodSchedule(); setActionMessage(null); }, 700);
+    } catch (e) {
+      console.error('Ошибка закрепления:', e);
+      setActionMessage('❌ Ошибка закрепления');
+      setTimeout(() => setActionMessage(null), 3000);
+    }
+  };
+
+  // Перегенерация с сохранением закреплённых занятий (Фаза A).
+  const handleRegenerate = async () => {
+    if (!currentSession || !selectedPeriod) return;
+    setLoadingAction(true);
+    setActionMessage('Перегенерация (сохранив закреплённые)...');
+    try {
+      const updated = await CQRSService.regenerateKeepingLocked(currentSession.id, {
+        name: currentSession.name,
+        studyPeriodId: selectedPeriod.id,
+        courseIds: [],
+      });
+      setCurrentSession(updated);
+      setTimeout(async () => {
+        await reloadPeriodSchedule();
+        setActionMessage('✅ Перегенерировано (закреплённые на местах)');
+        setTimeout(() => setActionMessage(null), 3000);
+      }, 1200);
+    } catch (e) {
+      console.error('Ошибка перегенерации:', e);
+      setActionMessage('❌ Ошибка перегенерации');
+      setTimeout(() => setActionMessage(null), 3000);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
   const handlePeriodChange = async (period: StudyPeriodDto | null) => {
     if (!period) return;
 
@@ -349,6 +407,20 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
                     Сгенерировать расписание
                   </button>
               )}
+
+              {pinningEnabled && (currentSession.status === 'READY_FOR_EDIT') && (
+                  <button
+                      onClick={handleRegenerate}
+                      disabled={loadingAction || !selectedPeriod}
+                      title={!selectedPeriod
+                          ? 'Выберите учебный период'
+                          : 'Перераспределить незакреплённые занятия, сохранив закреплённые на местах'}
+                      className="w-full px-4 py-2 bg-amber-500 text-white text-sm font-black rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {loadingAction ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                    Перегенерировать (сохранив закреплённые)
+                  </button>
+              )}
             </div>
         )}
 
@@ -367,6 +439,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
                 rootEntityType={rootEntityType}
                 rootEntityId={rootEntityId}
                 onMoveLesson={handleMoveLesson}
+                onToggleLock={pinningEnabled ? handleToggleLock : undefined}
             />
         ) : (
             <div className="bg-white border border-slate-100 rounded-xl p-8 shadow-sm text-center">

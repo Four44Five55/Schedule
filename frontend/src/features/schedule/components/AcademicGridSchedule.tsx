@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {ConstraintDto, ScheduledLessonDto, TimeSlotPair} from '../../../types/api';
 import {isWithinInterval, parseISO} from 'date-fns';
 import {cn} from '../../../utils/cn';
-import {AlertTriangle, Link2, Unlink, X} from 'lucide-react';
+import {AlertTriangle, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
 import {CQRSService} from '../../../services/cqrsApiService';
 import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, GridCellContext, SLOTS, zoomFontClasses} from '../../../components/grid/AcademicGridShell';
@@ -21,6 +21,9 @@ interface AcademicGridScheduleProps {
   rootEntityType?: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
   rootEntityId?: number;
   onMoveLesson?: (placementId: string) => void;
+  // Закрепить/открепить занятие (пин, Фича 2). Передаётся текущее занятие;
+  // хост дёргает API и перезагружает расписание.
+  onToggleLock?: (lesson: ScheduledLessonDto) => void;
 }
 
 export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
@@ -36,8 +39,13 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             currentVersion = 0,
                                                                             rootEntityType,
                                                                             rootEntityId,
-                                                                            onMoveLesson
+                                                                            onMoveLesson,
+                                                                            onToggleLock
                                                                           }) => {
+
+  // Пины (Фича 2) активны только если хост передал обработчик закрепления —
+  // в разделе «Расписание» он не передаётся, и сетка выглядит как раньше.
+  const pinningEnabled = !!onToggleLock;
 
   // Перенос «по сетке»: выбираем занятие → подсвечиваем зелёным доступные ячейки →
   // клик по зелёной ячейке переносит занятие туда. Без модального окна.
@@ -406,7 +414,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                 lesson && isEditMode && 'cursor-pointer',
                 lesson && !isEditMode && 'cursor-help',
                 isConflict && 'ring-2 ring-inset ring-red-500',
-                (isSourceCell || isChainMember) && !isConflict && 'ring-2 ring-inset ring-blue-600'
+                (isSourceCell || isChainMember) && !isConflict && 'ring-2 ring-inset ring-blue-600',
+                pinningEnabled && lesson?.locked && !isConflict && !isSourceCell && !isChainMember && 'ring-2 ring-inset ring-amber-500'
             )}
             title={
               isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
@@ -465,9 +474,29 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           )}
           {lesson ? (
               <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", fonts.main)}>
-                {isEditMode && (
-                    <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" />
-                )}
+                {/* Замок (Фича 2): в редактировании — тумблер закрепления, вне — индикатор пина.
+                    Только когда пины включены хостом (планировщик). */}
+                {pinningEnabled && isEditMode && lesson.placementId ? (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onToggleLock?.(lesson); }}
+                        title={lesson.locked
+                            ? 'Открепить (распределитель снова сможет двигать)'
+                            : 'Закрепить — распределитель не будет двигать это занятие'}
+                        className={cn(
+                            'absolute top-0.5 right-0.5 z-30 rounded-full ring-1 p-[1px] bg-white pointer-events-auto cursor-pointer transition-colors',
+                            lesson.locked ? 'ring-amber-400 hover:ring-amber-600' : 'ring-slate-300 hover:ring-blue-500'
+                        )}
+                    >
+                      {lesson.locked
+                          ? <Lock size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-amber-600" />
+                          : <LockOpen size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-400" />}
+                    </button>
+                ) : pinningEnabled && lesson.locked ? (
+                    <div className="absolute top-0.5 right-0.5 z-30 text-amber-600 pointer-events-none" title="Закреплено вручную">
+                      <Lock size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} />
+                    </div>
+                ) : null}
                 {isEducatorView ? (
                     <>
                       {/* Преподаватель: дисциплина+вид+тема / группы / аудитория */}

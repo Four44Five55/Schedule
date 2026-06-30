@@ -33,6 +33,7 @@ public class WorkspaceRecreationService {
     private final ConstraintService constraintService;
     private final AssignmentService assignmentService;
     private final ru.repository.write.LessonPlacementRepository placementRepo;
+    private final WorkspacePlacementSeeder placementSeeder;
 
     /**
      * Пересоздать workspace из placements сессии.
@@ -98,7 +99,7 @@ public class WorkspaceRecreationService {
         int placedCount = 0;
         for (LessonPlacement placement : placements) {
             try {
-                Lesson lesson = placeLessonFromPlacement(workspace, placement);
+                Lesson lesson = placementSeeder.seedInto(workspace, placement);
                 if (lesson != null) {
                     lessonByPlacementId.put(placement.getId(), lesson);
                     placedCount++;
@@ -111,6 +112,47 @@ public class WorkspaceRecreationService {
 
         log.info("✅ Workspace пересоздан: {} занятий из {} размещены",
                 placedCount, placements.size());
+
+        return new RecreatedWorkspace(workspace, lessonByPlacementId);
+    }
+
+    /**
+     * Пересоздать workspace на ЯВНЫХ рамках периода, засеяв размещения сессии.
+     *
+     * <p>В отличие от {@link #recreateWorkspaceFromSession} период берётся не из дат
+     * размещений, а задаётся снаружи (из {@link ru.entity.StudyPeriod}). Это нужно для
+     * ручной раскладки (Фаза B): в пустой сессии размещений ещё нет, а валидировать
+     * целевую ячейку надо в рамках всего учебного периода (иначе кэш ячеек пуст и
+     * любой слот считается «вне периода»).</p>
+     *
+     * @param sessionId сессия (источник уже размещённых занятий-замков)
+     * @param start     начало периода планирования
+     * @param end       конец периода планирования
+     * @return workspace с засеянными размещениями сессии (+ карта placementId → Lesson)
+     */
+    @Transactional(readOnly = true)
+    public RecreatedWorkspace recreateWorkspaceForPeriod(UUID sessionId, LocalDate start, LocalDate end) {
+        CellForLessonFactory.initializeCellCache(start, end);
+
+        ru.services.solver.ScheduleWorkspace workspace = new ru.services.solver.ScheduleWorkspace(
+            start, end,
+            educatorService.getAllEntities(),
+            groupService.getAllEntities(),
+            auditoriumService.getAllEntities(),
+            constraintService.loadAllConstraints()
+        );
+
+        Map<UUID, Lesson> lessonByPlacementId = new HashMap<>();
+        for (LessonPlacement placement : placementRepo.findBySessionId(sessionId)) {
+            try {
+                Lesson lesson = placementSeeder.seedInto(workspace, placement);
+                if (lesson != null) {
+                    lessonByPlacementId.put(placement.getId(), lesson);
+                }
+            } catch (Exception e) {
+                log.error("❌ Ошибка посева placementId={}: {}", placement.getId(), e.getMessage());
+            }
+        }
 
         return new RecreatedWorkspace(workspace, lessonByPlacementId);
     }
@@ -139,66 +181,6 @@ public class WorkspaceRecreationService {
         }
 
         return new DateRange(minDate, maxDate);
-    }
-
-    /**
-     * Разместить занятие из placement в workspace.
-     *
-     * @return созданный и размещённый Lesson, либо null, если placement без assignment.
-     */
-    private Lesson placeLessonFromPlacement(
-            ru.services.solver.ScheduleWorkspace workspace,
-            LessonPlacement placement) {
-
-        Assignment assignment = placement.getAssignment();
-        if (assignment == null) {
-            log.warn("⚠️  Placement без assignment: {}", placement.getId());
-            return null;
-        }
-
-        // Создаём Lesson из Assignment
-        Lesson lesson = createLessonFromAssignment(assignment);
-
-        // Создаём ячейку
-        CellForLesson cell = new CellForLesson(
-            placement.getScheduledDate(),
-            placement.getScheduledSlot()
-        );
-
-        // Размещаем занятие
-        if (placement.getAssignedAuditoriums() != null && !placement.getAssignedAuditoriums().isEmpty()) {
-            List<Auditorium> auditoriums = new java.util.ArrayList<>(placement.getAssignedAuditoriums());
-            workspace.forcePlacement(lesson, cell, auditoriums);
-        } else {
-            // Если аудитории не назначены, передаём пустой список
-            workspace.forcePlacement(lesson, cell, new java.util.ArrayList<>());
-        }
-
-        return lesson;
-    }
-
-    /**
-     * Создать Lesson из Assignment.
-     */
-    private Lesson createLessonFromAssignment(Assignment assignment) {
-        Lesson lesson = new Lesson();
-        lesson.setDisciplineCourse(assignment.getCurriculumSlot().getDisciplineCourse());
-        lesson.setCurriculumSlot(assignment.getCurriculumSlot());
-        lesson.setStudyStream(assignment.getStudyStream());
-        lesson.setEducators(assignment.getEducators());
-
-        // Копируем требования к аудитории
-        if (assignment.getCurriculumSlot().getRequiredAuditorium() != null) {
-            lesson.setRequiredAuditorium(assignment.getCurriculumSlot().getRequiredAuditorium());
-        }
-        if (assignment.getCurriculumSlot().getPriorityAuditorium() != null) {
-            lesson.setPriorityAuditorium(assignment.getCurriculumSlot().getPriorityAuditorium());
-        }
-        if (assignment.getCurriculumSlot().getAllowedAuditoriumPool() != null) {
-            lesson.setAllowedAuditoriumPool(assignment.getCurriculumSlot().getAllowedAuditoriumPool());
-        }
-
-        return lesson;
     }
 
     /**

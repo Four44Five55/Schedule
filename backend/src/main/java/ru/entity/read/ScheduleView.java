@@ -90,6 +90,13 @@ public class ScheduleView {
     @Column(name = "curriculum_slot_id")
     private Integer curriculumSlotId;
 
+    // Пин (Фича 2): денормализовано из lesson_placement — для индикатора замка на фронте.
+    @Column(name = "locked", nullable = false)
+    private boolean locked = false;
+
+    @Column(name = "source", nullable = false, length = 20)
+    private String source = "GENERATED";
+
     // ========== Метаданные для синхронизации ==========
 
     @Column(name = "placement_id")
@@ -179,6 +186,16 @@ public class ScheduleView {
 
     public void setPlacementId(UUID placementId) {
         this.placementId = placementId;
+        this.lastUpdated = LocalDateTime.now();
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
+        this.lastUpdated = LocalDateTime.now();
+    }
+
+    public void setSource(String source) {
+        this.source = source;
         this.lastUpdated = LocalDateTime.now();
     }
 

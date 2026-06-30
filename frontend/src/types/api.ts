@@ -401,6 +401,8 @@ export interface ScheduledLessonDto {
   auditoriumIds: number[];
   placementId?: string; // UUID размещения (Command Side) для переноса; есть только у загруженного из БД расписания
   curriculumSlotId?: number; // слот учебного плана — для определения сцепок (SlotChain)
+  locked?: boolean; // пин: занятие закреплено вручную (распределитель его не двигает)
+  source?: string; // происхождение размещения: 'GENERATED' | 'MANUAL'
 }
 
 // ============ SCHEDULE RESULT ============

@@ -97,6 +97,7 @@ public class LocalSearchOptimizer {
 
             for (Lesson b : getNeighbors(cellA.getDate(), byDate, sortedDates)) {
                 if (b.equals(a)) continue;
+                if (context.isLocked(b)) continue; // пин неподвижен (Фича 2)
                 CellForLesson cellB = context.getWorkspace().getCellForLesson(b);
                 if (cellB == null) continue;
                 if (cellA.getDate().equals(cellB.getDate())) continue;
@@ -411,6 +412,8 @@ public class LocalSearchOptimizer {
         return context.getDistributedLessons().stream()
                 .filter(l -> l.getKindOfStudy() != null
                         && l.getKindOfStudy() != KindOfStudy.LECTURE)
+                // Пины (Фича 2) не участвуют в оптимизации — их нельзя двигать.
+                .filter(l -> !context.isLocked(l))
                 .collect(Collectors.toList());
     }
 

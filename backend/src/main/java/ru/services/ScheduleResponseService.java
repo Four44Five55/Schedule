@@ -104,7 +104,9 @@ public class ScheduleResponseService {
                 auditoriumNames,
                 auditoriumIds,
                 base.placementId(),
-                base.curriculumSlotId()
+                base.curriculumSlotId(),
+                base.locked(),
+                base.source()
         );
     }
 

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import ru.entity.StudyPeriod;
 import ru.enums.SessionStatus;
 
 import java.time.LocalDateTime;
@@ -86,6 +87,17 @@ public class ScheduleSession {
     @Version
     private Long version;
 
+    // ========== Учебный период (Путь 2: сессии per-period) ==========
+
+    /**
+     * Учебный период сессии. {@code null} — легаси/глобальная сессия.
+     * Скоупит «живое расписание», архивацию и проекцию по периоду
+     * (готовить будущий семестр можно, не трогая текущий).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "study_period_id")
+    private StudyPeriod studyPeriod;
+
     // ========== Связь с placements ==========
 
     /**
@@ -148,6 +160,16 @@ public class ScheduleSession {
      */
     public boolean isEditable() {
         return status.isEditable();
+    }
+
+    /**
+     * Привязать сессию к учебному периоду (Путь 2).
+     *
+     * @param studyPeriod период
+     */
+    public void setStudyPeriod(StudyPeriod studyPeriod) {
+        this.studyPeriod = studyPeriod;
+        this.updatedAt = LocalDateTime.now();
     }
 
     // ========== Методы для управления placements ==========

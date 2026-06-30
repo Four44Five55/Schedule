@@ -26,6 +26,8 @@ public class ScheduleGenerationService {
     private final GenerationScopeResolver scopeResolver;
     private final DistributionDiscipline distributionDiscipline;
     private final AssignmentService assignmentService;
+    private final WorkspacePlacementSeeder placementSeeder;
+    private final StudyPeriodService studyPeriodService;
 
     // ========== NEW DEPENDENCIES (Phase 3: CQRS Integration) ==========
     private final ru.repository.write.ScheduleSessionRepository sessionRepo;
@@ -40,7 +42,10 @@ public class ScheduleGenerationService {
      * workspace инициализируются календарными рамками выбранного периода (раньше
      * период неявно брался из «первого курса», а конец семестра был захардкожен).</p>
      */
-    private ScheduleWorkspace generateWorkspace(GenerationScope scope) {
+    private ScheduleWorkspace generateWorkspace(
+            GenerationScope scope,
+            List<ru.entity.write.LessonPlacement> lockedPlacements
+    ) {
         StudyPeriod period = scope.period();
 
         // Кэш всех ячеек на рамки периода
@@ -55,7 +60,23 @@ public class ScheduleGenerationService {
                 constraintService.loadAllConstraints()
         );
 
-        distributionDiscipline.distribute(workspace, scope.lessons(), educatorService.getAllEntities());
+        // Фаза 0 (Фича 2): засеваем закреплённые занятия (пины) в workspace принудительно.
+        // Их ресурсы становятся занятыми → распределитель раскладывает остальное «вокруг».
+        // markPrePlacedLocked (внутри distribute) пометит их распределёнными+закреплёнными:
+        // фазы 1–2 их пропустят (по бизнес-ключу Lesson), оптимизатор не сдвинет.
+        List<Lesson> prePlaced = new java.util.ArrayList<>();
+        for (ru.entity.write.LessonPlacement locked : lockedPlacements) {
+            Lesson seeded = placementSeeder.seedInto(workspace, locked);
+            if (seeded != null) {
+                prePlaced.add(seeded);
+            }
+        }
+        if (!prePlaced.isEmpty()) {
+            log.info("Фаза 0: засеяно {} закреплённых занятий", prePlaced.size());
+        }
+
+        distributionDiscipline.distribute(
+                workspace, scope.lessons(), educatorService.getAllEntities(), prePlaced);
         return workspace;
     }
 
@@ -102,51 +123,116 @@ public class ScheduleGenerationService {
     ) {
         log.info("Генерация расписания: name={}, period={}, courses={}", name, studyPeriodId, courseIds);
 
-        // 1. Создаём сессию
+        // Новая сессия → нет закреплённых занятий (пинов): обычная генерация «с нуля».
         ru.entity.write.ScheduleSession session = new ru.entity.write.ScheduleSession(name, user);
         session.updateStatus(ru.enums.SessionStatus.GENERATING, user);
         session = sessionRepo.save(session);
 
-        try {
-            // 2. Разрешаем область генерации (период → даты + курсы + уроки) и строим workspace
-            GenerationScope scope = scopeResolver.resolve(studyPeriodId, courseIds);
-            ru.services.solver.ScheduleWorkspace workspace = generateWorkspace(scope);
+        return runGeneration(session, studyPeriodId, courseIds, user, List.of());
+    }
 
-            // 3. ✅ ОЧИЩАЕМ СТАРЫЕ PLACEMENTS (если сессия перегенерируется)
+    /**
+     * Перегенерация существующей сессии с сохранением закреплённых занятий (Фича 2, Фаза A).
+     *
+     * <p>Закреплённые ({@code locked}) размещения сессии засеваются в workspace как
+     * неподвижные (Фаза 0), а распределитель перераскладывает только остальное «вокруг»
+     * них. Источник правды — workspace: старые размещения (включая пины) удаляются и
+     * пересоздаются из сетки, при этом пины проштамповываются обратно
+     * ({@code locked=true} + сохранённый {@code source}). Так нет дублей пинов, а событие
+     * несёт полный набор → проектор перестраивает view с замками.</p>
+     *
+     * @param sessionId     перегенерируемая сессия (источник пинов)
+     * @param studyPeriodId период генерации
+     * @param courseIds     опциональный поднабор курсов
+     * @param user          автор изменения
+     */
+    @Transactional
+    public ru.entity.write.ScheduleSession regenerateKeepingLocked(
+            java.util.UUID sessionId,
+            Integer studyPeriodId,
+            List<Integer> courseIds,
+            String user
+    ) {
+        log.info("Перегенерация с сохранением замков: sessionId={}, period={}, courses={}",
+                sessionId, studyPeriodId, courseIds);
+
+        ru.entity.write.ScheduleSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Сессия не найдена: " + sessionId));
+
+        List<ru.entity.write.LessonPlacement> locked = placementRepo.findBySessionId(sessionId).stream()
+                .filter(ru.entity.write.LessonPlacement::isLocked)
+                .toList();
+        log.info("Закреплённых занятий к сохранению: {}", locked.size());
+
+        session.updateStatus(ru.enums.SessionStatus.GENERATING, user);
+        session = sessionRepo.save(session);
+
+        return runGeneration(session, studyPeriodId, courseIds, user, locked);
+    }
+
+    /**
+     * Ядро генерации: строит workspace (с засевом пинов, если есть), переписывает
+     * размещения сессии из сетки и публикует событие. Общее для генерации «с нуля»
+     * (пустой {@code lockedPlacements}) и перегенерации вокруг замков.
+     */
+    private ru.entity.write.ScheduleSession runGeneration(
+            ru.entity.write.ScheduleSession session,
+            Integer studyPeriodId,
+            List<Integer> courseIds,
+            String user,
+            List<ru.entity.write.LessonPlacement> lockedPlacements
+    ) {
+        try {
+            // Отпечаток пинов ДО удаления: ключ (слот+поток) → исходный source.
+            // По нему при экстракте проштампуем пересозданные пины (locked + source).
+            java.util.Map<AssignmentKey, ru.enums.PlacementSource> lockedFingerprint =
+                    lockedPlacements.stream().collect(java.util.stream.Collectors.toMap(
+                            ScheduleGenerationService::keyOf,
+                            ru.entity.write.LessonPlacement::getSource,
+                            (a, b) -> a));
+
+            // 1. Область генерации + workspace (внутри — Фаза 0: засев замков).
+            GenerationScope scope = scopeResolver.resolve(studyPeriodId, courseIds);
+
+            // Путь 2: привязываем сессию к периоду — архивация и проекция скоупятся по нему.
+            session.setStudyPeriod(scope.period());
+
+            ru.services.solver.ScheduleWorkspace workspace = generateWorkspace(scope, lockedPlacements);
+
+            // 2. Удаляем ВСЕ старые размещения сессии (включая пины — пересоздадим из сетки).
+            //    addPlacement ниже зовётся после flush, поэтому ленивая коллекция сессии
+            //    инициализируется уже пустой (orphanRemoval не воскрешает удалённые).
             List<ru.entity.write.LessonPlacement> oldPlacements = placementRepo.findBySessionId(session.getId());
             if (!oldPlacements.isEmpty()) {
                 log.info("🗑️ Удаляем {} старых размещений", oldPlacements.size());
                 placementRepo.deleteAll(oldPlacements);
-                placementRepo.flush(); // ✅ ВАЖНО: Сбрасываем изменения в БД немедленно
-                log.info("✅ Старые размещения удалены и сброшены в БД");
+                placementRepo.flush(); // deletes до inserts: иначе UNIQUE(session, assignment) конфликтует
             }
 
-            // 4. Извлекаем и сохраняем новые placements
+            // 3. Извлекаем размещения из сетки; пины — со штампом locked/source.
             List<ru.entity.write.LessonPlacement> placements = extractPlacementsFromWorkspace(
-                    workspace,
-                    session,
-                    user
-            );
+                    workspace, session, user, lockedFingerprint);
 
             for (ru.entity.write.LessonPlacement placement : placements) {
                 session.addPlacement(placement);
             }
 
-            // 5. Обновляем статус
+            // 4. Статус → готово к редактированию.
             session.updateStatus(ru.enums.SessionStatus.READY_FOR_EDIT, user);
             session = sessionRepo.save(session);
 
-            // 5.1 Новое расписание ЗАМЕНЯЕТ прежнее: архивируем остальные активные
-            //     сессии, чтобы в системе осталась одна каноничная. Иначе их проекции
-            //     в schedule_view накладываются, и подбор мест видит неполную/чужую
-            //     картину занятости (источник «лютого» бага с дублями сессий).
-            archivePreviousSessions(session.getId(), user);
+            // 5. Новое расписание ЗАМЕНЯЕТ прежнее В РАМКАХ ПЕРИОДА: архивируем остальные
+            //    активные сессии этого периода (Путь 2). Сессии других семестров не трогаем.
+            archivePreviousSessions(session.getId(), scope.period().getId(), user);
 
-            // 6. Публикуем событие (проектор перестроит read-model под новую сессию)
-            eventPublisher.publishEvent(new ru.events.ScheduleGeneratedEvent(session.getId(), placements));
+            // 6. Событие с ПОЛНЫМ набором (пины + сгенерированное) + рамки периода →
+            //    проектор перестроит view только для этого периода.
+            eventPublisher.publishEvent(new ru.events.ScheduleGeneratedEvent(
+                    session.getId(), placements,
+                    scope.period().getStartDate(), scope.period().getEndDate()));
 
-            log.info("✅ Расписание сгенерировано: sessionId={}, placementsCount={}",
-                    session.getId(), placements.size());
+            log.info("✅ Расписание сгенерировано: sessionId={}, placementsCount={}, пинов={}",
+                    session.getId(), placements.size(), lockedFingerprint.size());
 
             return session;
 
@@ -155,6 +241,19 @@ public class ScheduleGenerationService {
             sessionRepo.save(session);
             throw new RuntimeException("Ошибка генерации расписания", e);
         }
+    }
+
+    /**
+     * Ключ соответствия занятия ↔ назначения: пара {@code (curriculumSlotId, studyStreamId)}.
+     * Уникальна (один слот + один поток = одно назначение = одно занятие), поэтому надёжно
+     * связывает in-memory сетку с {@link Assignment} и с отпечатком пинов.
+     */
+    private record AssignmentKey(Integer curriculumSlotId, Integer studyStreamId) {}
+
+    /** Ключ закреплённого размещения (по его {@link Assignment}). */
+    private static AssignmentKey keyOf(ru.entity.write.LessonPlacement placement) {
+        Assignment a = placement.getAssignment();
+        return new AssignmentKey(a.getCurriculumSlot().getId(), a.getStudyStream().getId());
     }
 
     /**
@@ -172,11 +271,15 @@ public class ScheduleGenerationService {
      * @param keepSessionId сессия, которую оставляем активной
      * @param user          пользователь, выполняющий действие
      */
-    private void archivePreviousSessions(java.util.UUID keepSessionId, String user) {
-        List<ru.entity.write.ScheduleSession> previous =
-                sessionRepo.findActiveSessions(ru.enums.SessionStatus.ARCHIVED).stream()
-                        .filter(s -> !s.getId().equals(keepSessionId))
-                        .toList();
+    private void archivePreviousSessions(java.util.UUID keepSessionId, Integer periodId, String user) {
+        // Путь 2: архивируем только сессии ЭТОГО периода; без периода (легаси) — все.
+        List<ru.entity.write.ScheduleSession> active = (periodId != null)
+                ? sessionRepo.findActiveSessionsByPeriod(periodId, ru.enums.SessionStatus.ARCHIVED)
+                : sessionRepo.findActiveSessions(ru.enums.SessionStatus.ARCHIVED);
+
+        List<ru.entity.write.ScheduleSession> previous = active.stream()
+                .filter(s -> !s.getId().equals(keepSessionId))
+                .toList();
 
         if (previous.isEmpty()) {
             return;
@@ -184,7 +287,7 @@ public class ScheduleGenerationService {
 
         previous.forEach(s -> s.updateStatus(ru.enums.SessionStatus.ARCHIVED, user));
         sessionRepo.saveAll(previous);
-        log.info("🗄️  Архивировано прежних активных сессий: {}", previous.size());
+        log.info("🗄️  Архивировано прежних активных сессий периода: {}", previous.size());
     }
 
     /**
@@ -239,6 +342,40 @@ public class ScheduleGenerationService {
     }
 
     /**
+     * Получить или создать рабочую сессию для учебного периода (Путь 2, Фаза B).
+     *
+     * <p>Возвращает свежую неархивную сессию периода (переоткрыв для редактирования при
+     * необходимости), а если её нет — создаёт пустой черновик, привязанный к периоду.
+     * Это «вход» для ручной раскладки: ставить занятия в семестр, для которого расписание
+     * ещё не генерировалось, не трогая другие семестры.</p>
+     *
+     * @param studyPeriodId учебный период
+     * @param user          пользователь
+     * @return рабочая сессия периода
+     */
+    @Transactional
+    public ru.entity.write.ScheduleSession getOrCreateSessionForPeriod(Integer studyPeriodId, String user) {
+        List<ru.entity.write.ScheduleSession> active =
+                sessionRepo.findActiveSessionsByPeriod(studyPeriodId, ru.enums.SessionStatus.ARCHIVED);
+
+        if (!active.isEmpty()) {
+            ru.entity.write.ScheduleSession session = active.get(0); // отсортированы по updatedAt DESC
+            if (!session.getStatus().isEditable()) {
+                session.updateStatus(ru.enums.SessionStatus.READY_FOR_EDIT, user);
+                sessionRepo.save(session);
+            }
+            return session;
+        }
+
+        StudyPeriod period = studyPeriodService.getEntityById(studyPeriodId);
+        ru.entity.write.ScheduleSession session =
+                new ru.entity.write.ScheduleSession("Расписание: " + period.getName(), user);
+        session.setStudyPeriod(period);
+        session.updateStatus(ru.enums.SessionStatus.READY_FOR_EDIT, user);
+        return sessionRepo.save(session);
+    }
+
+    /**
      * Перенос занятия вынесен в {@link LessonMoveService}: он пересоздаёт workspace и
      * повторно валидирует все ресурсы (включая аудиторию) перед записью.
      */
@@ -267,27 +404,15 @@ public class ScheduleGenerationService {
     private List<ru.entity.write.LessonPlacement> extractPlacementsFromWorkspace(
             ru.services.solver.ScheduleWorkspace workspace,
             ru.entity.write.ScheduleSession session,
-            String user
+            String user,
+            java.util.Map<AssignmentKey, ru.enums.PlacementSource> lockedFingerprint
     ) {
         List<ru.entity.write.LessonPlacement> placements = new java.util.ArrayList<>();
 
-        // Загружаем все Assignment для быстрого поиска
+        // Загружаем все Assignment для быстрого поиска.
+        // Ключ (curriculumSlotId + studyStreamId) уникален: один слот может иметь несколько
+        // assignment для разных потоков/групп.
         List<Assignment> allAssignments = getAllAssignments();
-
-        // Создаём мапу для быстрого поиска: (curriculumSlotId + studyStreamId) → Assignment
-        // Это критически важно! Один curriculumSlot может иметь несколько assignments для разных групп.
-        class AssignmentKey {
-            Integer curriculumSlotId;
-            Integer studyStreamId;
-            AssignmentKey(Integer csId, Integer ssId) { this.curriculumSlotId = csId; this.studyStreamId = ssId; }
-            @Override public boolean equals(Object o) {
-                if (!(o instanceof AssignmentKey)) return false;
-                AssignmentKey k = (AssignmentKey) o;
-                return curriculumSlotId.equals(k.curriculumSlotId) && studyStreamId.equals(k.studyStreamId);
-            }
-            @Override public int hashCode() { return java.util.Objects.hash(curriculumSlotId, studyStreamId); }
-        }
-
         var assignmentMap = allAssignments.stream()
             .collect(java.util.stream.Collectors.toMap(
                 a -> new AssignmentKey(a.getCurriculumSlot().getId(), a.getStudyStream().getId()),
@@ -321,14 +446,15 @@ public class ScheduleGenerationService {
                     continue;
                 }
 
-                // ✅ Создаём Placement (один Lesson → один Placement)
-                ru.entity.write.LessonPlacement placement = new ru.entity.write.LessonPlacement(
-                    assignment,
-                    cell.getDate(),
-                    cell.getTimeSlotPair(),
-                    session,
-                    user
-                );
+                // ✅ Создаём Placement (один Lesson → один Placement).
+                // Если ключ был среди закреплённых — пересоздаём как пин (locked=true)
+                // с сохранённым источником; иначе обычное сгенерированное размещение.
+                ru.enums.PlacementSource lockedSource = lockedFingerprint.get(key);
+                ru.entity.write.LessonPlacement placement = (lockedSource != null)
+                    ? new ru.entity.write.LessonPlacement(
+                        assignment, cell.getDate(), cell.getTimeSlotPair(), session, user, lockedSource, true)
+                    : new ru.entity.write.LessonPlacement(
+                        assignment, cell.getDate(), cell.getTimeSlotPair(), session, user);
 
                 // Добавляем аудитории
                 if (lesson.getAssignedAuditoriums() != null) {
@@ -339,7 +465,8 @@ public class ScheduleGenerationService {
             }
         }
 
-        log.info("✅ Извлечено {} placements из workspace", placements.size());
+        log.info("✅ Извлечено {} placements из workspace ({} пинов)",
+                placements.size(), lockedFingerprint.size());
         return placements;
     }
 

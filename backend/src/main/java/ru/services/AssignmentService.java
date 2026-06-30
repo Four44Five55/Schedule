@@ -142,6 +142,12 @@ public class AssignmentService {
     }
 
     @Transactional(readOnly = true)
+    public Assignment getEntityById(Integer id) {
+        return assignmentRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + id + " не найден."));
+    }
+
+    @Transactional(readOnly = true)
     public List<Assignment> getAllEntities() {
         return assignmentRepository.findAll();
     }
