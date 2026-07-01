@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -63,13 +64,24 @@ public class AssignmentService {
      * {@code overwrite=true} — заменяем состав преподавателей существующего назначения
      * (та же строка, ссылки не рвутся). Материализуем по слотам — отдельной
      * «курс-уровневой» сущности назначения нет.</p>
+     *
+     * <p>Охват: {@code slotIds} {@code null}/пусто → все слоты курса (прежнее поведение);
+     * иначе — только слоты курса из этого набора (выбор по видам/конкретным занятиям
+     * разворачивается во фронте). Фильтр по {@code courseId} уже отсекает чужие слоты —
+     * пересечение с {@code slotIds} лишь сужает.</p>
      */
     @Transactional
     public List<AssignmentDto> applyToCourse(Integer courseId, Integer studyStreamId,
-                                             List<Integer> educatorIds, boolean overwrite) {
+                                             List<Integer> educatorIds, boolean overwrite,
+                                             List<Integer> slotIds) {
         StudyStream stream = studyStreamService.getEntityById(studyStreamId);
         List<Educator> educators = educatorService.getAllEntitiesByIds(educatorIds);
         List<CurriculumSlot> slots = curriculumSlotService.getEntitiesByCourseId(courseId);
+
+        if (slotIds != null && !slotIds.isEmpty()) {
+            Set<Integer> wanted = new HashSet<>(slotIds);
+            slots = slots.stream().filter(s -> wanted.contains(s.getId())).toList();
+        }
 
         // Уже назначенные на этот поток слоты курса — один запрос, без N+1.
         Map<Integer, Assignment> existingBySlot = assignmentRepository.findAllByCourseIdWithDetails(courseId).stream()

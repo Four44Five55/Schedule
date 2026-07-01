@@ -294,6 +294,7 @@ export interface ApplyAssignmentToCourseDto {
   studyStreamId: number;
   educatorIds: number[];
   overwrite: boolean;
+  slotIds?: number[]; // охват: пусто → все слоты курса; иначе только эти (выбор по видам/занятиям)
 }
 
 export interface AssignmentUpdateDto {

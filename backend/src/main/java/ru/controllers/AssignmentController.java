@@ -50,7 +50,7 @@ public class AssignmentController {
     @PostMapping("/apply-to-course")
     public ResponseEntity<List<AssignmentDto>> applyToCourse(@Valid @RequestBody ApplyAssignmentToCourseDto dto) {
         List<AssignmentDto> result = assignmentService.applyToCourse(
-                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.overwrite());
+                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.overwrite(), dto.slotIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
     @PutMapping("/{id}")
