@@ -158,7 +158,11 @@ export default function App() {
         return;
       }
 
-      await CQRSService.generateSchedule({
+      // Генерация всегда идёт через сессию периода (не создаём новую «с нуля»):
+      // так закреплённые вручную занятия (пины) не архивируются вместе с прежней
+      // сессией, а сохраняются, и генератор раскладывает вокруг них.
+      const session = await CQRSService.getSessionForPeriod(targetPeriod.id);
+      await CQRSService.regenerateKeepingLocked(session.id, {
         name: 'Генерация от ' + new Date().toLocaleString('ru-RU'),
         studyPeriodId: targetPeriod.id,
         courseIds: courseIds

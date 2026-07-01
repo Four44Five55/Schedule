@@ -338,9 +338,12 @@ public class ScheduleCommandController {
         @PathVariable UUID placementId,
         @RequestBody LockPlacementRequest request
     ) {
-        log.info("Закрепление: placementId={}, locked={}", placementId, request.locked());
+        log.info("Закрепление: placementId={}, locked={}, placementIds={}",
+                placementId, request.locked(),
+                request.placementIds() != null ? request.placementIds().size() : "все");
 
-        ScheduleSession session = lessonPinService.setLock(placementId, request.locked(), "user");
+        ScheduleSession session = lessonPinService.setLock(
+                placementId, request.locked(), "user", request.placementIds());
         return ResponseEntity.ok(sessionMapper.toDto(session));
     }
 

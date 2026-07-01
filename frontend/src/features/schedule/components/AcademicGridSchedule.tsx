@@ -21,9 +21,20 @@ interface AcademicGridScheduleProps {
   rootEntityType?: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
   rootEntityId?: number;
   onMoveLesson?: (placementId: string) => void;
-  // Закрепить/открепить занятие (пин, Фича 2). Передаётся текущее занятие;
-  // хост дёргает API и перезагружает расписание.
-  onToggleLock?: (lesson: ScheduledLessonDto) => void;
+  // Закрепить/открепить занятие (пин, Фича 2). Передаётся текущее занятие + id размещений
+  // эффективной цепочки (с учётом временного разрыва detachedBoundaries на этой сетке) —
+  // хост дёргает API с этим подмножеством и перезагружает расписание.
+  onToggleLock?: (lesson: ScheduledLessonDto, chainPlacementIds?: string[]) => void;
+  // Установка не размещённого занятия из палитры (Фича 2, Фаза B): третья стратегия
+  // выбора поверх того же механизма подсветки/клика, что и перенос. Host передаёт
+  // выбранное назначение — сетка подсвечивает доступные ячейки и на клике зовёт onPlace.
+  placementCandidate?: {
+    assignmentId: number;
+    rootEntityType: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
+    rootEntityId?: number;
+  } | null;
+  studyPeriodId?: number;
+  onPlace?: (assignmentId: number, date: string, slot: TimeSlotPair) => void | Promise<void>;
 }
 
 export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
@@ -40,7 +51,10 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             rootEntityType,
                                                                             rootEntityId,
                                                                             onMoveLesson,
-                                                                            onToggleLock
+                                                                            onToggleLock,
+                                                                            placementCandidate,
+                                                                            studyPeriodId,
+                                                                            onPlace
                                                                           }) => {
 
   // Пины (Фича 2) активны только если хост передал обработчик закрепления —
@@ -81,7 +95,9 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       selectedLesson.timeSlotPair === l.timeSlotPair;
 
   const handleLessonClick = (lesson: ScheduledLessonDto) => {
-    if (!isEditMode || !sessionId || !onMoveLesson) return;
+    // Установка занятия из палитры (placementCandidate) — отдельная стратегия выбора,
+    // выбор существующего занятия для переноса в этот момент не начинаем.
+    if (!isEditMode || !sessionId || !onMoveLesson || placementCandidate) return;
     // повторный клик по тому же занятию — снять выбор
     if (isSelectedLesson(lesson)) {
       clearSelection();
@@ -89,6 +105,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     }
     setSelectedLesson(lesson);
   };
+
+  // Установка нового занятия (палитра) и перенос существующего — взаимоисключающие
+  // режимы выбора одной и той же сетки; хост включает placementCandidate, мы гасим
+  // внутренний выбор для переноса, чтобы не путать два режима одновременно.
+  useEffect(() => {
+    if (placementCandidate) {
+      setSelectedLesson(null);
+    }
+  }, [placementCandidate]);
 
   // Подбор доступных ячеек вынесен ниже — после объявления buildChain
   // (от которого зависит), чтобы не словить temporal dead zone в массиве зависимостей.
@@ -204,6 +229,34 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
 
   // Подбор доступных ячеек для выбранного занятия/цепочки (то, что подсветится зелёным).
   useEffect(() => {
+    // Установка не размещённого занятия из палитры — отдельная, более простая ветка:
+    // один слот, без раскрытия в «след» цепочки (цепочка размещений появляется только
+    // когда оба звена уже стоят в сетке).
+    if (placementCandidate) {
+      if (!sessionId || !studyPeriodId) {
+        setMoveTargets(new Map());
+        return;
+      }
+      let cancelled = false;
+      setLoadingTargets(true);
+      setSelectedChainIds([]);
+      CQRSService.getPlacementOptions(sessionId, {
+        assignmentId: placementCandidate.assignmentId,
+        rootEntityType: placementCandidate.rootEntityType,
+        rootEntityId: placementCandidate.rootEntityId,
+        studyPeriodId,
+      })
+        .then((options) => {
+          if (cancelled) return;
+          const targets = new Map<string, TimeSlotPair>();
+          for (const o of options) targets.set(`${o.date}_${o.timeSlot}`, o.timeSlot);
+          setMoveTargets(targets);
+        })
+        .catch(() => { if (!cancelled) setMoveTargets(new Map()); })
+        .finally(() => { if (!cancelled) setLoadingTargets(false); });
+      return () => { cancelled = true; };
+    }
+
     if (!selectedLesson || !sessionId || !selectedLesson.placementId) {
       setMoveTargets(new Map());
       setSelectedChainIds([]);
@@ -248,14 +301,28 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         .finally(() => { if (!cancelled) setLoadingTargets(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLesson, sessionId, rootEntityType, rootEntityId, buildChain]);
+  }, [selectedLesson, sessionId, rootEntityType, rootEntityId, buildChain, placementCandidate, studyPeriodId]);
 
   const handleCellMove = async (dateStr: string, slotId: TimeSlotPair) => {
-    if (!selectedLesson || !sessionId || moving) return;
+    if (moving) return;
+    const startSlot = moveTargets.get(`${dateStr}_${slotId}`);
+    if (!startSlot) return;
+
+    // Установка занятия из палитры — отдельное действие, не перенос.
+    if (placementCandidate) {
+      setMoving(true);
+      try {
+        await onPlace?.(placementCandidate.assignmentId, dateStr, startSlot);
+      } finally {
+        setMoving(false);
+      }
+      return;
+    }
+
+    if (!selectedLesson || !sessionId) return;
     // Клик мог прийтись на хвост следа цепочки — переносим по старту головы,
     // а не по кликнутой ячейке.
-    const startSlot = moveTargets.get(`${dateStr}_${slotId}`);
-    if (!startSlot || !selectedLesson.placementId) return;
+    if (!selectedLesson.placementId) return;
 
     const movedId = String(selectedLesson.id);
     setMoving(true);
@@ -341,7 +408,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
 
     // Доступная для переноса ячейка (подсвечивается зелёным) —
     // только пустая для выбранного ресурса и из списка вариантов.
-    const isMoveTarget = !!selectedLesson && !lesson && moveTargets.has(gridKey);
+    const isMoveTarget = (!!selectedLesson || !!placementCandidate) && !lesson && moveTargets.has(gridKey);
     const isTeacherBusy = !!selectedLesson && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
     const isSourceCell = !!lesson && isSelectedLesson(lesson);
     // Звено выбранной цепочки — обводим синим вместе с источником,
@@ -479,7 +546,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                 {pinningEnabled && isEditMode && lesson.placementId ? (
                     <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); onToggleLock?.(lesson); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Эффективная цепочка с учётом временного разрыва (detachedBoundaries) —
+                          // та же функция, что строит «след» для переноса цепочки.
+                          const chainIds = buildChain(lesson)
+                              .map((l) => l.placementId)
+                              .filter((id): id is string => !!id);
+                          onToggleLock?.(lesson, chainIds);
+                        }}
                         title={lesson.locked
                             ? 'Открепить (распределитель снова сможет двигать)'
                             : 'Закрепить — распределитель не будет двигать это занятие'}

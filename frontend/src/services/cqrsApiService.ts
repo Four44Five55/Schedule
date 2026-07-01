@@ -81,15 +81,58 @@ export const CQRSService = {
   },
 
   /**
-   * Закрепить/открепить занятие (пин, Фича 2). Закрепляет всю цепочку занятия.
+   * Закрепить/открепить занятие (пин, Фича 2). По умолчанию закрепляет всю цепочку занятия.
    *
-   * @param placementId - UUID размещения
+   * @param placementId - UUID размещения (якорь)
    * @param locked - true закрепить, false открепить
+   * @param placementIds - опционально: сузить действие до подмножества цепочки (эфемерный
+   *   разрыв сцепки на фронте через detachedBoundaries/buildChain в AcademicGridSchedule).
+   *   Бэк проверяет, что каждый id реально принадлежит цепочке якоря — просто игнорирует
+   *   остальное; если не передано — старое поведение (вся цепочка).
    * @returns сессия-владелец (с актуальной version)
    */
-  setLock: (placementId: string, locked: boolean): Promise<ScheduleSessionDto> => {
+  setLock: (placementId: string, locked: boolean, placementIds?: string[]): Promise<ScheduleSessionDto> => {
     return api
-      .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/lock`, { locked })
+      .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/lock`, { locked, placementIds })
+      .then(r => r.data);
+  },
+
+  /**
+   * Куда можно поставить ещё не размещённое занятие из палитры (Фича 2, Фаза B).
+   * Зеркало findMoveOptions, но по assignmentId — занятие ещё не в сетке.
+   */
+  getPlacementOptions: (sessionId: string, request: {
+    assignmentId: number;
+    rootEntityType: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
+    rootEntityId?: number;
+    studyPeriodId: number;
+  }): Promise<MoveOptionDto[]> => {
+    return api
+      .post<MoveOptionDto[]>(`/schedule/command/sessions/${sessionId}/placement-options`, request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Ручная установка занятия из палитры в слот (Фича 2, Фаза B).
+   * Создаёт MANUAL/locked размещение; конфликт слота — HTTP 409 (AxiosError, ловить в компоненте).
+   */
+  createPlacement: (sessionId: string, request: {
+    assignmentId: number;
+    date: string;
+    slot: string;
+    studyPeriodId: number;
+  }): Promise<ScheduleSessionDto> => {
+    return api
+      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/placements`, request)
+      .then(r => r.data);
+  },
+
+  /**
+   * Снять размещение (вернуть занятие в палитру неразмещённых).
+   */
+  deletePlacement: (placementId: string): Promise<ScheduleSessionDto> => {
+    return api
+      .delete<ScheduleSessionDto>(`/schedule/command/placements/${placementId}`)
       .then(r => r.data);
   },
 
