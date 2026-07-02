@@ -65,7 +65,7 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
         const cellConstraints = dayConstraints?.filter((c) => !c.timeSlot || c.timeSlot === slot.id);
         const primary = cellConstraints?.[0];
         const style = primary ? CONSTRAINT_STYLES[primary.kindOfConstraint] ?? FALLBACK_CONSTRAINT_STYLE : null;
-        const abbrSize = zoom === 0 ? 'text-[9px]' : zoom === 1 ? 'text-[12px]' : 'text-[14px]';
+        const abbrSize = zoom === 0 ? 'text-[10px]' : zoom === 1 ? 'text-[13px]' : 'text-[15px]';
         const extraCount = cellConstraints ? cellConstraints.length - 1 : 0;
 
         return (

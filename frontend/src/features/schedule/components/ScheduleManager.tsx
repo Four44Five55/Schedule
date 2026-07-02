@@ -25,6 +25,9 @@ interface ScheduleManagerProps {
   startDate: Date;
   endDate: Date;
   onLessonChange?: (lessons: ScheduledLessonDto[], grid: Record<string, ScheduledLessonDto[]>) => void;
+  // Смена периода внутри раздела «Расписание» должна двигать и ось дат сетки
+  // (её задаёт родитель через startDate/endDate), а не только набор занятий.
+  onPeriodChange?: (period: StudyPeriodDto) => void;
   currentSession?: ScheduleSessionDto | null;
   // Расширенный функционал Фичи 2 (пины): тумблер замка + «перегенерировать,
   // сохранив закреплённые». Включается только в планировщике; раздел «Расписание»
@@ -34,7 +37,7 @@ interface ScheduleManagerProps {
 
 type FilterType = 'group' | 'educator' | 'auditorium';
 
-export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid = {}, startDate, endDate, onLessonChange, currentSession: sessionProp, pinningEnabled = false }) => {
+export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid = {}, startDate, endDate, onLessonChange, onPeriodChange, currentSession: sessionProp, pinningEnabled = false }) => {
   // Тип фильтра и выбранный объект переживают обновление страницы (localStorage),
   // иначе F5 сбрасывает открытое расписание и его приходится выбирать заново.
   const [filterType, setFilterType] = useState<FilterType>(() => {
@@ -262,6 +265,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
     if (!period) return;
 
     setSelectedPeriod(period);
+    // Сдвигаем ось дат сетки на новый период (иначе занятия нового периода
+    // рисуются поверх старого диапазона — «сетка не меняется»).
+    onPeriodChange?.(period);
     setLoadingPeriodSchedule(true);
     setActionMessage('Загрузка расписания за период...');
 

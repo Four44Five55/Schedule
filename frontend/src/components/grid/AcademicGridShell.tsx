@@ -56,9 +56,9 @@ export interface ZoomFontClasses {
 }
 
 export const zoomFontClasses = (zoom: ZoomLevel): ZoomFontClasses => ({
-  main: zoom === 0 ? 'text-[7px]' : zoom === 1 ? 'text-[10px]' : 'text-[12px]',
-  abbr: zoom === 0 ? 'text-[9px]' : zoom === 1 ? 'text-[12px]' : 'text-[14px]',
-  sub: zoom === 0 ? 'text-[6px]' : zoom === 1 ? 'text-[8px]' : 'text-[10px]',
+  main: zoom === 0 ? 'text-[8px]' : zoom === 1 ? 'text-[11px]' : 'text-[13px]',
+  abbr: zoom === 0 ? 'text-[10px]' : zoom === 1 ? 'text-[13px]' : 'text-[15px]',
+  sub: zoom === 0 ? 'text-[7px]' : zoom === 1 ? 'text-[9px]' : 'text-[11px]',
 });
 
 /** Контекст ячейки, передаваемый в renderCell. */

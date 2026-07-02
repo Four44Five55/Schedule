@@ -263,6 +263,7 @@ export default function App() {
                   setScheduleLessons(lessons);
                   setScheduleGrid(grid);
                 }}
+                onPeriodChange={setSchedulePeriod}
             />
         );
       default:
