@@ -164,7 +164,10 @@ public class DistributionDiscipline {
      */
     private void logResults() {
         int total = context.getLessons().size();
-        int placed = context.getDistributedLessons().size();
+        // Уникальные размещённые: список distributedLessons допускает повторные add
+        // (пины Фазы 0 + повторные размещения), поэтому его size раздувается выше total
+        // (давало «803 из 672»). Набор — истинное число уникальных занятий.
+        int placed = context.getDistributedLessonsSet().size();
         int unplaced = total - placed;
 
         log.info("=== ИТОГИ Распределения ===");

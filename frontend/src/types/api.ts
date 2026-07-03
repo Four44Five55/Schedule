@@ -406,6 +406,15 @@ export interface ScheduledLessonDto {
   source?: string; // происхождение размещения: 'GENERATED' | 'MANUAL'
 }
 
+// ============ PERIOD READINESS ============
+// Готовность периода для дашборда: «всего к размещению» бэк берёт из набора генерации
+// (GenerationScope.lessons), т.к. query-сторона знает только размещённое.
+export interface PeriodReadinessDto {
+  total: number;
+  placed: number;
+  unplaced: number;
+}
+
 // ============ SCHEDULE RESULT ============
 export interface ScheduleResultDto {
   status: string;

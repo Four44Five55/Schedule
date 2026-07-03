@@ -12,7 +12,7 @@ import { ScheduleManager } from './features/schedule/components/ScheduleManager'
 import type { ScheduledLessonDto, GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto, DisciplineDto, ScheduleResultDto, StudyPeriodDto } from './types/api';
 import { ScheduleService, ResourceService, CurriculumService } from './services/apiServices';
 import { CQRSService, dateUtils } from './services/cqrsApiService';
-import { Bell, Search, HelpCircle, CalendarRange, ChevronRight } from 'lucide-react';
+import { HelpCircle, CalendarRange } from 'lucide-react';
 
 const ACTIVE_TAB_STORAGE_KEY = 'unischedule.activeTab';
 
@@ -213,8 +213,7 @@ export default function App() {
                   groups: groups.length,
                   disciplines: disciplines.length,
                 }}
-                onGenerate={handleGenerateSchedule}
-                isGenerating={isGenerating}
+                onNavigate={setActiveTab}
             />
         );
       case 'educators':
@@ -281,61 +280,17 @@ export default function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         <main className="flex-1 flex flex-col min-w-0">
-          <header className="h-12 bg-white/80 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-40 px-6 flex items-center justify-between">
-            <div className="flex items-center gap-4 flex-1">
-              <div className="relative w-full max-w-xs group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={14} />
-                <input
-                    type="text"
-                    placeholder="Поиск..."
-                    className="w-full pl-9 pr-3 py-1.5 bg-slate-100/50 border-none rounded-xl text-xs focus:ring-1 focus:ring-blue-500/20 focus:bg-white transition-all outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-emerald-50 rounded-lg border border-emerald-100">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[9px] font-black text-emerald-700 uppercase tracking-tight">Active</span>
-              </div>
-
-              <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg relative">
-                <Bell size={16} />
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-blue-600 rounded-full border border-white" />
-              </button>
-
-              <div className="h-6 w-px bg-slate-100" />
-
-              <div className="flex items-center gap-2.5 pl-1">
-                <div className="text-right hidden sm:block">
-                  <p className="text-[11px] font-black text-slate-800 leading-none">Admin</p>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase">Root</p>
-                </div>
-                <div className="w-8 h-8 bg-slate-900 rounded-lg shadow-sm flex items-center justify-center text-white font-black text-[10px]">
-                  AD
-                </div>
-              </div>
-            </div>
-          </header>
-
           <div className="p-6 max-w-[1600px] mx-auto w-full">
-            <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-blue-600 rounded-lg text-white">
-                  <CalendarRange size={16} />
-                </div>
-                <div>
-                  <h1 className="text-xl font-black text-slate-900 capitalize tracking-tight leading-none">
-                    {activeTab === 'dashboard' ? 'Dashboard' : activeTab}
-                  </h1>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Management System</p>
-                </div>
+            {/* Тонкий заголовок раздела: иконка + имя в одну строку. Декоративная
+                подпись «Management System» и хлебные крошки убраны, чтобы не съедать
+                высоту над контентом (актуально для сеток расписания/ограничений). */}
+            <div className="mb-3 flex items-center gap-2.5">
+              <div className="p-1.5 bg-blue-600 rounded-lg text-white">
+                <CalendarRange size={14} />
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                <span className="hover:text-blue-600 cursor-pointer transition-colors">Home</span>
-                <ChevronRight size={10} />
-                <span className="text-slate-900 capitalize">{activeTab}</span>
-              </div>
+              <h1 className="text-base font-black text-slate-900 capitalize tracking-tight leading-none">
+                {activeTab === 'dashboard' ? 'Dashboard' : activeTab}
+              </h1>
             </div>
             {renderContent()}
           </div>

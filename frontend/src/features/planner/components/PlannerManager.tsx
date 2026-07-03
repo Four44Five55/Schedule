@@ -157,6 +157,13 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     });
   };
 
+  // «Выбрать все / Снять все» курсы периода. Эффект по selectedCourses сам подтянет
+  // слоты выбранных курсов, поэтому счётчики/план обновятся без доп. действий.
+  const allCoursesSelected = allCourses.length > 0 && allCourses.every(c => selectedCourses.has(c.id));
+  const toggleSelectAllCourses = () => {
+    setSelectedCourses(allCoursesSelected ? new Set() : new Set(allCourses.map(c => c.id)));
+  };
+
   // Редактор плана владеет своими слотами; после правки сообщает сюда, чтобы наши
   // производные данные (счётчик «Занятий N», вкладка «Назначения») не отставали.
   // Точечно перечитываем слоты курса в map — но только если он выбран (иначе в счётчик
@@ -195,44 +202,44 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">Планировщик</h1>
-          <p className="text-sm text-slate-500 mt-1">
+      {/* Заголовок планировщика + учебный период (контекст всего раздела) + счётчик —
+          одной компактной строкой над вкладками (раньше это были три полосы:
+          заголовок в две строки и отдельная полоса периода). */}
+      <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 px-3 py-2">
+        <div className="flex items-baseline gap-2 shrink-0">
+          <h1 className="text-lg font-black text-slate-900">Планировщик</h1>
+          <span className="text-xs text-slate-400 hidden lg:inline">
             Формирование учебного плана, назначений и запуск генерации
-          </p>
+          </span>
         </div>
+
+        <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+          <Calendar size={16} className="text-blue-600 shrink-0" />
+          <select
+            value={selectedPeriodId ?? ''}
+            onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
+            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">— выберите период —</option>
+            {periods.map(p => (
+              <option key={p.id} value={p.id}>{p.name} ({p.studyYear})</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowPeriodForm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+          >
+            <CalendarPlus size={14} /> Новый период
+          </button>
+        </div>
+
         {selectedCourses.size > 0 && (
-          <div className="text-right">
-            <div className="text-xs text-slate-500">
-              Курсов: <span className="font-bold text-blue-600">{selectedCourses.size}</span>
-              {' · '}
-              Занятий: <span className="font-bold text-blue-600">{totalSlots}</span>
-            </div>
+          <div className="text-xs text-slate-500 shrink-0">
+            Курсов: <span className="font-bold text-blue-600">{selectedCourses.size}</span>
+            {' · '}
+            Занятий: <span className="font-bold text-blue-600">{totalSlots}</span>
           </div>
         )}
-      </div>
-
-      {/* Учебный период — контекст всего планировщика */}
-      <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
-        <Calendar size={16} className="text-blue-600 shrink-0" />
-        <label className="text-xs font-semibold text-slate-600 shrink-0">Учебный период</label>
-        <select
-          value={selectedPeriodId ?? ''}
-          onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
-          className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">— выберите период —</option>
-          {periods.map(p => (
-            <option key={p.id} value={p.id}>{p.name} ({p.studyYear})</option>
-          ))}
-        </select>
-        <button
-          onClick={() => setShowPeriodForm(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors shrink-0"
-        >
-          <CalendarPlus size={14} /> Новый период
-        </button>
       </div>
 
       {showPeriodForm && (
@@ -283,9 +290,19 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
             {activeTab === 'courses' && (
               <div>
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-                  <span className="text-xs text-slate-500">
-                    {selectedPeriod ? `Курсы периода «${selectedPeriod.name}»` : 'Сначала выберите учебный период'}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500">
+                      {selectedPeriod ? `Курсы периода «${selectedPeriod.name}»` : 'Сначала выберите учебный период'}
+                    </span>
+                    {allCourses.length > 0 && (
+                      <button
+                        onClick={toggleSelectAllCourses}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                      >
+                        {allCoursesSelected ? 'Снять все' : 'Выбрать все'}
+                      </button>
+                    )}
+                  </div>
                   {/* Наполнение плана: ручное добавление курса либо клон плана из другого
                       периода (глубокая копия курсов со слотами и сцепками на бэке). */}
                   <div className="flex items-center gap-2">

@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
-import { Badge } from '../../../components/ui/Badge';
-import { Users, School, BookOpen, CheckCircle2, Loader2, Zap, ArrowRight, TrendingUp } from 'lucide-react';
+import { ResourceService, ScheduleService } from '../../../services/apiServices';
+import { StudyPeriodDto, ScheduleResultDto, PeriodReadinessDto, TimeSlotPair } from '../../../types/api';
+import {
+  Users, School, BookOpen, Layers, Loader2, CalendarRange,
+  AlertTriangle, CalendarClock, ArrowRight, Info
+} from 'lucide-react';
 
 interface DashboardProps {
   stats: {
@@ -11,157 +16,380 @@ interface DashboardProps {
     groups: number;
     disciplines: number;
   };
-  onGenerate: (courseIds: number[]) => void;
-  isGenerating: boolean;
+  // Навигация по разделам (быстрые действия). Прокидывается из App (setActiveTab).
+  onNavigate?: (tab: 'planner' | 'schedule') => void;
 }
 
-const DEFAULT_COURSE_IDS = [704, 705, 701, 702, 707, 703, 706, 708, 709, 710];
+const SLOTS_13: ReadonlySet<TimeSlotPair> = new Set<TimeSlotPair>(['FIRST', 'SECOND', 'THIRD']);
+const PERIOD_STORAGE_KEY = 'unischedule.dashboard.selectedPeriodId';
 
-export const Dashboard: React.FC<DashboardProps> = ({ stats, onGenerate, isGenerating }) => {
-  const [selectedCourses] = useState<number[]>(DEFAULT_COURSE_IDS);
+interface GroupDensity { group: string; occ13: number; inFourth: number; free13: number; total: number; }
+interface EducatorLoad { name: string; total: number; sat: number; dev: number; }
+
+/**
+ * Дашборд «Готовность периода». Все метрики считаются НА ФРОНТЕ из одного запроса
+ * `ScheduleService.loadExisting(активный период)` — сколько занятий размещено/не
+ * размещено, плотность групп в парах 1–3 (сколько свободно / уже в 4-й паре) и
+ * субботняя нагрузка по преподавателям (для равномерного распределения).
+ *
+ * ВАЖНО (тех-долг, см. docs/FOLLOWUPS.md): ёмкость 1–3 здесь считается упрощённо
+ * (рабочие дни Пн–Сб × 3), без учёта закрытых бэком дней/пар (ScheduleDaysSlotsConfig)
+ * и без вычитания ограничений сущностей. Для точности эти агрегаты должны переехать
+ * на бэк отдельными эндпоинтами.
+ */
+export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
+  const [periods, setPeriods] = useState<StudyPeriodDto[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(() => {
+    const saved = localStorage.getItem(PERIOD_STORAGE_KEY);
+    return saved ? Number(saved) : null;
+  });
+  const [result, setResult] = useState<ScheduleResultDto | null>(null);
+  const [readiness, setReadiness] = useState<PeriodReadinessDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
+
+  const period = periods.find((p) => p.id === selectedPeriodId) ?? null;
+
+  // Список периодов + начальный выбор: сохранённый (если ещё существует) → активный → первый.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [all, active] = await Promise.all([
+          ResourceService.getStudyPeriods(),
+          ResourceService.getActiveStudyPeriod().catch(() => null),
+        ]);
+        if (cancelled) return;
+        setPeriods(all);
+        setSelectedPeriodId((prev) =>
+          prev != null && all.some((p) => p.id === prev)
+            ? prev
+            : (active?.id ?? all[0]?.id ?? null)
+        );
+      } catch (e) {
+        console.error('Дашборд: не удалось загрузить периоды:', e);
+      } finally {
+        if (!cancelled) setBootstrapped(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Персист выбранного периода между заходами/F5.
+  useEffect(() => {
+    if (selectedPeriodId != null) localStorage.setItem(PERIOD_STORAGE_KEY, String(selectedPeriodId));
+  }, [selectedPeriodId]);
+
+  // Данные выбранного периода — перезагружаются при смене периода.
+  // Размещённое расписание (для плотности/суббот) + готовность (всего/размещено/не размещено).
+  useEffect(() => {
+    if (!period) { setResult(null); setReadiness(null); setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      ScheduleService.loadExisting(period.startDate, period.endDate),
+      ScheduleService.getReadiness(period.id),
+    ])
+      .then(([res, rd]) => {
+        if (cancelled) return;
+        setResult(res);
+        setReadiness(rd);
+      })
+      .catch((e) => {
+        console.error('Дашборд: не удалось загрузить данные периода:', e);
+        if (!cancelled) { setResult(null); setReadiness(null); }
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedPeriodId, period?.startDate, period?.endDate]);
+
+  const metrics = useMemo(() => {
+    if (!result || !period) return null;
+    const lessons = result.lessons;
+
+    // Рабочие дни периода Пн–Сб (getDay: 0=Вс … 6=Сб). Воскресенья не учебные.
+    const workingDays = eachDayOfInterval({
+      start: parseISO(period.startDate),
+      end: parseISO(period.endDate),
+    }).filter((d) => { const g = getDay(d); return g >= 1 && g <= 6; }).length;
+
+    const capacity13 = workingDays * 3; // ячеек «1–3 пара» на одну сущность за период
+
+    // Плотность групп в парах 1–3.
+    const groupSet = new Set<string>();
+    lessons.forEach((l) => l.groupNames.forEach((g) => groupSet.add(g)));
+    const groupStats: GroupDensity[] = Array.from(groupSet).map((group) => {
+      const grp = lessons.filter((l) => l.groupNames.includes(group));
+      const occ13 = grp.filter((l) => SLOTS_13.has(l.timeSlotPair)).length;
+      const inFourth = grp.filter((l) => l.timeSlotPair === 'FOURTH').length;
+      return { group, occ13, inFourth, free13: capacity13 - occ13, total: grp.length };
+    }).sort((a, b) => a.free13 - b.free13); // самые «забитые» сверху
+
+    // Субботняя нагрузка по преподавателям.
+    const eduMap = new Map<string, { total: number; sat: number }>();
+    lessons.forEach((l) => {
+      const isSat = getDay(parseISO(l.date)) === 6;
+      l.educatorNames.forEach((e) => {
+        const cur = eduMap.get(e) ?? { total: 0, sat: 0 };
+        cur.total += 1;
+        if (isSat) cur.sat += 1;
+        eduMap.set(e, cur);
+      });
+    });
+    const avgSat = eduMap.size
+      ? Array.from(eduMap.values()).reduce((s, v) => s + v.sat, 0) / eduMap.size
+      : 0;
+    const eduStats: EducatorLoad[] = Array.from(eduMap.entries())
+      .map(([name, v]) => ({ name, total: v.total, sat: v.sat, dev: v.sat - avgSat }))
+      .sort((a, b) => b.sat - a.sat);
+
+    return { workingDays, capacity13, groupStats, eduStats, avgSat };
+  }, [result, period]);
+
+  const readyPct = readiness && readiness.total > 0
+    ? Math.round((readiness.placed / readiness.total) * 100)
+    : 0;
+
+  if (!bootstrapped) {
+    return (
+      <div className="flex items-center justify-center h-96 text-slate-400 gap-3">
+        <Loader2 className="animate-spin" size={20} />
+        <span className="text-sm font-medium">Загрузка…</span>
+      </div>
+    );
+  }
+
+  if (periods.length === 0) {
+    return (
+      <EmptyState
+        title="Нет учебных периодов"
+        subtitle="Создайте учебный период в планировщике"
+        onNavigate={onNavigate}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Преподаватели" value={stats.educators} icon={Users} color="blue" trend="+2 в этом семестре" />
-        <StatCard label="Аудитории" value={stats.auditoriums} icon={School} color="emerald" trend="100% доступно" />
-        <StatCard label="Группы" value={stats.groups} icon={Users} color="amber" trend="4 новых потока" />
-        <StatCard label="Дисциплины" value={stats.disciplines} icon={BookOpen} color="purple" trend="Полное покрытие" />
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Контекст периода */}
+      <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3">
+        <div className="p-2 bg-blue-600 rounded-lg text-white shrink-0"><CalendarRange size={18} /></div>
+        <div className="flex items-center gap-2 min-w-0">
+          <select
+            value={selectedPeriodId ?? ''}
+            onChange={(e) => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
+            className="max-w-[240px] text-sm font-black text-slate-900 border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 truncate cursor-pointer"
+          >
+            {periods.map((p) => (
+              <option key={p.id} value={p.id}>{p.name} ({p.studyYear})</option>
+            ))}
+          </select>
+          {period && (
+            <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+              {period.startDate} — {period.endDate}
+              {metrics && <> · {metrics.workingDays} дн. (Пн–Сб)</>}
+            </span>
+          )}
+          {loading && <Loader2 size={14} className="animate-spin text-blue-600" />}
+        </div>
+        {onNavigate && (
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => onNavigate('planner')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Планировщик <ArrowRight size={14} />
+            </button>
+            <button
+              onClick={() => onNavigate('schedule')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-blue-600 border border-blue-200 text-xs font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              Расписание
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="relative overflow-hidden border-none shadow-2xl shadow-blue-500/10 bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-              <Zap size={120} />
+      {loading ? (
+        <div className="flex items-center justify-center h-64 text-slate-400 gap-3">
+          <Loader2 className="animate-spin" size={20} />
+          <span className="text-sm font-medium">Загрузка расписания периода…</span>
+        </div>
+      ) : (
+      <>
+      {/* KPI готовности расписания — «всего» из набора генерации бэка (не query-сторона) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Kpi
+          label="Не размещено"
+          value={readiness?.unplaced ?? 0}
+          tone={(readiness?.unplaced ?? 0) > 0 ? 'red' : 'emerald'}
+          icon={AlertTriangle}
+          hint={(readiness?.unplaced ?? 0) > 0 ? 'требуют места' : 'всё размещено'}
+        />
+        <Kpi label="Размещено" value={readiness?.placed ?? 0} tone="blue" icon={CalendarClock}
+             hint={`из ${readiness?.total ?? 0} · ${readyPct}%`} />
+        <Kpi label="Всего к размещению" value={readiness?.total ?? 0} tone="slate" icon={Layers}
+             hint="набор периода" />
+        <Kpi label="Учебных дней" value={metrics?.workingDays ?? 0} tone="slate" icon={CalendarRange} hint="Пн–Сб" />
+      </div>
+
+      {!result || result.lessons.length === 0 ? (
+        <EmptyState
+          title="За период нет размещённого расписания"
+          subtitle="Сформируйте план и запустите генерацию в планировщике"
+          onNavigate={onNavigate}
+        />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Плотность групп 1–3 */}
+          <Card title="Плотность групп (пары 1–3)">
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
+                <Info size={13} className="shrink-0 mt-0.5" />
+                Ёмкость 1–3 = {metrics?.capacity13 ?? 0} пар/группу (Пн–Сб × 3). Оценка без учёта
+                ограничений и закрытых пар — точный расчёт см. тех-долг.
+              </p>
+              <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
+                <table className="w-full text-xs">
+                  <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left font-bold py-1.5">Группа</th>
+                      <th className="text-right font-bold px-2">Своб. 1–3</th>
+                      <th className="text-right font-bold px-2">Занято 1–3</th>
+                      <th className="text-right font-bold pl-2">В 4-й</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {metrics?.groupStats.map((g) => {
+                      const tight = g.free13 <= 0;
+                      return (
+                        <tr key={g.group} className={cn('transition-colors', tight && 'bg-red-50/60')}>
+                          <td className="py-1.5 font-bold text-slate-700 truncate max-w-[120px]">{g.group}</td>
+                          <td className={cn('text-right px-2 font-black tabular-nums', tight ? 'text-red-600' : 'text-emerald-600')}>
+                            {g.free13}
+                          </td>
+                          <td className="text-right px-2 tabular-nums text-slate-500">{g.occ13}</td>
+                          <td className={cn('text-right pl-2 tabular-nums font-bold', g.inFourth > 0 ? 'text-amber-600' : 'text-slate-300')}>
+                            {g.inFourth}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            
-            <div className="relative z-10 space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500 rounded-lg">
-                  <Zap size={24} className="text-white" />
-                </div>
-                <h3 className="text-xl font-black">Интеллектуальная генерация</h3>
-              </div>
+          </Card>
 
-              <div className="p-4 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="text-emerald-400 mt-1 shrink-0" size={20} />
-                  <div className="text-sm text-slate-300 leading-relaxed">
-                    <p className="font-bold text-white mb-1">Скоростной двухфазный алгоритм</p>
-                    <p>Используется оптимизированная система распределения, учитывающая более 50 ограничений одновременно. Среднее время обработки: 2.4с.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-end">
-                  <p className="text-sm font-bold text-slate-400">Пакетная обработка ({selectedCourses.length} курсов)</p>
-                  <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest">Готов к запуску</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedCourses.map(id => (
-                    <div key={id} className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg text-xs font-mono text-blue-200">
-                      #{id}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  onClick={() => onGenerate(selectedCourses)}
-                  disabled={isGenerating}
-                  className={cn(
-                    "w-full sm:w-auto px-10 py-4 rounded-2xl font-black transition-all flex items-center justify-center gap-3 group",
-                    isGenerating
-                      ? "bg-slate-700 text-slate-400 cursor-not-allowed"
-                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-xl shadow-blue-600/30 hover:shadow-blue-600/50 hover:-translate-y-0.5 active:translate-y-0"
-                  )}
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 size={20} className="animate-spin" />
-                      ГЕНЕРАЦИЯ...
-                    </>
-                  ) : (
-                    <>
-                      ЗАПУСТИТЬ ГЕНЕРАЦИЮ
-                      <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                    </>
-                  )}
-                </button>
+          {/* Субботняя нагрузка преподавателей */}
+          <Card title="Суббота по преподавателям">
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
+                <Info size={13} className="shrink-0 mt-0.5" />
+                Среднее по субботам: <b className="text-slate-500">{(metrics?.avgSat ?? 0).toFixed(1)}</b> пар.
+                Красным — заметно выше среднего (кандидаты на разгрузку).
+              </p>
+              <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
+                <table className="w-full text-xs">
+                  <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left font-bold py-1.5">Преподаватель</th>
+                      <th className="text-right font-bold px-2">Суббот</th>
+                      <th className="text-right font-bold px-2">Всего</th>
+                      <th className="text-right font-bold pl-2">± ср.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {metrics?.eduStats.map((e) => {
+                      const hot = e.dev >= 1.5;
+                      return (
+                        <tr key={e.name} className={cn('transition-colors', hot && 'bg-red-50/60')}>
+                          <td className="py-1.5 font-bold text-slate-700 truncate max-w-[140px]">{e.name}</td>
+                          <td className={cn('text-right px-2 font-black tabular-nums', hot ? 'text-red-600' : 'text-slate-700')}>
+                            {e.sat}
+                          </td>
+                          <td className="text-right px-2 tabular-nums text-slate-400">{e.total}</td>
+                          <td className={cn('text-right pl-2 tabular-nums font-bold',
+                            e.dev > 0.05 ? 'text-red-500' : e.dev < -0.05 ? 'text-emerald-500' : 'text-slate-300')}>
+                            {e.dev > 0 ? '+' : ''}{e.dev.toFixed(1)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </Card>
         </div>
+      )}
+      </>
+      )}
 
-        <div className="space-y-6">
-          <Card title="Аналитика системы" className="h-full">
-            <div className="space-y-8">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500 font-medium">Заполнение сетки</span>
-                  <span className="text-blue-600 font-black">-- %</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 w-[0%] transition-all duration-1000" />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">История запусков</p>
-                <div className="space-y-3">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                        <TrendingUp size={16} className="text-emerald-500" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Успешный запуск #{1020 + i}</p>
-                        <p className="text-[10px] text-slate-400">Вчера, 18:45 • 240мс</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <button className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200">
-                Сформировать отчет
-              </button>
-            </div>
-          </Card>
-        </div>
+      {/* Инвентарь системы (реальные счётчики) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Inventory label="Преподаватели" value={stats.educators} icon={Users} />
+        <Inventory label="Аудитории" value={stats.auditoriums} icon={School} />
+        <Inventory label="Группы" value={stats.groups} icon={Users} />
+        <Inventory label="Дисциплины" value={stats.disciplines} icon={BookOpen} />
       </div>
     </div>
   );
 };
 
-const StatCard = ({ label, value, icon: Icon, color, trend }: any) => {
-  const colors: any = {
-    blue: 'from-blue-500/20 to-blue-500/5 text-blue-600 border-blue-100',
-    emerald: 'from-emerald-500/20 to-emerald-500/5 text-emerald-600 border-emerald-100',
-    amber: 'from-amber-500/20 to-amber-500/5 text-amber-600 border-amber-100',
-    purple: 'from-purple-500/20 to-purple-500/5 text-purple-600 border-purple-100',
-  };
-  return (
-    <Card className="p-0 border-none shadow-sm hover:shadow-xl transition-all duration-300 group overflow-hidden">
-      <div className="p-6 space-y-4">
-        <div className="flex justify-between items-start">
-          <div className={cn("p-3 rounded-2xl bg-gradient-to-br shadow-inner", colors[color])}>
-            <Icon size={24} />
-          </div>
-          <Badge variant={color === 'emerald' ? 'emerald' : 'slate'} className="bg-white/50 backdrop-blur-sm">Active</Badge>
-        </div>
-        <div>
-          <p className="text-4xl font-black text-slate-900 tracking-tight">{value}</p>
-          <p className="text-sm font-bold text-slate-500 mt-1">{label}</p>
-        </div>
-        <div className="pt-4 border-t border-slate-50 flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{trend}</span>
-        </div>
-      </div>
-    </Card>
-  );
+const TONES: Record<string, string> = {
+  blue: 'text-blue-600 bg-blue-50',
+  emerald: 'text-emerald-600 bg-emerald-50',
+  red: 'text-red-600 bg-red-50',
+  amber: 'text-amber-600 bg-amber-50',
+  slate: 'text-slate-600 bg-slate-100',
 };
+
+const Kpi = ({ label, value, tone, icon: Icon, hint }: {
+  label: string; value: React.ReactNode; tone: keyof typeof TONES | string; icon: React.ElementType; hint?: string;
+}) => (
+  <Card className="p-4">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-3xl font-black text-slate-900 tabular-nums leading-none">{value}</p>
+        <p className="text-xs font-bold text-slate-500 mt-1.5">{label}</p>
+        {hint && <p className="text-[10px] text-slate-400 mt-0.5">{hint}</p>}
+      </div>
+      <div className={cn('p-2 rounded-xl shrink-0', TONES[tone] ?? TONES.slate)}>
+        <Icon size={18} />
+      </div>
+    </div>
+  </Card>
+);
+
+const Inventory = ({ label, value, icon: Icon }: { label: string; value: number; icon: React.ElementType }) => (
+  <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-100 px-4 py-3">
+    <div className="p-2 rounded-lg bg-slate-100 text-slate-500 shrink-0"><Icon size={16} /></div>
+    <div>
+      <p className="text-xl font-black text-slate-900 tabular-nums leading-none">{value}</p>
+      <p className="text-[11px] font-semibold text-slate-400 mt-0.5">{label}</p>
+    </div>
+  </div>
+);
+
+const EmptyState = ({ title, subtitle, onNavigate }: {
+  title: string; subtitle: string; onNavigate?: (tab: 'planner' | 'schedule') => void;
+}) => (
+  <div className="flex flex-col items-center justify-center h-72 gap-3 border-2 border-dashed border-slate-200 rounded-2xl bg-white text-center px-6">
+    <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center">
+      <CalendarClock size={24} className="text-amber-400" />
+    </div>
+    <div>
+      <p className="font-black text-slate-700">{title}</p>
+      <p className="text-sm text-slate-400 mt-1">{subtitle}</p>
+    </div>
+    {onNavigate && (
+      <button
+        onClick={() => onNavigate('planner')}
+        className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+      >
+        В планировщик <ArrowRight size={14} />
+      </button>
+    )}
+  </div>
+);

@@ -44,6 +44,7 @@ import {
   GroupConstraintCreateDto,
   AuditoriumConstraintCreateDto,
   ScheduleResultDto,
+  PeriodReadinessDto,
   StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
 
@@ -170,6 +171,15 @@ export const ScheduleService = {
    * Загрузить существующее расписание из БД.
    * Используется при старте приложения для отображения уже сгенерированного расписания.
    */
+  /**
+   * Готовность периода: всего к размещению / размещено / не размещено.
+   * «Всего» бэк берёт из набора генерации (query-сторона знает только размещённое).
+   */
+  getReadiness: (periodId: number): Promise<PeriodReadinessDto> =>
+      api.get<PeriodReadinessDto>('/schedule/query/readiness', { params: { periodId } })
+      .then((r) => r.data)
+      .catch(() => ({ total: 0, placed: 0, unplaced: 0 })),
+
   loadExisting: (startDate: string, endDate: string): Promise<ScheduleResultDto> =>
       api.get<ScheduleResultDto>('/schedule/query/all', {
         params: { start: startDate, end: endDate }

@@ -35,6 +35,12 @@ interface AcademicGridScheduleProps {
   } | null;
   studyPeriodId?: number;
   onPlace?: (assignmentId: number, date: string, slot: TimeSlotPair) => void | Promise<void>;
+  // Потолок высоты сетки (Tailwind-класс) — пробрасывается в AcademicGridShell.
+  // Позволяет хосту растянуть сетку до низа экрана вместо дефолтных 700px.
+  maxHeightClass?: string;
+  // Убрать тёмный тулбар шелла (заголовок/зум/развернуть). Зум остаётся на Ctrl+колесе,
+  // «Развернуть» — плавающей иконкой в углу сетки.
+  chromeless?: boolean;
 }
 
 export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
@@ -54,7 +60,9 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             onToggleLock,
                                                                             placementCandidate,
                                                                             studyPeriodId,
-                                                                            onPlace
+                                                                            onPlace,
+                                                                            maxHeightClass,
+                                                                            chromeless
                                                                           }) => {
 
   // Пины (Фича 2) активны только если хост передал обработчик закрепления —
@@ -617,6 +625,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       <AcademicGridShell
           startDate={startDate}
           endDate={endDate}
+          maxHeightClass={maxHeightClass}
+          chromeless={chromeless}
           renderCell={renderScheduleCell}
           overlay={selectedLesson && (
               <div

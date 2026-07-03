@@ -3,10 +3,14 @@ package ru.controllers.read;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import ru.dto.PeriodReadinessDto;
 import ru.dto.ScheduleResultDto;
 import ru.entity.read.ScheduleView;
 import ru.services.ScheduleResponseService;
+import ru.services.generation.GenerationScope;
+import ru.services.generation.GenerationScopeResolver;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -33,6 +37,8 @@ public class ScheduleQueryController {
 
     private final ru.repository.read.ScheduleViewRepository viewRepository;
     private final ScheduleResponseService responseService;
+    // Резолвер набора генерации: даёт «всего занятий к размещению» без запуска распределения.
+    private final GenerationScopeResolver scopeResolver;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -279,5 +285,43 @@ public class ScheduleQueryController {
                 grid.size(),
                 allLessons.size()
         );
+    }
+
+    /**
+     * GET /api/schedule/query/readiness?periodId=X
+     *
+     * <p>Готовность расписания периода: сколько занятий <b>всего</b> надо разместить,
+     * сколько уже размещено и сколько не размещено. «Всего» query-сторона сама не знает
+     * (в {@code /all} unplacedCount захардкожен в 0), поэтому берём его из того же набора,
+     * что идёт в генерацию — {@link GenerationScope#lessons()} — но БЕЗ запуска
+     * распределения. Резолвер навигирует ленивые ассоциации (слоты/назначения), поэтому
+     * метод read-only транзакционный.</p>
+     *
+     * @param periodId учебный период
+     * @return total / placed / unplaced (при периоде без курсов — нули)
+     */
+    @GetMapping("/readiness")
+    @Transactional(readOnly = true)
+    public PeriodReadinessDto getPeriodReadiness(@RequestParam Integer periodId) {
+        try {
+            GenerationScope scope = scopeResolver.resolve(periodId, null);
+            int total = scope.lessons().size();
+
+            // Размещено = уникальных placement в проекции за даты периода
+            // (одно занятие = один placement, даже если обслуживает несколько групп).
+            long placed = viewRepository
+                    .findByPeriod(scope.period().getStartDate(), scope.period().getEndDate())
+                    .stream()
+                    .map(ScheduleView::getPlacementId)
+                    .distinct()
+                    .count();
+
+            int unplaced = Math.max(0, total - (int) placed);
+            return new PeriodReadinessDto(total, (int) placed, unplaced);
+        } catch (IllegalStateException e) {
+            // Период без курсов — размещать нечего.
+            log.info("Readiness: период id={} без курсов, нули", periodId);
+            return new PeriodReadinessDto(0, 0, 0);
+        }
     }
 }

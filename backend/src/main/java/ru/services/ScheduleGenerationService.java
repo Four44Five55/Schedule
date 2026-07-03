@@ -2,6 +2,7 @@ package ru.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.entity.*;
@@ -34,6 +35,13 @@ public class ScheduleGenerationService {
     private final ru.repository.write.LessonPlacementRepository placementRepo;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    /**
+     * Порог хранения архивных сессий (дней). Архивные сессии старше этого возраста удаляются
+     * при следующей генерации ({@link #purgeOldArchivedSessions()}). {@code <= 0} — чистка выключена.
+     */
+    @Value("${schedule.session.archive-retention-days:30}")
+    private int archiveRetentionDays;
 
     /**
      * Строит workspace и запускает распределение для уже разрешённой области генерации.
@@ -225,6 +233,10 @@ public class ScheduleGenerationService {
             //    активные сессии этого периода (Путь 2). Сессии других семестров не трогаем.
             archivePreviousSessions(session.getId(), scope.period().getId(), user);
 
+            // 5.1 Разовая чистка «протухшего» архива. Планировщика нет (приложение не работает
+            //     постоянно), поэтому цепляемся к генерации — она заведомо идёт при живом приложении.
+            purgeOldArchivedSessions();
+
             // 6. Событие с ПОЛНЫМ набором (пины + сгенерированное) + рамки периода →
             //    проектор перестроит view только для этого периода.
             eventPublisher.publishEvent(new ru.events.ScheduleGeneratedEvent(
@@ -288,6 +300,26 @@ public class ScheduleGenerationService {
         previous.forEach(s -> s.updateStatus(ru.enums.SessionStatus.ARCHIVED, user));
         sessionRepo.saveAll(previous);
         log.info("🗄️  Архивировано прежних активных сессий периода: {}", previous.size());
+    }
+
+    /**
+     * Разовая чистка «протухших» архивных сессий (замена планировщика для непостоянно
+     * работающего приложения — см. вызов в {@link #runGeneration}).
+     *
+     * <p>Удаляет только сессии в статусе {@link ru.enums.SessionStatus#ARCHIVED}, не обновлявшиеся
+     * дольше {@link #archiveRetentionDays} дней; связанные {@code lesson_placement} уходят каскадом
+     * по FK ({@code ON DELETE CASCADE}). Только что заархивированные сессии под порог не попадают
+     * (их {@code updatedAt} — сейчас). При {@code archiveRetentionDays <= 0} чистка отключена.</p>
+     */
+    private void purgeOldArchivedSessions() {
+        if (archiveRetentionDays <= 0) {
+            return;
+        }
+        java.time.LocalDateTime threshold = java.time.LocalDateTime.now().minusDays(archiveRetentionDays);
+        int removed = sessionRepo.deleteOldArchivedSessions(ru.enums.SessionStatus.ARCHIVED, threshold);
+        if (removed > 0) {
+            log.info("🧹 Удалено протухших архивных сессий (старше {} дн.): {}", archiveRetentionDays, removed);
+        }
     }
 
     /**

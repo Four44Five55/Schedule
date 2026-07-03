@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format, addDays, eachWeekOfInterval } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar } from 'lucide-react';
@@ -93,6 +93,20 @@ export interface AcademicGridShellProps {
    * ДОЛЖЕН вернуть один элемент `<td>` — каркас оборачивает его ключом сам.
    */
   renderCell: (ctx: GridCellContext) => React.ReactNode;
+  /**
+   * Tailwind-класс потолка высоты контейнера сетки в обычном (не fullscreen) режиме.
+   * По умолчанию `max-h-[700px]`. Хост может передать вьюпорт-зависимую высоту
+   * (напр. `max-h-[calc(100vh_-_200px)]` — подчёркивания = пробелы в Tailwind,
+   * иначе calc невалиден), чтобы сетка тянулась до низа экрана.
+   */
+  maxHeightClass?: string;
+  /**
+   * Убирает тёмный тулбар (заголовок + кнопки зума + «Развернуть»). Зум остаётся
+   * доступен колесом (Ctrl+колесо), а «Развернуть» — плавающей иконкой в углу
+   * сетки. Используется там, где заголовок избыточен (раздел «Расписание»).
+   * ВНИМАНИЕ: скрывает и `toolbarExtras` — не включать для сеток с легендой.
+   */
+  chromeless?: boolean;
 }
 
 export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
@@ -102,9 +116,27 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   toolbarExtras,
   overlay,
   renderCell,
+  maxHeightClass = 'max-h-[700px]',
+  chromeless = false,
 }) => {
   const [zoom, setZoom] = useState<ZoomLevel>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Зум колесом мыши: Ctrl+колесо меняет уровень (0/1/2), обычное колесо скроллит
+  // сетку. Слушатель non-passive — иначе preventDefault (отмена зума страницы
+  // браузером) не сработает. Тач-пинч тоже шлёт ctrl+wheel → тоже зумит сетку.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => Math.max(0, Math.min(2, e.deltaY < 0 ? z + 1 : z - 1)) as ZoomLevel);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const mondays = useMemo(
     () => eachWeekOfInterval({ start: startDate, end: endDate }, { weekStartsOn: 1 }),
@@ -128,7 +160,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   const headerBorderClass = 'border-slate-400';
 
   const cellHeight = zoom === 0 ? 'h-9' : zoom === 1 ? 'h-14' : 'h-24';
-  const containerMaxHeight = isFullscreen ? 'h-[90vh]' : 'max-h-[700px]';
+  const containerMaxHeight = isFullscreen ? 'h-[90vh]' : maxHeightClass;
 
   return (
     <div
@@ -137,6 +169,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
         isFullscreen && 'fixed inset-0 z-[100] bg-slate-50 p-4 overflow-hidden flex flex-col'
       )}
     >
+      {!chromeless && (
       <div className="flex items-center justify-between bg-slate-900 text-white p-1 px-3 rounded-xl shadow-lg shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 border-r border-slate-700 pr-4 py-1">
@@ -175,16 +208,26 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
           {isFullscreen ? 'Свернуть' : 'Развернуть'}
         </button>
       </div>
+      )}
 
       {overlay}
 
       <div
         className={cn(
-          'bg-white shadow-2xl rounded-xl border-2 border-slate-300 overflow-hidden flex flex-col transition-all duration-500',
+          'relative bg-white shadow-2xl rounded-xl border-2 border-slate-300 overflow-hidden flex flex-col transition-all duration-500',
           containerMaxHeight
         )}
       >
-        <div className="overflow-auto custom-scrollbar flex-1">
+        {chromeless && (
+          <button
+            onClick={() => setIsFullscreen((v) => !v)}
+            title={isFullscreen ? 'Свернуть' : 'Развернуть'}
+            className="absolute top-1 right-1 z-40 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg shadow-lg backdrop-blur transition-colors"
+          >
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        )}
+        <div ref={scrollRef} className="overflow-auto custom-scrollbar flex-1">
           <table className={cn('w-full border-collapse select-none', zoom === 0 ? 'table-fixed' : 'table-auto')}>
             <thead>
               <tr className="bg-slate-900 text-white">
