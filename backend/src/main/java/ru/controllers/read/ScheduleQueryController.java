@@ -39,6 +39,8 @@ public class ScheduleQueryController {
     private final ScheduleResponseService responseService;
     // Резолвер набора генерации: даёт «всего занятий к размещению» без запуска распределения.
     private final GenerationScopeResolver scopeResolver;
+    // Аналитика качества расписания преподавателей (компактность + равномерность) для дашборда.
+    private final ru.services.EducatorScheduleReportService educatorScheduleReportService;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -323,5 +325,23 @@ public class ScheduleQueryController {
             log.info("Readiness: период id={} без курсов, нули", periodId);
             return new PeriodReadinessDto(0, 0, 0);
         }
+    }
+
+    /**
+     * GET /api/schedule/query/reports/educator-quality?periodId=X
+     *
+     * <p>Качество расписания преподавателей за период: компактность (окна/одиночные/лишние
+     * дни → штраф) + равномерность (субботние пары и отклонение). Считается из
+     * {@code schedule_view} (без запуска солвера). Сводные метрики компактности — по
+     * преподавателям с флагом {@code compact_schedule}; список включает всех ведущих
+     * (компактные первыми, затем по убыванию штрафа).</p>
+     *
+     * @param periodId учебный период
+     * @return сводка + детализация по преподавателям
+     */
+    @GetMapping("/reports/educator-quality")
+    public ru.dto.PeriodScheduleQualityDto getEducatorQuality(@RequestParam Integer periodId) {
+        log.info("Query: Educator schedule quality report for periodId={}", periodId);
+        return educatorScheduleReportService.compute(periodId);
     }
 }

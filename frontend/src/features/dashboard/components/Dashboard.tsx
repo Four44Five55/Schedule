@@ -3,7 +3,7 @@ import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
 import { ResourceService, ScheduleService } from '../../../services/apiServices';
-import { StudyPeriodDto, ScheduleResultDto, PeriodReadinessDto, TimeSlotPair } from '../../../types/api';
+import { StudyPeriodDto, ScheduleResultDto, PeriodReadinessDto, PeriodScheduleQualityDto, TimeSlotPair } from '../../../types/api';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
   AlertTriangle, CalendarClock, ArrowRight, Info
@@ -24,7 +24,6 @@ const SLOTS_13: ReadonlySet<TimeSlotPair> = new Set<TimeSlotPair>(['FIRST', 'SEC
 const PERIOD_STORAGE_KEY = 'unischedule.dashboard.selectedPeriodId';
 
 interface GroupDensity { group: string; occ13: number; inFourth: number; free13: number; total: number; }
-interface EducatorLoad { name: string; total: number; sat: number; dev: number; }
 
 /**
  * Дашборд «Готовность периода». Все метрики считаются НА ФРОНТЕ из одного запроса
@@ -45,6 +44,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   });
   const [result, setResult] = useState<ScheduleResultDto | null>(null);
   const [readiness, setReadiness] = useState<PeriodReadinessDto | null>(null);
+  const [quality, setQuality] = useState<PeriodScheduleQualityDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [bootstrapped, setBootstrapped] = useState(false);
 
@@ -83,21 +83,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // Данные выбранного периода — перезагружаются при смене периода.
   // Размещённое расписание (для плотности/суббот) + готовность (всего/размещено/не размещено).
   useEffect(() => {
-    if (!period) { setResult(null); setReadiness(null); setLoading(false); return; }
+    if (!period) { setResult(null); setReadiness(null); setQuality(null); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all([
       ScheduleService.loadExisting(period.startDate, period.endDate),
       ScheduleService.getReadiness(period.id),
+      ScheduleService.getEducatorQuality(period.id),
     ])
-      .then(([res, rd]) => {
+      .then(([res, rd, q]) => {
         if (cancelled) return;
         setResult(res);
         setReadiness(rd);
+        setQuality(q);
       })
       .catch((e) => {
         console.error('Дашборд: не удалось загрузить данные периода:', e);
-        if (!cancelled) { setResult(null); setReadiness(null); }
+        if (!cancelled) { setResult(null); setReadiness(null); setQuality(null); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -125,30 +127,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
       return { group, occ13, inFourth, free13: capacity13 - occ13, total: grp.length };
     }).sort((a, b) => a.free13 - b.free13); // самые «забитые» сверху
 
-    // Субботняя нагрузка по преподавателям.
-    const eduMap = new Map<string, { total: number; sat: number }>();
-    lessons.forEach((l) => {
-      const isSat = getDay(parseISO(l.date)) === 6;
-      l.educatorNames.forEach((e) => {
-        const cur = eduMap.get(e) ?? { total: 0, sat: 0 };
-        cur.total += 1;
-        if (isSat) cur.sat += 1;
-        eduMap.set(e, cur);
-      });
-    });
-    const avgSat = eduMap.size
-      ? Array.from(eduMap.values()).reduce((s, v) => s + v.sat, 0) / eduMap.size
-      : 0;
-    const eduStats: EducatorLoad[] = Array.from(eduMap.entries())
-      .map(([name, v]) => ({ name, total: v.total, sat: v.sat, dev: v.sat - avgSat }))
-      .sort((a, b) => b.sat - a.sat);
-
-    return { workingDays, capacity13, groupStats, eduStats, avgSat };
+    // Субботняя нагрузка преподавателей больше НЕ считается здесь — она уехала на бэк
+    // (единый отчёт качества расписания преподавателей, см. getEducatorQuality).
+    return { workingDays, capacity13, groupStats };
   }, [result, period]);
 
   const readyPct = readiness && readiness.total > 0
     ? Math.round((readiness.placed / readiness.total) * 100)
     : 0;
+
+  // Только преподаватели с флагом компактности (для остальных это не приоритет). Уже
+  // отсортированы бэком: компактные первыми, худшие (больший штраф) сверху.
+  const compactEducators = quality?.educators.filter((e) => e.compact) ?? [];
 
   if (!bootstrapped) {
     return (
@@ -240,7 +230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
           onNavigate={onNavigate}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
           {/* Плотность групп 1–3 */}
           <Card title="Плотность групп (пары 1–3)">
             <div className="space-y-3">
@@ -281,46 +271,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
             </div>
           </Card>
 
-          {/* Субботняя нагрузка преподавателей */}
-          <Card title="Суббота по преподавателям">
-            <div className="space-y-3">
-              <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
-                <Info size={13} className="shrink-0 mt-0.5" />
-                Среднее по субботам: <b className="text-slate-500">{(metrics?.avgSat ?? 0).toFixed(1)}</b> пар.
-                Красным — заметно выше среднего (кандидаты на разгрузку).
-              </p>
-              <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] uppercase tracking-wide text-slate-400">
-                    <tr className="border-b border-slate-100">
-                      <th className="text-left font-bold py-1.5">Преподаватель</th>
-                      <th className="text-right font-bold px-2">Суббот</th>
-                      <th className="text-right font-bold px-2">Всего</th>
-                      <th className="text-right font-bold pl-2">± ср.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {metrics?.eduStats.map((e) => {
-                      const hot = e.dev >= 1.5;
-                      return (
-                        <tr key={e.name} className={cn('transition-colors', hot && 'bg-red-50/60')}>
-                          <td className="py-1.5 font-bold text-slate-700 truncate max-w-[140px]">{e.name}</td>
-                          <td className={cn('text-right px-2 font-black tabular-nums', hot ? 'text-red-600' : 'text-slate-700')}>
-                            {e.sat}
-                          </td>
-                          <td className="text-right px-2 tabular-nums text-slate-400">{e.total}</td>
-                          <td className={cn('text-right pl-2 tabular-nums font-bold',
-                            e.dev > 0.05 ? 'text-red-500' : e.dev < -0.05 ? 'text-emerald-500' : 'text-slate-300')}>
-                            {e.dev > 0 ? '+' : ''}{e.dev.toFixed(1)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+          {/* Преподаватели: компактность + равномерность (единый отчёт с бэка) */}
+          {compactEducators.length > 0 && (
+            <Card title="Преподаватели: компактность и нагрузка">
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <Chip label="Плотно уложены" value={`${quality!.wellPacked}/${quality!.compactEducators}`} tone="emerald" />
+                  <Chip label="Ср. штраф" value={quality!.avgPenalty} tone="slate" />
+                  <Chip label="Одиночных дней" value={quality!.totalSinglePairDays} tone="amber" />
+                  <Chip label="Окон" value={quality!.totalWindowSlots} tone="red" />
+                  <Chip label="Ср. суббота" value={quality!.avgSaturday.toFixed(1)} tone="slate" />
+                </div>
+                <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
+                  <Info size={13} className="shrink-0 mt-0.5" />
+                  Штраф = окна + 2·одиночные дни + лишние дни (меньше — плотнее; суббота в штраф не входит).
+                  Цель — 2–3 пары в учебный день без окон. Флаговые преподаватели, худшие сверху.
+                </p>
+                <div className="max-h-[360px] overflow-auto custom-scrollbar -mx-1 px-1">
+                  <table className="w-full text-xs">
+                    <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                      <tr className="border-b border-slate-100">
+                        <th className="text-left font-bold py-1.5">Преподаватель</th>
+                        <th className="text-right font-bold px-2">Пар/день</th>
+                        <th className="text-right font-bold px-2">Одиноч.</th>
+                        <th className="text-right font-bold px-2">Окна</th>
+                        <th className="text-right font-bold px-2">Суббот</th>
+                        <th className="text-right font-bold px-2">± ср.</th>
+                        <th className="text-right font-bold pl-2">Штраф</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {compactEducators.map((e) => {
+                        const hot = e.windowSlots > 0 || e.singlePairDays >= 5;
+                        return (
+                          <tr key={e.educatorId} className={cn('transition-colors', hot && 'bg-red-50/60')}>
+                            <td className="py-1.5 font-bold text-slate-700 truncate max-w-[160px]">{e.educatorName}</td>
+                            <td className="text-right px-2 tabular-nums text-slate-500">{e.avgPairsPerDay.toFixed(1)}</td>
+                            <td className={cn('text-right px-2 tabular-nums font-bold', e.singlePairDays > 0 ? 'text-amber-600' : 'text-slate-300')}>
+                              {e.singlePairDays}
+                            </td>
+                            <td className={cn('text-right px-2 tabular-nums font-bold', e.windowSlots > 0 ? 'text-red-600' : 'text-slate-300')}>
+                              {e.windowSlots}
+                            </td>
+                            <td className="text-right px-2 tabular-nums text-slate-500">{e.saturdayPairs}</td>
+                            <td className={cn('text-right px-2 tabular-nums font-bold',
+                              e.saturdayDeviation > 0.05 ? 'text-red-500' : e.saturdayDeviation < -0.05 ? 'text-emerald-500' : 'text-slate-300')}>
+                              {e.saturdayDeviation > 0 ? '+' : ''}{e.saturdayDeviation.toFixed(1)}
+                            </td>
+                            <td className={cn('text-right pl-2 tabular-nums font-black', e.penalty === 0 ? 'text-emerald-600' : hot ? 'text-red-600' : 'text-slate-600')}>
+                              {e.penalty}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
         </div>
       )}
       </>
@@ -360,6 +369,12 @@ const Kpi = ({ label, value, tone, icon: Icon, hint }: {
       </div>
     </div>
   </Card>
+);
+
+const Chip = ({ label, value, tone }: { label: string; value: React.ReactNode; tone: keyof typeof TONES | string }) => (
+  <span className={cn('inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold', TONES[tone] ?? TONES.slate)}>
+    {label}: <span className="font-black tabular-nums">{value}</span>
+  </span>
 );
 
 const Inventory = ({ label, value, icon: Icon }: { label: string; value: number; icon: React.ElementType }) => (

@@ -45,6 +45,7 @@ import {
   AuditoriumConstraintCreateDto,
   ScheduleResultDto,
   PeriodReadinessDto,
+  PeriodScheduleQualityDto,
   StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
 
@@ -179,6 +180,12 @@ export const ScheduleService = {
       api.get<PeriodReadinessDto>('/schedule/query/readiness', { params: { periodId } })
       .then((r) => r.data)
       .catch(() => ({ total: 0, placed: 0, unplaced: 0 })),
+
+  /** Качество расписания преподавателей за период: компактность + равномерность (суббота). */
+  getEducatorQuality: (periodId: number): Promise<PeriodScheduleQualityDto | null> =>
+      api.get<PeriodScheduleQualityDto>('/schedule/query/reports/educator-quality', { params: { periodId } })
+      .then((r) => r.data)
+      .catch(() => null),
 
   loadExisting: (startDate: string, endDate: string): Promise<ScheduleResultDto> =>
       api.get<ScheduleResultDto>('/schedule/query/all', {

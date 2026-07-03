@@ -415,6 +415,39 @@ export interface PeriodReadinessDto {
   unplaced: number;
 }
 
+// ============ КАЧЕСТВО РАСПИСАНИЯ ПРЕПОДАВАТЕЛЕЙ (дашборд) ============
+
+/**
+ * Качество расписания одного преподавателя за период: компактность (penalty меньше = плотнее)
+ * + равномерность нагрузки (субботние пары и отклонение от среднего).
+ */
+export interface EducatorScheduleQualityDto {
+  educatorId: number;
+  educatorName: string;
+  compact: boolean;          // стоит ли флаг compact_schedule
+  teachingDays: number;
+  totalPairs: number;
+  avgPairsPerDay: number;
+  singlePairDays: number;    // дней с одной парой (ось междневная)
+  windowDays: number;
+  windowSlots: number;       // окна внутри дня (ось внутридневная)
+  excessDays: number;        // «лишние» дни сверх идеала
+  penalty: number;           // сводный штраф компактности (суббота НЕ входит)
+  saturdayPairs: number;     // пар в субботы
+  saturdayDeviation: number; // отклонение субботних пар от среднего по преподавателям
+}
+
+/** Сводка качества расписания за период (компактность — по флаговым; avgSaturday — по всем). */
+export interface PeriodScheduleQualityDto {
+  compactEducators: number;
+  wellPacked: number;            // из флаговых: 0 окон и 0 одиночных дней
+  avgPenalty: number;
+  totalSinglePairDays: number;
+  totalWindowSlots: number;
+  avgSaturday: number;           // среднее субботних пар по всем ведущим
+  educators: EducatorScheduleQualityDto[]; // все ведущие; компактные первыми, по убыванию штрафа
+}
+
 // ============ SCHEDULE RESULT ============
 export interface ScheduleResultDto {
   status: string;
