@@ -5,7 +5,7 @@ import {cn} from '../../../utils/cn';
 import {AlertTriangle, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
 import {CQRSService} from '../../../services/cqrsApiService';
 import {CurriculumService} from '../../../services/apiServices';
-import {AcademicGridShell, GridCellContext, SLOTS, zoomFontClasses} from '../../../components/grid/AcademicGridShell';
+import {AcademicGridShell, GridCellContext, SLOTS} from '../../../components/grid/AcademicGridShell';
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];
@@ -371,8 +371,17 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
 
   // Рендер одной ячейки расписания через контекст ячейки (как у AcademicGridShell).
   // Не зависит от способа обхода сетки — это шаг к переходу на общий каркас.
-  const renderScheduleCell = ({ date, dateStr, weekIdx, slot, slotIdx, zoom }: GridCellContext) => {
-    const fonts = zoomFontClasses(zoom);
+  const renderScheduleCell = ({ date, dateStr, weekIdx, slot, slotIdx, factor }: GridCellContext) => {
+    // Пропорциональный зум (как в Excel): базовые кегли/иконки × factor.
+    // База ×1: аббревиатура 15px, тело (вид/группы/аудитория) 11px.
+    // Excel меряет шрифт в пунктах (pt), веб — в CSS-px: 1pt ≈ 1.333px.
+    // База ×1 = Excel-эквивалент: аббревиатура 15pt→20px, вид/аудитория 10pt→13px.
+    const abbrPx = Math.round(20 * factor);
+    const bodyPx = Math.round(13 * factor);   // вид занятия и аудитория (10pt)
+    const iconPx = Math.round(12 * factor);   // иконки сцепки (Link/Unlink) и предупреждение
+    const warnPx = Math.round(13 * factor);
+    const lockPx = Math.round(6 * factor);    // замок — вдвое меньше прочих иконок
+    const cellPx = Math.round(60 * factor);   // база ячейки 60×60 px при ×1
     const gridKey = `${dateStr}_${slot.id}`;
     const lessonsInCell = grid[gridKey] || [];
 
@@ -427,6 +436,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         (lesson.kindOfStudy === 'EXAM' ||
             lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
             lesson.kindOfStudy === 'CREDIT_WITHOUT_GRADE');
+    const isQuiz = lesson?.kindOfStudy === 'QUIZ';
 
     // Занятая ячейка, где препод выбранного занятия занят ДРУГИМ
     // занятием (скрытая занятость, не видимая в этом виде) — жёлтая.
@@ -444,9 +454,13 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         : lesson?.kindOfStudy === 'LECTURE'
             ? 'bg-rose-150 text-slate-900 hover:bg-rose-200'
             : 'bg-sky-150 text-slate-900 hover:bg-sky-200';
+    // Фон занятой ячейки в покое — по «весу» вида: тёмно-серый у экзаменов/зачётов,
+    // светло-серый у контрольных, обычные занятия — как свободная ячейка (белый).
     const restingBg = isExamOrCredit
         ? 'bg-slate-300 text-slate-900 hover:bg-slate-400'
-        : 'bg-slate-100 text-slate-900 hover:bg-slate-200';
+        : isQuiz
+            ? 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+            : 'bg-white text-slate-900 hover:bg-slate-50';
     const occupiedBg = isTeacherBusyHidden
         ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
         : isDisciplineMatch ? disciplineBg : restingBg;
@@ -471,6 +485,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     return (
         <td
             key={weekIdx}
+            style={{ width: cellPx, minWidth: cellPx }}
             onClick={() => {
               if (isMoveTarget) { handleCellMove(dateStr, slot.id); return; }
               if (lesson) handleLessonClick(lesson);
@@ -536,19 +551,19 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                         )}
                     >
                       {detachedBelow
-                          ? <Unlink size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-400" />
-                          : <Link2 size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-600" />}
+                          ? <Unlink size={iconPx} className="text-slate-400" />
+                          : <Link2 size={iconPx} className="text-slate-600" />}
                     </button>
                 )}
               </>
           )}
           {isConflict && (
               <div className="absolute top-0.5 left-0.5 z-30 text-red-600 pointer-events-none">
-                <AlertTriangle size={zoom === 0 ? 9 : zoom === 1 ? 11 : 13} />
+                <AlertTriangle size={warnPx} />
               </div>
           )}
           {lesson ? (
-              <div className={cn("flex flex-col h-full leading-[1] justify-between p-0.5 relative", fonts.main)}>
+              <div className="flex flex-col h-full leading-[1] justify-between p-0.5 relative" style={{ fontSize: bodyPx }}>
                 {/* Замок (Фича 2): в редактировании — тумблер закрепления, вне — индикатор пина.
                     Только когда пины включены хостом (планировщик). */}
                 {pinningEnabled && isEditMode && lesson.placementId ? (
@@ -567,53 +582,56 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                             ? 'Открепить (распределитель снова сможет двигать)'
                             : 'Закрепить — распределитель не будет двигать это занятие'}
                         className={cn(
-                            'absolute top-0.5 right-0.5 z-30 rounded-full ring-1 p-[1px] bg-white pointer-events-auto cursor-pointer transition-colors',
+                            'absolute top-0 right-0 z-30 rounded-full ring-1 p-[1px] bg-white pointer-events-auto cursor-pointer transition-colors',
                             lesson.locked ? 'ring-amber-400 hover:ring-amber-600' : 'ring-slate-300 hover:ring-blue-500'
                         )}
                     >
                       {lesson.locked
-                          ? <Lock size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-amber-600" />
-                          : <LockOpen size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} className="text-slate-400" />}
+                          ? <Lock size={lockPx} className="text-amber-600" />
+                          : <LockOpen size={lockPx} className="text-slate-400" />}
                     </button>
                 ) : pinningEnabled && lesson.locked ? (
-                    <div className="absolute top-0.5 right-0.5 z-30 text-amber-600 pointer-events-none" title="Закреплено вручную">
-                      <Lock size={zoom === 0 ? 8 : zoom === 1 ? 10 : 12} />
+                    <div className="absolute top-0 right-0 z-30 text-amber-600 pointer-events-none" title="Закреплено вручную">
+                      <Lock size={lockPx} />
                     </div>
                 ) : null}
                 {isEducatorView ? (
                     <>
-                      {/* Преподаватель: дисциплина+вид+тема / группы / аудитория */}
-                      <div className="flex items-baseline gap-1 whitespace-nowrap overflow-hidden border-b border-slate-300/50 pb-0.5 mb-0.5">
-                        <span className={cn("font-black tracking-tighter", fonts.abbr)}>
+                      {/* Преподаватель: дисциплина+вид+тема / группы (переносятся) / аудитория.
+                          Шрифт дисциплины = шрифту вида (bodyPx). Список групп переносится по
+                          ширине ячейки, а высота строки растёт под число строк (автоподбор
+                          по высоте — см. рост ячейки в каркасе). */}
+                      <div className="flex items-baseline gap-1 whitespace-nowrap overflow-hidden">
+                        <span className="font-black tracking-tighter" style={{ fontSize: bodyPx }}>
                           {lesson.disciplineAbbreviation}
                         </span>
-                        <span className={cn("font-bold opacity-60", fonts.sub)}>
+                        <span className="font-bold opacity-60" style={{ fontSize: bodyPx }}>
                           {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
                         </span>
                       </div>
-                      <div className="font-bold truncate flex-1 flex items-center">
+                      <div className="font-bold text-center leading-tight break-words flex-1 flex items-center justify-center">
                         {lesson.groupNames.join(', ') || '—'}
                       </div>
-                      <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", fonts.sub)}>
+                      <div className="font-mono font-black text-right opacity-80" style={{ fontSize: bodyPx }}>
                         {lesson.auditoriumNames.join(', ')}
                       </div>
                     </>
                 ) : (
                     <>
-                      <div className="font-bold border-b border-slate-300/50 pb-0.5 mb-0.5 whitespace-nowrap overflow-hidden opacity-60">
+                      <div className="font-bold whitespace-nowrap overflow-hidden opacity-60">
                         {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
                       </div>
-                      <div className={cn("font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center", fonts.abbr)}>
+                      <div className="font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center" style={{ fontSize: abbrPx }}>
                         {lesson.disciplineAbbreviation}
                       </div>
-                      <div className={cn("font-mono font-black mt-0.5 text-right opacity-80", fonts.sub)}>
+                      <div className="font-mono font-black text-right opacity-80" style={{ fontSize: bodyPx }}>
                         {lesson.auditoriumNames[0]}
                       </div>
                     </>
                 )}
               </div>
           ) : activeConstraint ? (
-              <div className={cn("flex items-center justify-center h-full font-black text-slate-900 tracking-tighter", fonts.abbr)}>
+              <div className="flex items-center justify-center h-full font-black text-slate-900 tracking-tighter" style={{ fontSize: abbrPx }}>
                 {activeConstraint.abbreviation}
               </div>
           ) : null}

@@ -16,6 +16,13 @@ import { cn } from '../../utils/cn';
 
 export type ZoomLevel = 0 | 1 | 2;
 
+/**
+ * Множители зума (Excel-подобный равномерный масштаб). Применяются ОДИНАКОВО
+ * к высоте строки, кеглю шрифта и иконкам, поэтому ячейка и текст растут в одной
+ * пропорции (×1 = база: ячейка 60px, аббревиатура 15px, тело 11px).
+ */
+export const ZOOM_FACTORS: Record<ZoomLevel, number> = { 0: 0.8, 1: 1, 2: 1.25 };
+
 export interface SlotDef {
   id: TimeSlotPair;
   label: string;
@@ -57,7 +64,7 @@ export interface ZoomFontClasses {
 
 export const zoomFontClasses = (zoom: ZoomLevel): ZoomFontClasses => ({
   main: zoom === 0 ? 'text-[8px]' : zoom === 1 ? 'text-[11px]' : 'text-[13px]',
-  abbr: zoom === 0 ? 'text-[10px]' : zoom === 1 ? 'text-[13px]' : 'text-[15px]',
+  abbr: zoom === 0 ? 'text-[12px]' : zoom === 1 ? 'text-[13px]' : 'text-[15px]',
   sub: zoom === 0 ? 'text-[7px]' : zoom === 1 ? 'text-[9px]' : 'text-[11px]',
 });
 
@@ -77,6 +84,8 @@ export interface GridCellContext {
   slotIdx: number;
   /** Текущий уровень зума — для адаптивного размера контента ячейки. */
   zoom: ZoomLevel;
+  /** Множитель зума (Excel-подобный): базовые px контента множьте на него. */
+  factor: number;
 }
 
 export interface AcademicGridShellProps {
@@ -107,6 +116,12 @@ export interface AcademicGridShellProps {
    * ВНИМАНИЕ: скрывает и `toolbarExtras` — не включать для сеток с легендой.
    */
   chromeless?: boolean;
+  /**
+   * Базовая высота строки в px при zoom=1; масштабируется множителем зума.
+   * По умолчанию 60 (ячейка расписания 60×60 при 100%). Сетка ограничений
+   * (одна строка текста) передаёт меньше, чтобы не раздуваться.
+   */
+  rowHeightBase?: number;
 }
 
 export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
@@ -118,8 +133,9 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   renderCell,
   maxHeightClass = 'max-h-[700px]',
   chromeless = false,
+  rowHeightBase = 60,
 }) => {
-  const [zoom, setZoom] = useState<ZoomLevel>(0);
+  const [zoom, setZoom] = useState<ZoomLevel>(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -159,7 +175,10 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   const borderClass = 'border-slate-300';
   const headerBorderClass = 'border-slate-400';
 
-  const cellHeight = zoom === 0 ? 'h-9' : zoom === 1 ? 'h-14' : 'h-24';
+  // Пропорциональный зум: единый множитель тянет и высоту строки, и кегли/иконки
+  // контента (последние — в renderCell через ctx.factor).
+  const factor = ZOOM_FACTORS[zoom];
+  const rowHeightPx = Math.round(rowHeightBase * factor);
   const containerMaxHeight = isFullscreen ? 'h-[90vh]' : maxHeightClass;
 
   return (
@@ -273,7 +292,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                   </tr>
 
                   {SLOTS.map((slot, slotIdx) => (
-                    <tr key={slot.id} className={cn('group transition-all duration-300', cellHeight)}>
+                    <tr key={slot.id} style={{ height: rowHeightPx }} className="group transition-all duration-300">
                       <td className={cn('border-r p-0.5 text-center sticky left-6 bg-white z-10 w-10 group-hover:bg-slate-50 transition-colors', borderClass)}>
                         <div className="font-black text-slate-800 text-[9px]">{slot.label}</div>
                         <div className="text-[6px] text-slate-400 font-mono leading-none">{slot.time}</div>
@@ -284,7 +303,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                         const dateStr = format(date, 'yyyy-MM-dd');
                         return (
                           <React.Fragment key={weekIdx}>
-                            {renderCell({ date, dateStr, monday, weekIdx, slot, slotIdx, zoom })}
+                            {renderCell({ date, dateStr, monday, weekIdx, slot, slotIdx, zoom, factor })}
                           </React.Fragment>
                         );
                       })}

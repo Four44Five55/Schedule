@@ -208,6 +208,7 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
     <AcademicGridShell
       startDate={startDate}
       endDate={endDate}
+      rowHeightBase={40}
       title={entityLabel ? `Ограничения · ${entityLabel}` : 'Ограничения'}
       toolbarExtras={toolbar}
       renderCell={({ date, dateStr, slot, slotIdx, weekIdx, zoom }) => {

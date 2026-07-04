@@ -196,7 +196,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     { id: 'streams', label: 'Потоки', icon: Users },
     { id: 'assignments', label: 'Назначения', icon: Settings },
     { id: 'constraints', label: 'Ограничения', icon: ShieldAlert },
-    { id: 'schedule', label: 'Расписание', icon: CalendarRange },
+    { id: 'schedule', label: 'Ручная раскладка', icon: CalendarRange },
     { id: 'generation', label: 'Генерация', icon: Play },
   ];
 
