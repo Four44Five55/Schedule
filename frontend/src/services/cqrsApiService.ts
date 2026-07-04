@@ -101,9 +101,9 @@ export const CQRSService = {
    * Аддитивная генерация одного курса (дисциплины): раскладывает только неразмещённые занятия
    * «вокруг» уже стоящих (инкрементальная сборка). Существующее не трогается.
    */
-  generateCourse: (sessionId: string, studyPeriodId: number, courseId: number): Promise<ScheduleSessionDto> => {
+  generateCourse: (sessionId: string, studyPeriodId: number, courseId: number, kinds?: string[]): Promise<ScheduleSessionDto> => {
     return api
-      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/generate-course`, { studyPeriodId, courseId })
+      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/generate-course`, { studyPeriodId, courseId, kinds })
       .then(r => r.data);
   },
 

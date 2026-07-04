@@ -131,11 +131,11 @@ public class ScheduleCommandController {
         @PathVariable UUID sessionId,
         @RequestBody ru.dto.command.GenerateCourseRequest request
     ) {
-        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}",
-                sessionId, request.studyPeriodId(), request.courseId());
+        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}",
+                sessionId, request.studyPeriodId(), request.courseId(), request.kinds());
 
         ScheduleSession session = generationService.generateCourseAdditive(
-            sessionId, request.studyPeriodId(), request.courseId(), "admin");
+            sessionId, request.studyPeriodId(), request.courseId(), request.kinds(), "admin");
 
         return ResponseEntity.ok(sessionMapper.toDto(session));
     }

@@ -54,6 +54,19 @@ public class ScheduleGenerationService {
             GenerationScope scope,
             List<ru.entity.write.LessonPlacement> lockedPlacements
     ) {
+        return generateWorkspace(scope, lockedPlacements, scope.lessons());
+    }
+
+    /**
+     * Как {@link #generateWorkspace(GenerationScope, List)}, но распределяет ЗАДАННЫЙ набор
+     * занятий (напр. только лекции или только практики — для per-kind инкрементальной генерации).
+     * Засев неподвижных (Фаза 0) и рамки периода — те же.
+     */
+    private ScheduleWorkspace generateWorkspace(
+            GenerationScope scope,
+            List<ru.entity.write.LessonPlacement> lockedPlacements,
+            List<Lesson> lessonsToDistribute
+    ) {
         StudyPeriod period = scope.period();
 
         // Кэш всех ячеек на рамки периода
@@ -84,7 +97,7 @@ public class ScheduleGenerationService {
         }
 
         distributionDiscipline.distribute(
-                workspace, scope.lessons(), educatorService.getAllEntities(), prePlaced);
+                workspace, lessonsToDistribute, educatorService.getAllEntities(), prePlaced);
         return workspace;
     }
 
@@ -196,13 +209,17 @@ public class ScheduleGenerationService {
      * @param sessionId     сессия периода
      * @param studyPeriodId учебный период (даты)
      * @param courseId      курс (дисциплина в периоде)
+     * @param kinds         опциональный фильтр по видам (напр. только {@code LECTURE}, или
+     *                      «практики» = все виды кроме лекций); {@code null}/пусто — вся дисциплина
      * @param user          автор
      * @return сессия с добавленными размещениями
      */
     @Transactional
     public ru.entity.write.ScheduleSession generateCourseAdditive(
-            java.util.UUID sessionId, Integer studyPeriodId, Integer courseId, String user) {
-        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}", sessionId, studyPeriodId, courseId);
+            java.util.UUID sessionId, Integer studyPeriodId, Integer courseId,
+            java.util.List<ru.enums.KindOfStudy> kinds, String user) {
+        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}",
+                sessionId, studyPeriodId, courseId, kinds);
 
         ru.entity.write.ScheduleSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Сессия не найдена: " + sessionId));
@@ -213,10 +230,15 @@ public class ScheduleGenerationService {
                 .map(ScheduleGenerationService::keyOf)
                 .collect(java.util.stream.Collectors.toSet());
 
-        // Область = один курс. Workspace с засевом ВСЕХ существующих; distribute разложит
-        // только неразмещённые занятия курса (уже стоящие пропускаются — они засеяны).
+        // Область = один курс. Опциональный фильтр по видам (лекции/практики) — иначе вся дисциплина.
         GenerationScope scope = scopeResolver.resolve(studyPeriodId, java.util.List.of(courseId));
-        ru.services.solver.ScheduleWorkspace workspace = generateWorkspace(scope, existing);
+        List<Lesson> target = (kinds == null || kinds.isEmpty())
+                ? scope.lessons()
+                : scope.lessons().stream().filter(l -> kinds.contains(l.getKindOfStudy())).toList();
+
+        // Workspace с засевом ВСЕХ существующих; distribute разложит только неразмещённые
+        // занятия целевого набора (уже стоящие пропускаются — они засеяны).
+        ru.services.solver.ScheduleWorkspace workspace = generateWorkspace(scope, existing, target);
 
         // Извлекаем ТОЛЬКО новые размещения (ключа нет среди существующих) как GENERATED.
         List<ru.entity.write.LessonPlacement> created = extractNewPlacements(workspace, session, user, existingKeys);
