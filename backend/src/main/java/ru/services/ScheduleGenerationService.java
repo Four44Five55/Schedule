@@ -179,6 +179,142 @@ public class ScheduleGenerationService {
     }
 
     /**
+     * АДДИТИВНАЯ генерация одного курса (дисциплины) — инкрементальная сборка расписания.
+     *
+     * <p>В отличие от {@link #runGeneration} (удаляет всё незапертое и переписывает scope),
+     * здесь <b>ничего существующего не удаляется</b>: ВСЕ уже стоящие размещения сессии
+     * засеваются в workspace как неподвижные (Фаза 0), а распределитель раскладывает только
+     * <b>неразмещённые</b> занятия курса «вокруг» них. Так можно собирать расписание по одной
+     * дисциплине за раз, не теряя ручные корректировки и работу по другим дисциплинам, и не
+     * запирая всё подряд между шагами. Генерируется дисциплина целиком (все виды) — чтобы
+     * учитывались равномерность и интервалы между лекциями (двухфазный распределитель).</p>
+     *
+     * <p>Гранулярность «лекции/практики» достигается очисткой по виду
+     * ({@link #clearPlacements}): сгенерировать дисциплину → очистить практики → поправить
+     * лекции вручную → сгенерировать снова (практики лягут заново вокруг лекций).</p>
+     *
+     * @param sessionId     сессия периода
+     * @param studyPeriodId учебный период (даты)
+     * @param courseId      курс (дисциплина в периоде)
+     * @param user          автор
+     * @return сессия с добавленными размещениями
+     */
+    @Transactional
+    public ru.entity.write.ScheduleSession generateCourseAdditive(
+            java.util.UUID sessionId, Integer studyPeriodId, Integer courseId, String user) {
+        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}", sessionId, studyPeriodId, courseId);
+
+        ru.entity.write.ScheduleSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Сессия не найдена: " + sessionId));
+
+        // Все существующие размещения — засев Фазы 0 (неподвижные обстоятельства).
+        List<ru.entity.write.LessonPlacement> existing = placementRepo.findBySessionId(sessionId);
+        java.util.Set<AssignmentKey> existingKeys = existing.stream()
+                .map(ScheduleGenerationService::keyOf)
+                .collect(java.util.stream.Collectors.toSet());
+
+        // Область = один курс. Workspace с засевом ВСЕХ существующих; distribute разложит
+        // только неразмещённые занятия курса (уже стоящие пропускаются — они засеяны).
+        GenerationScope scope = scopeResolver.resolve(studyPeriodId, java.util.List.of(courseId));
+        ru.services.solver.ScheduleWorkspace workspace = generateWorkspace(scope, existing);
+
+        // Извлекаем ТОЛЬКО новые размещения (ключа нет среди существующих) как GENERATED.
+        List<ru.entity.write.LessonPlacement> created = extractNewPlacements(workspace, session, user, existingKeys);
+        for (ru.entity.write.LessonPlacement p : created) {
+            session.addPlacement(p);
+        }
+        session.setStudyPeriod(scope.period());
+        session.updateStatus(ru.enums.SessionStatus.READY_FOR_EDIT, user);
+        session = sessionRepo.save(session);
+
+        // По CREATED-событию на каждое НОВОЕ размещение — проектор добавит их view, не трогая
+        // существующие (в отличие от ScheduleGeneratedEvent, который перестраивает view периода).
+        for (ru.entity.write.LessonPlacement p : created) {
+            eventPublisher.publishEvent(new ru.events.PlacementChangedEvent(
+                    session.getId(), p.getId(), p,
+                    ru.events.PlacementChangedEvent.PlacementChangeType.CREATED));
+        }
+
+        log.info("✅ Аддитивно добавлено {} размещений курса {} (засеяно существующих: {})",
+                created.size(), courseId, existing.size());
+        return session;
+    }
+
+    /**
+     * Извлекает из workspace ТОЛЬКО новые размещения (ключ {@code (slot, stream)} не среди
+     * {@code existingKeys}) как обычные {@code GENERATED}. Для аддитивной генерации: существующие
+     * (в т.ч. засеянные) не пересоздаются.
+     */
+    private List<ru.entity.write.LessonPlacement> extractNewPlacements(
+            ru.services.solver.ScheduleWorkspace workspace,
+            ru.entity.write.ScheduleSession session,
+            String user,
+            java.util.Set<AssignmentKey> existingKeys) {
+        List<ru.entity.write.LessonPlacement> placements = new java.util.ArrayList<>();
+        var assignmentMap = getAllAssignments().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        a -> new AssignmentKey(a.getCurriculumSlot().getId(), a.getStudyStream().getId()),
+                        a -> a, (a, b) -> a));
+
+        for (var entry : workspace.getGrid().getGridMap().entrySet()) {
+            ru.entity.CellForLesson cell = entry.getKey();
+            for (var abstractLesson : entry.getValue()) {
+                if (!(abstractLesson instanceof ru.entity.Lesson lesson)) continue;
+                if (lesson.getCurriculumSlot() == null || lesson.getStudyStream() == null) continue;
+                AssignmentKey key = new AssignmentKey(
+                        lesson.getCurriculumSlot().getId(), lesson.getStudyStream().getId());
+                if (existingKeys.contains(key)) continue; // уже размещено — аддитивно не трогаем
+                Assignment assignment = assignmentMap.get(key);
+                if (assignment == null) continue;
+                ru.entity.write.LessonPlacement placement = new ru.entity.write.LessonPlacement(
+                        assignment, cell.getDate(), cell.getTimeSlotPair(), session, user);
+                if (lesson.getAssignedAuditoriums() != null) {
+                    placement.getAssignedAuditoriums().addAll(lesson.getAssignedAuditoriums());
+                }
+                placements.add(placement);
+            }
+        }
+        return placements;
+    }
+
+    /**
+     * Очистка размещений сессии, КРОМЕ закреплённых ({@code locked}). Охват сужается опционально:
+     * по курсу (дисциплине) и/или по виду занятия. Пусто оба → очистка всей сессии.
+     *
+     * <p>Ключ потока: генерация — аддитивная, поэтому «переделать» = очистить → сгенерировать
+     * заново. Очистка по виду («удалить только практики курса») даёт гранулярность лекции/практики.</p>
+     *
+     * @param sessionId сессия
+     * @param courseId  курс (дисциплина) или {@code null} — все курсы
+     * @param kinds     виды занятий к удалению или {@code null}/пусто — все виды (напр.
+     *                  «кроме лекций» = все виды, кроме {@code LECTURE}; «только лекции» = {@code [LECTURE]})
+     * @param user      автор (для логов)
+     * @return сколько размещений удалено
+     */
+    @Transactional
+    public int clearPlacements(java.util.UUID sessionId, Integer courseId,
+                               java.util.List<ru.enums.KindOfStudy> kinds, String user) {
+        boolean allKinds = kinds == null || kinds.isEmpty();
+        List<ru.entity.write.LessonPlacement> toDelete = placementRepo.findBySessionId(sessionId).stream()
+                .filter(p -> !p.isLocked()) // замки не трогаем
+                .filter(p -> courseId == null
+                        || p.getAssignment().getCurriculumSlot().getDisciplineCourse().getId().equals(courseId))
+                .filter(p -> allKinds
+                        || kinds.contains(p.getAssignment().getCurriculumSlot().getKindOfStudy()))
+                .toList();
+
+        List<java.util.UUID> ids = toDelete.stream().map(ru.entity.write.LessonPlacement::getId).toList();
+        placementRepo.deleteAll(toDelete);
+        // DELETED-события → проектор удалит соответствующие view.
+        for (java.util.UUID id : ids) {
+            eventPublisher.publishEvent(new ru.events.PlacementChangedEvent(sessionId, id));
+        }
+        log.info("🧹 Очистка сессии {}: удалено {} размещений (course={}, kinds={}, кроме замков)",
+                sessionId, ids.size(), courseId, allKinds ? "все" : kinds);
+        return ids.size();
+    }
+
+    /**
      * Ядро генерации: строит workspace (с засевом пинов, если есть), переписывает
      * размещения сессии из сетки и публикует событие. Общее для генерации «с нуля»
      * (пустой {@code lockedPlacements}) и перегенерации вокруг замков.

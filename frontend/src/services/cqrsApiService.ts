@@ -98,6 +98,26 @@ export const CQRSService = {
   },
 
   /**
+   * Аддитивная генерация одного курса (дисциплины): раскладывает только неразмещённые занятия
+   * «вокруг» уже стоящих (инкрементальная сборка). Существующее не трогается.
+   */
+  generateCourse: (sessionId: string, studyPeriodId: number, courseId: number): Promise<ScheduleSessionDto> => {
+    return api
+      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/generate-course`, { studyPeriodId, courseId })
+      .then(r => r.data);
+  },
+
+  /**
+   * Очистка размещений сессии, КРОМЕ закреплённых. courseId/kinds опциональны (пусто → всё).
+   * @returns количество удалённых размещений
+   */
+  clearPlacements: (sessionId: string, body: { courseId?: number; kinds?: string[] }): Promise<number> => {
+    return api
+      .post<number>(`/schedule/command/sessions/${sessionId}/clear`, body)
+      .then(r => r.data);
+  },
+
+  /**
    * Куда можно поставить ещё не размещённое занятие из палитры (Фича 2, Фаза B).
    * Зеркало findMoveOptions, но по assignmentId — занятие ещё не в сетке.
    */

@@ -391,6 +391,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
             {activeTab === 'generation' && (
               <GenerationTab
                 selectedCourses={selectedCourses}
+                allCourses={allCourses}
                 totalSlots={totalSlots}
                 selectedPeriod={selectedPeriod}
                 onGenerate={onGenerate}

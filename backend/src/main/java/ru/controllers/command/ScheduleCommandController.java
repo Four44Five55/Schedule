@@ -119,6 +119,50 @@ public class ScheduleCommandController {
     }
 
     /**
+     * АДДИТИВНАЯ генерация одного курса (дисциплины) — инкрементальная сборка.
+     *
+     * <p>POST /api/schedule/command/sessions/{sessionId}/generate-course</p>
+     *
+     * <p>Все существующие размещения сессии остаются неподвижными, раскладываются только
+     * неразмещённые занятия курса «вокруг» них. Ничего уже стоящего не удаляется.</p>
+     */
+    @PostMapping("/sessions/{sessionId}/generate-course")
+    public ResponseEntity<ScheduleSessionDto> generateCourse(
+        @PathVariable UUID sessionId,
+        @RequestBody ru.dto.command.GenerateCourseRequest request
+    ) {
+        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}",
+                sessionId, request.studyPeriodId(), request.courseId());
+
+        ScheduleSession session = generationService.generateCourseAdditive(
+            sessionId, request.studyPeriodId(), request.courseId(), "admin");
+
+        return ResponseEntity.ok(sessionMapper.toDto(session));
+    }
+
+    /**
+     * Очистка размещений сессии, КРОМЕ закреплённых. Охват — опционально по курсу и/или виду.
+     *
+     * <p>POST /api/schedule/command/sessions/{sessionId}/clear</p>
+     * <p>Тело: {@code { "courseId": 705, "kind": "PRACTICAL_WORK" }} (оба поля опциональны).
+     * Пусто оба → очистка всей сессии (кроме замков).</p>
+     *
+     * @return количество удалённых размещений
+     */
+    @PostMapping("/sessions/{sessionId}/clear")
+    public ResponseEntity<Integer> clearPlacements(
+        @PathVariable UUID sessionId,
+        @RequestBody(required = false) ru.dto.command.ClearPlacementsRequest request
+    ) {
+        Integer courseId = request != null ? request.courseId() : null;
+        java.util.List<ru.enums.KindOfStudy> kinds = request != null ? request.kinds() : null;
+        log.info("Очистка размещений: sessionId={}, course={}, kinds={}", sessionId, courseId, kinds);
+
+        int removed = generationService.clearPlacements(sessionId, courseId, kinds, "admin");
+        return ResponseEntity.ok(removed);
+    }
+
+    /**
      * Получить сессию по ID.
      *
      * GET /api/schedule/command/sessions/{sessionId}
