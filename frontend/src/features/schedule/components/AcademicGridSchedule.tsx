@@ -35,6 +35,10 @@ interface AcademicGridScheduleProps {
   } | null;
   studyPeriodId?: number;
   onPlace?: (assignmentId: number, date: string, slot: TimeSlotPair) => void | Promise<void>;
+  // Выход из режима установки из палитры: хост сбрасывает выбранное занятие очереди,
+  // когда пользователь кликает существующее занятие для переноса (иначе клик заблокирован
+  // активным placementCandidate). Позволяет двигать раскладку, не удаляя занятие.
+  onExitPlacementCandidate?: () => void;
   // Потолок высоты сетки (Tailwind-класс) — пробрасывается в AcademicGridShell.
   // Позволяет хосту растянуть сетку до низа экрана вместо дефолтных 700px.
   maxHeightClass?: string;
@@ -61,6 +65,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             placementCandidate,
                                                                             studyPeriodId,
                                                                             onPlace,
+                                                                            onExitPlacementCandidate,
                                                                             maxHeightClass,
                                                                             chromeless
                                                                           }) => {
@@ -103,9 +108,12 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       selectedLesson.timeSlotPair === l.timeSlotPair;
 
   const handleLessonClick = (lesson: ScheduledLessonDto) => {
-    // Установка занятия из палитры (placementCandidate) — отдельная стратегия выбора,
-    // выбор существующего занятия для переноса в этот момент не начинаем.
-    if (!isEditMode || !sessionId || !onMoveLesson || placementCandidate) return;
+    if (!isEditMode || !sessionId || !onMoveLesson) return;
+    // Если активен режим установки из палитры — клик по существующему занятию
+    // означает «хочу двигать вот это»: выходим из установки (хост сбрасывает выбор
+    // очереди) и продолжаем как обычный перенос. Так раскладку можно переносить,
+    // не удаляя занятие и не ища его заново в неразмещённых.
+    if (placementCandidate) onExitPlacementCandidate?.();
     // повторный клик по тому же занятию — снять выбор
     if (isSelectedLesson(lesson)) {
       clearSelection();
@@ -419,6 +427,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       `Дисциплина: ${lesson.disciplineName}`,
       `Тип: ${lesson.kindOfStudyName}`,
       `Тема: Т.${lesson.themeNumber || '—'}`,
+      `Преподаватель: ${lesson.educatorNames.join(', ') || '—'}`,
       `Аудитория: ${lesson.auditoriumNames.join(', ')}`,
       `Группы: ${lesson.groupNames.join(', ')}`
     ].join('\n') : activeConstraint ? `ОГРАНИЧЕНИЕ: ${activeConstraint.fullName} (${activeConstraint.abbreviation})` : '';
@@ -510,7 +519,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             title={
               isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
                   : isTeacherBusy ? 'Преподаватель занят в это время'
-                      : lesson && isEditMode ? 'Нажмите, чтобы выбрать занятие для переноса'
+                      : lesson && isEditMode ? `${tooltipContent}\n\n(Нажмите, чтобы выбрать занятие для переноса)`
                           : tooltipContent
             }
         >

@@ -135,7 +135,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   chromeless = false,
   rowHeightBase = 60,
 }) => {
-  const [zoom, setZoom] = useState<ZoomLevel>(1);
+  const [zoom, setZoom] = useState<ZoomLevel>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
