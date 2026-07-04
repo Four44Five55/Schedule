@@ -6,6 +6,7 @@ import ru.dto.ScheduledLessonDto;
 import ru.entity.Lesson;
 import ru.entity.read.ScheduleView;
 import ru.mapper.command.ScheduledLessonMapper;
+import ru.utils.GroupNameComparator;
 import ru.services.solver.ScheduleWorkspace;
 
 import java.util.LinkedHashMap;
@@ -74,8 +75,13 @@ public class ScheduleResponseService {
     private ScheduledLessonDto mergeViewsToDto(List<ScheduleView> rows) {
         ScheduledLessonDto base = lessonMapper.toDto(rows.get(0));
 
+        // Порядок строк из запроса не гарантирован (нет тай-брейкера по группе), поэтому
+        // фиксируем порядок групп здесь — иначе в ячейке номера «скачут» между перезагрузками.
+        // Порядок по коду группы (уровни через «/»); у ScheduledLessonDto нет парного
+        // groupIds, сортировать имена безопасно.
         List<String> groupNames = rows.stream()
-                .map(ScheduleView::getGroupName).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+                .map(ScheduleView::getGroupName).filter(Objects::nonNull).distinct()
+                .sorted(GroupNameComparator.INSTANCE).collect(Collectors.toList());
         List<Integer> educatorIds = rows.stream()
                 .map(ScheduleView::getEducatorId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
         List<String> educatorNames = rows.stream()
