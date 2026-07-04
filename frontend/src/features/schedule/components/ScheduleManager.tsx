@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AcademicGridSchedule } from './AcademicGridSchedule';
-import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto, StudyPeriodDto, ConstraintDto } from '../../../types/api';
-import { ConstraintsService, ResourceService, ScheduleService } from '../../../services/apiServices';
+import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto, StudyPeriodDto } from '../../../types/api';
+import { ResourceService, ScheduleService } from '../../../services/apiServices';
+import { useEntityConstraints } from '../../constraints/useEntityConstraints';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
   ScheduleSessionDto
@@ -55,9 +56,6 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
   useEffect(() => {
     localStorage.setItem('unischedule.schedule.selectedValue', selectedValue);
   }, [selectedValue]);
-  const [constraints, setConstraints] = useState<ConstraintDto[]>([]);
-  const [loadingConstraints, setLoadingConstraints] = useState(false);
-
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentSession, setCurrentSession] = useState<ScheduleSessionDto | null>(sessionProp || null);
   const [loadingAction, setLoadingAction] = useState(false);
@@ -134,32 +132,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
     return list.find(r => r.name === selectedValue)?.id;
   }, [filterType, selectedValue, allResources]);
 
-  useEffect(() => {
-    if (!selectedValue) {
-      setConstraints([]);
-      return;
-    }
-
-    setLoadingConstraints(true);
-    let promise;
-
-    if (filterType === 'group') {
-      const id = allResources.groups.find(g => g.name === selectedValue)?.id;
-      promise = id ? ConstraintsService.getGroupConstraintsByGroup(id) : Promise.resolve([]);
-    } else if (filterType === 'educator') {
-      const id = allResources.educators.find(e => e.name === selectedValue)?.id;
-      promise = id ? ConstraintsService.getEducatorConstraintsByEducator(id) : Promise.resolve([]);
-    } else {
-      const id = allResources.auditoriums.find(a => a.name === selectedValue)?.id;
-      promise = id ? ConstraintsService.getAuditoriumConstraintsByAuditorium(id) : Promise.resolve([]);
-    }
-
-    promise.then(data => {
-      setConstraints(data);
-      setLoadingConstraints(false);
-    }).catch(() => setLoadingConstraints(false));
-
-  }, [selectedValue, filterType, allResources]);
+  // Ограничения выбранной сущности — общий хук (тот же, что в планировщике).
+  // rootEntityId уже разрешает имя→id по загруженным ресурсам.
+  const { constraints, loading: loadingConstraints } = useEntityConstraints(filterType, rootEntityId);
 
   const handleGenerateSchedule = async () => {
     if (!currentSession) return;
