@@ -512,54 +512,50 @@ curl -X GET "http://localhost:8080/api/schedule/query/reports/auditorium-utiliza
 #### Test 3.2.1: Создать сессию
 
 ```bash
-curl -X POST "http://localhost:8080/api/schedule/sessions" \
+curl -X POST "http://localhost:8080/api/schedule/command/sessions" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Тестовая сессия",
-    "courseIds": [701, 702, 703]
-  }'
+  -d '{ "name": "Тестовая сессия" }'
 ```
 
-**Ожидаемый ответ:**
+**Ожидаемый ответ** (`ScheduleSessionDto`)**:**
 ```json
 {
   "id": "550e8400-...",
   "name": "Тестовая сессия",
   "status": "INITIALIZED",
-  "createdAt": "2025-01-11T10:00:00",
+  "createdAt": "2026-01-11T10:00:00",
   "createdBy": "admin",
   "version": 0
 }
 ```
 
-**✅ PASS CONDITION:** HTTP 201, JSON объект с id
+**✅ PASS CONDITION:** HTTP 200, JSON объект с id
 
 #### Test 3.2.2: Optimistic Lock - конфликт
 
 ```bash
-# Шаг 1: Создать сессию и получить version
-SESSION_ID=$(curl -s -X POST "http://localhost:8080/api/schedule/sessions" \
+# Шаг 1: Сгенерировать расписание периода и получить sessionId + version
+SESSION_ID=$(curl -s -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Test", "courseIds": [701]}' | jq -r '.id')
+  -d '{"name": "Test", "studyPeriodId": 3, "courseIds": [701]}' | jq -r '.id')
 
-VERSION=$(curl -s "http://localhost:8080/api/schedule/sessions/$SESSION_ID" | jq -r '.version')
+VERSION=$(curl -s "http://localhost:8080/api/schedule/command/sessions/$SESSION_ID" | jq -r '.version')
 
-# Шаг 2: Попытаться обновить с устаревшей версией
-curl -X POST "http://localhost:8080/api/schedule/sessions/$SESSION_ID/move-lesson" \
+# Шаг 2: Попытаться перенести с устаревшей версией
+curl -X POST "http://localhost:8080/api/schedule/command/sessions/$SESSION_ID/move-lesson" \
   -H "Content-Type: application/json" \
   -d "{
     \"placementId\": \"some-id\",
-    \"newDate\": \"2025-01-15\",
+    \"newDate\": \"2026-01-15\",
     \"newSlot\": \"SECOND\",
     \"version\": 999
   }"
 ```
 
-**Ожидаемый ответ:**
+**Ожидаемый ответ** (тело `ConflictResponse`)**:**
 ```json
 {
-  "success": false,
-  "error": "OPTIMISTIC_LOCK_CONFLICT",
+  "error": "CONFLICT",
   "message": "Расписание было изменено другим пользователем. Обновите страницу.",
   "currentVersion": 1
 }
@@ -763,8 +759,8 @@ ALTER COLUMN version SET NOT NULL;
 | GET /query/educator/{id} | ✅ PASS | 10ms | Returns 200 |
 | GET /query/check-auditorium | ✅ PASS | 8ms | Returns boolean |
 | GET /query/reports/auditorium-utilization | ✅ PASS | 25ms | Returns aggregation |
-| POST /sessions | ⏳ SKIP | - | TODO: Create DTO |
-| POST /sessions/{id}/move-lesson | ⏳ SKIP | - | TODO: Create DTO |
+| POST /command/sessions | ✅ | - | DTO готов (ScheduleSessionDto) |
+| POST /command/sessions/{id}/move-lesson | ✅ | - | LessonMoveService + ConflictResponse |
 
 #### Performance Tests
 
@@ -787,17 +783,20 @@ ALTER COLUMN version SET NOT NULL;
 - [x] Integration тесты созданы
 - [x] REST API (Query Side) создан
 
-### ⏳ TODO (Phase 3)
+### ✅ Phase 3 (Command Side) — реализовано
 
-- [ ] Создать DTO для Command Side
-- [ ] Создать Events (ScheduleGeneratedEvent, PlacementChangedEvent)
-- [ ] Создать ScheduleSynchronizer
-- [ ] Рефакторить ScheduleGenerationService
-- [ ] Обновить ScheduleMoveController
-- [ ] Создать Unit тесты для сервисов
-- [ ] Frontend интеграция
+- [x] DTO для Command Side (`ScheduleSessionDto`, `MoveLessonRequest`, `LessonPlacementDto`, …)
+- [x] Events (`ScheduleGeneratedEvent`, `PlacementChangedEvent`) + `ScheduleSynchronizer` (`@Async`)
+- [x] `ScheduleGenerationService` (генерация/перегенерация/аддитив/очистка, привязка к периоду)
+- [x] Перенос вынесен в `LessonMoveService`/`LessonChainMoveService`; подбор — `MoveLessonSuggestionService`
+- [x] Frontend интеграция (планировщик, ручная раскладка, пины)
+
+### ⏳ Осталось
+
+- [ ] Unit-тесты сервисов (сейчас — интеграционные + ручная проверка API)
+- [ ] Прибрать гонку `setTimeout(1000)` в `ScheduleManager`/переносе (см. [FOLLOWUPS.md](FOLLOWUPS.md))
 
 ---
 
-*Автор: Testing Team*  
-*Обновлено: 2025-01-11*
+*Изначально: Testing Team, 2025-01-11*
+*Приведено в соответствие с текущими контроллерами: 2026-07-07*

@@ -180,11 +180,11 @@ false  // ❌ Занята
 
 ### 6. Отчёт по загруженности аудиторий
 
-**Endpoint:** `GET /query/reports/auditorium-utilization`
+**Endpoint:** `GET /query/reports/auditorium-utilization?start=X&end=Y`
 
 **Пример:**
 ```bash
-curl -X GET "http://localhost:8080/api/schedule/query/reports/auditorium-utilization" \
+curl -X GET "http://localhost:8080/api/schedule/query/reports/auditorium-utilization?start=2026-01-11&end=2026-01-17" \
   -H "Accept: application/json"
 ```
 
@@ -227,37 +227,44 @@ curl -X GET "http://localhost:8080/api/schedule/query/reports/educator-load?star
 
 ---
 
+### 8. Прочие query-эндпоинты
+
+| Endpoint | Назначение |
+|---|---|
+| `GET /query/all?start=X&end=Y` | Всё расписание за период → `ScheduleResultDto` (плоский список + `grid` для отображения). Основная загрузка сетки на фронт |
+| `GET /query/readiness?periodId=X` | Готовность периода → `PeriodReadinessDto {total, placed, unplaced}`. «Всего» берётся из `GenerationScopeResolver` (тот же набор, что идёт в генерацию, без запуска солвера) |
+| `GET /query/reports/educator-quality?periodId=X` | Качество расписания преподавателей → `PeriodScheduleQualityDto` (компактность + равномерность, считается из `schedule_view`) |
+| `GET /query/discipline/{abbr}` | Все занятия дисциплины по аббревиатуре |
+| `GET /query/kind/{kind}` | Все занятия вида (`LECTURE`, `PRACTICAL_WORK`, …) |
+
+---
+
 ## 💾 COMMAND SIDE: Запись и редактирование
 
-### 1. Создать новую сессию
+> **Базовый путь:** `POST/GET/DELETE/PATCH /api/schedule/command/...` (см.
+> `ru.controllers.command.ScheduleCommandController`). Поиск вариантов переноса живёт отдельно —
+> на `/api/schedule/find-move-options` (`ScheduleMoveController`), а не под `/command`.
+>
+> Генерация period-first: тело несёт `studyPeriodId` (явный вход по учебному периоду), даты больше
+> не хардкодятся. Ответ на все команды — **`ScheduleSessionDto`** (сессия с новой `version`);
+> конфликты возвращаются телом `ConflictResponse` со статусом `409`.
 
-**Endpoint:** `POST /api/schedule/sessions`
+### 1. Создать пустую сессию
 
-**Тело запроса:**
+**Endpoint:** `POST /api/schedule/command/sessions`
+
+**Тело запроса** (`CreateScheduleSessionRequest`)**:**
 ```json
-{
-  "name": "Расписание 2025 весна",
-  "courseIds": [701, 702, 703]
-}
+{ "name": "Расписание 2026 весна" }
 ```
 
-**Пример:**
-```bash
-curl -X POST "http://localhost:8080/api/schedule/sessions" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Расписание 2025 весна",
-    "courseIds": [701, 702, 703]
-  }'
-```
-
-**Ответ:**
+**Ответ** (`ScheduleSessionDto`)**:**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Расписание 2025 весна",
+  "name": "Расписание 2026 весна",
   "status": "INITIALIZED",
-  "createdAt": "2025-01-11T10:00:00",
+  "createdAt": "2026-01-11T10:00:00",
   "createdBy": "admin",
   "version": 0
 }
@@ -265,216 +272,123 @@ curl -X POST "http://localhost:8080/api/schedule/sessions" \
 
 ---
 
-### 2. Генерация расписания (с персистентностью)
+### 2. Генерация расписания (period-first)
 
-**Endpoint:** `POST /api/schedule/generate-with-persistence`
+**Endpoint:** `POST /api/schedule/command/sessions/generate`
 
-**Тело запроса:**
+**Тело запроса** (`CreateScheduleSessionRequest`)**:**
 ```json
 {
-  "name": "Расписание 2025 весна",
+  "name": "Расписание 2026 весна",
+  "studyPeriodId": 3,
   "courseIds": [701, 702, 703]
 }
 ```
 
 **Пример:**
 ```bash
-curl -X POST "http://localhost:8080/api/schedule/generate-with-persistence" \
+curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Расписание 2025 весна",
-    "courseIds": [701, 702, 703]
-  }'
+  -d '{ "name": "Расписание 2026 весна", "studyPeriodId": 3, "courseIds": [701, 702, 703] }'
 ```
 
-**Ответ:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Расписание 2025 весна",
-  "status": "READY_FOR_EDIT",
-  "createdAt": "2025-01-11T10:00:00",
-  "createdBy": "admin",
-  "updatedAt": "2025-01-11T10:05:00",
-  "updatedBy": "admin",
-  "version": 1,
-  "placementsCount": 150
-}
-```
+Ответ — `ScheduleSessionDto` со `status: "READY_FOR_EDIT"` и увеличенной `version`. Query Side
+(`schedule_view`) синхронизируется асинхронно (события `ScheduleGeneratedEvent` → `ScheduleSynchronizer`).
 
-**Процесс:**
-```
-1. Создаётся ScheduleSession (status=GENERATING)
-2. Генерируется ScheduleWorkspace (существующий алгоритм)
-3. Извлекаются LessonPlacement из workspace
-4. Сохраняются в БД (Command Side)
-5. ✅ Публикуется ScheduleGeneratedEvent
-6. Query Side синхронизируется (асинхронно)
-```
+**Родственные команды генерации** (все возвращают `ScheduleSessionDto`):
+
+| Endpoint | Назначение |
+|---|---|
+| `POST /command/sessions/{id}/regenerate` | Перегенерация, **сохраняя закреплённые** (`locked`) занятия; распределитель раскладывает остальное вокруг них |
+| `POST /command/sessions/{id}/generate-course` | **Аддитивная** генерация одного курса: тело `GenerateCourseRequest {studyPeriodId, courseId, kinds?}`; существующее не удаляется, кладутся только неразмещённые занятия курса |
+| `POST /command/sessions/{id}/clear` | Очистка размещений **кроме `locked`**; тело `ClearPlacementsRequest {courseId?, kinds?}` (оба опц.; пусто → вся сессия). Возвращает **число удалённых** |
+| `POST /command/sessions/editable` | Получить/переоткрыть сессию «живого» расписания без перегенерации (204, если расписания ещё нет) |
+| `POST /command/sessions/for-period/{studyPeriodId}` | Получить/создать рабочую сессию периода (Путь 2 — ручная раскладка будущего семестра) |
 
 ---
 
 ### 3. Перенести занятие (с optimistic lock)
 
-**Endpoint:** `POST /api/schedule/sessions/{sessionId}/move-lesson`
+**Endpoint:** `POST /api/schedule/command/sessions/{sessionId}/move-lesson`
 
-**Тело запроса:**
+**Тело запроса** (`MoveLessonRequest`)**:**
 ```json
 {
   "placementId": "550e8400-e29b-41d4-a716-446655440000",
-  "newDate": "2025-01-15",
+  "newDate": "2026-01-15",
   "newSlot": "SECOND",
-  "auditoriumIds": [789, 790],
   "version": 5
 }
 ```
 
-**Пример:**
-```bash
-curl -X POST "http://localhost:8080/api/schedule/sessions/550e8400-e29b-41d4-a716-446655440000/move-lesson" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "placementId": "550e8400-e29b-41d4-a716-446655440000",
-    "newDate": "2025-01-15",
-    "newSlot": "SECOND",
-    "auditoriumIds": [789, 790],
-    "version": 5
-  }'
-```
+> ⚠️ Аудитории подбираются **на бэке** (`LessonMoveService` пересоздаёт workspace и валидирует слот
+> через `findPlacementOption`). Поле `newAuditoriumIds` в контракте осталось мёртвым — не используется.
 
-**Ответ (SUCCESS):**
+**Ответ (SUCCESS):** `ScheduleSessionDto` с `version: 6`.
+
+**Ответ (CONFLICT, HTTP 409, тело `ConflictResponse`):**
 ```json
 {
-  "success": true,
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-  "newVersion": 6
+  "error": "RESOURCE_CONFLICT",
+  "message": "Невозможно перенести занятие: ... . Обновите данные и выберите другой слот.",
+  "currentVersion": 6
 }
 ```
+`error` = `CONFLICT` при устаревшей `version` (optimistic lock), либо `RESOURCE_CONFLICT` при
+занятости ресурса (`LessonMoveConflictException`).
 
-**Ответ (CONFLICT):**
-```json
-{
-  "success": false,
-  "error": "CONFLICT",
-  "message": "Расписание было изменено другим пользователем. Обновите страницу.",
-  "currentVersion": 7
-}
-```
-
-**Процесс:**
-```
-1. Загружается сессия с optimistic lock
-2. Проверяется version (должна совпадать)
-3. Обновляется LessonPlacement
-4. Version автоматически увеличивается: 5 → 6
-5. ✅ Публикуется PlacementChangedEvent
-6. Query Side синхронизируется (асинхронно)
-```
+**Перенос цепочки целиком:** `POST /command/sessions/{sessionId}/move-chain` — тело
+`MoveChainRequest {placementIds[], newStartDate, newStartSlot, version}` (аудитории тоже с бэка).
 
 ---
 
 ### 4. Найти варианты для переноса
 
-**Endpoint:** `POST /api/schedule/sessions/{sessionId}/find-move-options`
+**Endpoint:** `POST /api/schedule/find-move-options` (контроллер `ScheduleMoveController`, **без** `/command`)
 
-**Тело запроса:**
+**Тело запроса** (`MoveSuggestionRequest`)**:**
 ```json
 {
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
   "placementId": "550e8400-e29b-41d4-a716-446655440000",
   "rootEntityId": 456,
   "rootEntityType": "EDUCATOR"
 }
 ```
 
-**Пример:**
-```bash
-curl -X POST "http://localhost:8080/api/schedule/sessions/550e8400-e29b-41d4-a716-446655440000/find-move-options" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "placementId": "550e8400-e29b-41d4-a716-446655440000",
-    "rootEntityId": 456,
-    "rootEntityType": "EDUCATOR"
-  }'
-```
-
-**Ответ:**
+**Ответ** (`List<MoveOptionDto>`)**:**
 ```json
 [
-  {
-    "date": "2025-01-13",
-    "timeSlot": "FIRST",
-    "auditoriumIds": [789, 790],
-    "score": 95
-  },
-  {
-    "date": "2025-01-14",
-    "timeSlot": "SECOND",
-    "auditoriumIds": [791],
-    "score": 88
-  },
-  // ... остальные варианты
+  { "date": "2026-01-13", "timeSlot": "FIRST" },
+  { "date": "2026-01-14", "timeSlot": "SECOND" }
 ]
 ```
 
----
-
-### 5. Получить сессию
-
-**Endpoint:** `GET /api/schedule/sessions/{sessionId}`
-
-**Пример:**
-```bash
-curl -X GET "http://localhost:8080/api/schedule/sessions/550e8400-e29b-41d4-a716-446655440000" \
-  -H "Accept: application/json"
-```
-
-**Ответ:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Расписание 2025 весна",
-  "status": "READY_FOR_EDIT",
-  "createdAt": "2025-01-11T10:00:00",
-  "createdBy": "admin",
-  "updatedAt": "2025-01-11T10:05:00",
-  "updatedBy": "admin",
-  "version": 7,
-  "placementsCount": 150,
-  "hasWorkspaceSnapshot": true
-}
-```
+> Варианты для цепочки — `POST /api/schedule/find-chain-move-options` (тело
+> `ChainMoveSuggestionRequest {placementIds[]}`).
 
 ---
 
-### 6. Получить все сессии пользователя
+### 5. Ручная раскладка (Фаза B) и пины
 
-**Endpoint:** `GET /api/schedule/sessions?createdBy={username}`
+| Endpoint | Назначение |
+|---|---|
+| `GET /command/sessions/{id}/unplaced?courseIds=1,2,3` | Неразмещённые занятия курсов (палитра) → `List<UnplacedLessonDto>` |
+| `POST /command/sessions/{id}/placement-options` | Куда можно поставить занятие (подсветка ячеек); тело `PlacementOptionsRequest {assignmentId, rootEntityType, rootEntityId, studyPeriodId}` → `List<MoveOptionDto>` |
+| `POST /command/sessions/{id}/placements` | Ручная установка (создаёт `MANUAL`/`locked` размещение); тело `ManualPlacementRequest {assignmentId, date, slot, studyPeriodId}` → `ScheduleSessionDto` или `409` |
+| `DELETE /command/placements/{placementId}` | Снять размещение (вернуть в палитру) |
+| `PATCH /command/placements/{placementId}/lock` | Закрепить/открепить (пин); тело `LockPlacementRequest {locked, placementIds?}` — закрепляет цепочку (или её подмножество) |
+| `POST /command/placements/{placementId}/reorder` | Пересортировать трек в порядок плана после переноса → `ReorderResponse {session, problems[]}` |
 
-**Пример:**
-```bash
-curl -X GET "http://localhost:8080/api/schedule/sessions?createdBy=admin" \
-  -H "Accept: application/json"
-```
+---
 
-**Ответ:**
-```json
-[
-  {
-    "id": "...",
-    "name": "Расписание 2025 весна",
-    "status": "READY_FOR_EDIT",
-    "version": 7,
-    "createdAt": "2025-01-11T10:00:00"
-  },
-  {
-    "id": "...",
-    "name": "Расписание 2025 осень",
-    "status": "FINAL",
-    "version": 15,
-    "createdAt": "2024-09-01T10:00:00"
-  }
-]
-```
+### 6. Получить сессию / размещения / удалить
+
+| Endpoint | Назначение |
+|---|---|
+| `GET /command/sessions/{sessionId}` | Сессия по ID → `ScheduleSessionDto` |
+| `GET /command/sessions/{sessionId}/placements` | Все размещения сессии → `List<LessonPlacementDto>` |
+| `DELETE /command/sessions/{sessionId}` | Удалить сессию (каскадно placements) |
 
 ---
 
@@ -494,14 +408,14 @@ curl -X GET "http://localhost:8080/api/schedule/sessions?createdBy=admin" \
        |                                     | version = 5 ✅
        |                                     |
 09:10  | Переносит занятие на понедельник     |
-       | POST /sessions/{id}/move-lesson     |
+       | POST /command/sessions/{id}/move-lesson |
        | { version: 5 }                      |
        |                                     |
        | ✅ SUCCESS!                         |
        | version: 5 → 6                      |
        |                                     |
 09:15  |                                     | Пытается перенести
-       |                                     | POST /sessions/{id}/move-lesson
+       |                                     | POST /command/sessions/{id}/move-lesson
        |                                     | { version: 5 }
        |                                     |
        |                                     | ❌ CONFLICT!
@@ -520,15 +434,13 @@ curl -X GET "http://localhost:8080/api/schedule/sessions?createdBy=admin" \
        |                                     | version: 6 → 7
 ```
 
-**HTTP Response (Conflict):**
+**HTTP Response (Conflict):** тело `ConflictResponse`
 ```json
 HTTP/1.1 409 Conflict
 {
-  "success": false,
-  "error": "OPTIMISTIC_LOCK_CONFLICT",
+  "error": "CONFLICT",
   "message": "Расписание было изменено другим пользователем. Обновите страницу.",
-  "currentVersion": 6,
-  "expectedVersion": 5
+  "currentVersion": 6
 }
 ```
 
@@ -545,13 +457,13 @@ curl "http://localhost:8080/api/schedule/query/student/123?start=2025-01-11&end=
 # 2. Проверить свободность аудитории
 curl "http://localhost:8080/api/schedule/query/check-auditorium?auditoriumId=789&date=2025-01-12&slot=FIRST"
 
-# 3. Создать сессию
-curl -X POST "http://localhost:8080/api/schedule/sessions" \
+# 3. Сгенерировать расписание (period-first)
+curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Test Session", "courseIds": [701]}'
+  -d '{"name": "Test Session", "studyPeriodId": 3, "courseIds": [701]}'
 
 # 4. Получить сессию
-curl "http://localhost:8080/api/schedule/sessions/{sessionId}"
+curl "http://localhost:8080/api/schedule/command/sessions/{sessionId}"
 ```
 
 ### Frontend Integration (TypeScript)
@@ -570,10 +482,10 @@ const moveLesson = async (sessionId: string, placementId: string,
                          newDate: string, newSlot: string, version: number) => {
   try {
     const response = await apiClient.post(
-      `/api/schedule/sessions/${sessionId}/move-lesson`,
-      { placementId, newDate, newSlot, auditoriumIds: [], version }
+      `/api/schedule/command/sessions/${sessionId}/move-lesson`,
+      { placementId, newDate, newSlot, version } // аудиторию подберёт бэк
     );
-    return response.data; // { success: true, newVersion: ... }
+    return response.data; // ScheduleSessionDto (новая version)
   } catch (error) {
     if (error.response?.status === 409) {
       // ❌ Optimistic lock conflict
@@ -603,9 +515,9 @@ const moveLesson = async (sessionId: string, placementId: string,
 
 | Endpoint | Время | Requests/sec |
 |----------|-------|--------------|
-| `POST /sessions` | ~50ms | ~200 |
-| `POST /generate-with-persistence` | ~500ms | ~20 |
-| `POST /sessions/{id}/move-lesson` | ~100ms | ~100 |
+| `POST /command/sessions` | ~50ms | ~200 |
+| `POST /command/sessions/generate` | ~500ms | ~20 |
+| `POST /command/sessions/{id}/move-lesson` | ~100ms | ~100 |
 
 ---
 
@@ -613,9 +525,10 @@ const moveLesson = async (sessionId: string, placementId: string,
 
 - [CQRS Architecture](CQRS_ARCHITECTURE.md)
 - [Development Context](DEVELOPMENT_CONTEXT.md)
-- [Architecture Refactoring Plan](ARCHITECTURE_REFACTORING_PLAN.md)
+- [Схема БД](DATABASE.md)
+- [Follow-ups / техдолг](FOLLOWUPS.md)
 
 ---
 
-*Автор: CQRS Implementation Team*
-*Обновлено: 2025-01-11*
+*Изначально: CQRS Implementation Team, 2025-01-11*
+*Приведено в соответствие с текущими контроллерами: 2026-07-07*

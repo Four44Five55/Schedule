@@ -5,8 +5,16 @@
 Данный проект реализует **CQRS (Command Query Responsibility Segregation)** паттерн для управления расписанием с поддержкой **оптимистичной блокировки** для конкурентного доступа.
 
 **Дата реализации:** 2025-01-11
-**Ветка:** `feature-cqrs-persistence`
-**Статус:** Phase 2 Complete (Query + Command Side)
+**Обновлено:** 2026-07-07 (сверка с текущим кодом)
+**Статус:** реализованы обе стороны + синхронизация. Живой Command Side —
+`ru.controllers.command.ScheduleCommandController` (`/api/schedule/command/...`), Query Side —
+`ru.controllers.read.ScheduleQueryController` (`/api/schedule/query/...`), синхронизация Query←Command —
+`ScheduleSynchronizer` (`@Async`, AFTER_COMMIT). Актуальные примеры запросов — в
+[API_EXAMPLES.md](API_EXAMPLES.md).
+
+> ⚠️ Разделы ниже описывают **концепцию** CQRS/optimistic-lock и остаются верны идейно, но часть
+> кода-иллюстраций и путей относится к ранней «Phase 2» и упрощена. За фактическими контрактами
+> идите в [API_EXAMPLES.md](API_EXAMPLES.md) и сами контроллеры; за схемой БД — в [DATABASE.md](DATABASE.md).
 
 ---
 
@@ -297,7 +305,7 @@ ORDER BY scheduled_date, time_slot;
 
 **Command:**
 ```
-POST /api/schedule/sessions/{sessionId}/move-lesson
+POST /api/schedule/command/sessions/{sessionId}/move-lesson
 {
   "placementId": "...",
   "newDate": "2025-01-15",
@@ -618,57 +626,29 @@ ORDER BY scheduled_date, time_slot;
 - Отчётов и статистики
 - Проверки свободности ресурсов
 
-### ⏳ Requires Additional Work
+### ✅ Command Side (Phase 3) — реализовано
 
-**Command Side требует Phase 3:**
-- ⏳ Создать DTO для REST API
-- ⏳ Создать Events для синхронизации
-- ⏳ Создать ScheduleSynchronizer
-- ⏳ Интегрировать с существующим ScheduleGenerationService
-- ⏳ Обновить ScheduleMoveController
+- ✅ DTO для REST API (`CreateScheduleSessionRequest`, `MoveLessonRequest`, `ScheduleSessionDto`,
+  `LessonPlacementDto`, DTO ручной раскладки/пинов и т.д.)
+- ✅ Events + синхронизация (`ScheduleGeneratedEvent`/`PlacementChangedEvent` → `ScheduleSynchronizer`, `@Async`)
+- ✅ `ScheduleGenerationService` сохраняет placements и привязывает сессию к периоду (Путь 2)
+- ✅ Перенос вынесен в `LessonMoveService`/`LessonChainMoveService`; подбор — `MoveLessonSuggestionService`
+- ✅ Ручная раскладка + пины (`ManualPlacementService`, `LessonPinService`), инкрементальная генерация по курсам
 
 ---
 
-## 📝 Known Limitations
+## 📝 Актуальные ограничения / техдолг
 
-### Ограничения Phase 2 (текущая реализация)
+Полный список — в [FOLLOWUPS.md](FOLLOWUPS.md). Кратко из того, что касается CQRS:
 
-1. **Нет синхронизации Query ← Command**
-   - Query Side таблицы будут пустыми
-   - Нужно создавать ScheduleSynchronizer (Phase 3)
-
-2. **Нет DTO для Command Side**
-   - REST API для Command Side не работает
-   - Нельзя создавать сессии через API
-
-3. **Существующий код не интегрирован**
-   - ScheduleMoveController вызывает несуществующий getWorkspace()
-   - ScheduleGenerationService не сохраняет placements
-
-4. **Нет Events**
-   - Нет ScheduleGeneratedEvent
-   - Нет PlacementChangedEvent
-   - Нет асинхронной синхронизации
-
-### Как преодолеть ограничения
-
-**Для немедленного использования Query Side:**
-```sql
--- Можно заполнить schedule_view напрямую из существующих данных
-INSERT INTO schedule_view (id, scheduled_date, time_slot, educator_name, group_name)
-SELECT 
-    gen_random_uuid(),
-    scheduled_date,
-    'FIRST',
-    educator.name,
-    study_stream.name
-FROM existing_schedule_table;
-```
-
-**Для полного использования:**
-- Реализовать Phase 3 (Интеграция)
-- Создать синхронизацию Query ← Command
-- Создать DTO для Command Side
+1. **Асинхронная проекция Query Side** (`@Async`, AFTER_COMMIT) обгоняется фиксированной паузой
+   `setTimeout(1000)` на фронте в разделе «Расписание» (`ScheduleManager`) и у переноса —
+   возможен кратковременный показ старого положения. В планировщике замок уже переведён на
+   оптимистичное обновление без гонки.
+2. **`ScheduleSynchronizer.onScheduleGenerated`** навигирует ленивые ассоциации из detached-события
+   («по удаче» работает) — стоит перечитывать placement по id в своей транзакции, как в `onPlacementChanged`.
+3. **Накопление архивных сессий** — решено: чистка повешена на генерацию (`purgeOldArchivedSessions`,
+   порог `schedule.session.archive-retention-days`), а не на `@Scheduled` (приложение работает непостоянно).
 
 ---
 

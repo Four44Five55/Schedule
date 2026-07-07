@@ -243,6 +243,25 @@ export const CQRSService = {
   },
 
   /**
+   * Пересортировка трека в порядок плана — вызывается ПОСЛЕ переноса. Занятия класса
+   * якорного размещения (тот же курс+поток+преподаватели) возвращаются в порядок изучения:
+   * перенесённое «пузырьком» встаёт на плановое место, соседи сдвигаются на ячейку. Меняются
+   * только даты — тема едет с занятием.
+   *
+   * @param placementId - только что перенесённое размещение (определяет класс)
+   * @returns сессия (с актуальной version) и список распавшихся сцепок (problems)
+   */
+  reorder: (
+    placementId: string
+  ): Promise<{ session: ScheduleSessionDto; problems: { placementId: string; reason: string }[] }> => {
+    return api
+      .post<{ session: ScheduleSessionDto; problems: { placementId: string; reason: string }[] }>(
+        `/schedule/command/placements/${placementId}/reorder`
+      )
+      .then(r => r.data);
+  },
+
+  /**
    * Получить все размещения сессии
    *
    * @param sessionId - ID сессии

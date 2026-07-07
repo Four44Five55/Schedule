@@ -150,8 +150,9 @@ frontend/src/
 ## REST API Структура
 
 ### Основные контроллеры:
-- `ScheduleController` - генерация расписания
-- `ScheduleMoveController` - перенос занятий (НОВОЕ 2026-06-10)
+- `command.ScheduleCommandController` - генерация/перенос/ручная раскладка/пины (`/api/schedule/command/...`)
+- `read.ScheduleQueryController` - чтение расписания и отчёты (`/api/schedule/query/...`)
+- `ScheduleMoveController` - поиск вариантов переноса (`/api/schedule/find-move-options`, НОВОЕ 2026-06-10)
 - `AssignmentController` - управление назначениями
 - `EducatorController` - управление преподавателями
 - `GroupController` - управление группами

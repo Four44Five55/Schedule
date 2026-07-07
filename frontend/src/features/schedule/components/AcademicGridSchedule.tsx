@@ -341,6 +341,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     if (!selectedLesson.placementId) return;
 
     const movedId = String(selectedLesson.id);
+    const movedPlacementId = selectedLesson.placementId;
     setMoving(true);
     try {
       const result = selectedChainIds.length > 1
@@ -360,6 +361,17 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           });
       clearSelection();
       if (result.success) {
+        // После переноса — пересортировка класса в порядок плана («пузырёк»): перенесённое
+        // встаёт на своё плановое место, соседи сдвигаются на ячейку (меняются их даты,
+        // тема едет с занятием).
+        try {
+          const { problems } = await CQRSService.reorder(movedPlacementId);
+          if (problems && problems.length > 0) {
+            window.alert(`Готово. Сцепок распалось: ${problems.length} — пересоберите вручную.`);
+          }
+        } catch (err) {
+          console.error('Ошибка пересортировки в план:', err);
+        }
         // Query Side обновляется асинхронно — даём ему мгновение, затем перезагружаем.
         setTimeout(() => onMoveLesson?.(movedId), 1000);
       }

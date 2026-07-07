@@ -9,6 +9,8 @@ import ru.dto.command.LessonPlacementDto;
 import ru.dto.command.LockPlacementRequest;
 import ru.dto.command.MoveChainRequest;
 import ru.dto.command.MoveLessonRequest;
+import ru.dto.command.ReorderProblemDto;
+import ru.dto.command.ReorderResponse;
 import ru.dto.command.ScheduleSessionDto;
 import ru.dto.manualPlacement.ManualPlacementRequest;
 import ru.dto.manualPlacement.PlacementOptionsRequest;
@@ -26,6 +28,7 @@ import ru.services.LessonMoveService;
 import ru.services.LessonPinService;
 import ru.services.ManualPlacementService;
 import ru.services.ScheduleGenerationService;
+import ru.services.TrackReorderService;
 
 import java.util.List;
 import java.util.UUID;
@@ -52,6 +55,7 @@ public class ScheduleCommandController {
     private final LessonChainMoveService lessonChainMoveService;
     private final LessonPinService lessonPinService;
     private final ManualPlacementService manualPlacementService;
+    private final TrackReorderService trackReorderService;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
 
@@ -389,6 +393,28 @@ public class ScheduleCommandController {
         ScheduleSession session = lessonPinService.setLock(
                 placementId, request.locked(), "user", request.placementIds());
         return ResponseEntity.ok(sessionMapper.toDto(session));
+    }
+
+    /**
+     * Пересортировка трека в порядок плана — вызывается ПОСЛЕ переноса.
+     *
+     * <p>POST /api/schedule/command/placements/{placementId}/reorder</p>
+     *
+     * <p>Якорь — только что перенесённое размещение; занятия его класса (сессия + курс +
+     * поток + набор преподавателей) возвращаются в порядок изучения: перенесённое «пузырьком»
+     * встаёт на плановое место, соседи сдвигаются на ячейку. Меняются только даты — тема
+     * едет с занятием. Возвращает сессию (версия) и флаги распавшихся сцепок.</p>
+     */
+    @PostMapping("/placements/{placementId}/reorder")
+    public ResponseEntity<ReorderResponse> reorder(@PathVariable UUID placementId) {
+        log.info("Пересортировка в план вокруг: placementId={}", placementId);
+
+        TrackReorderService.ReorderResult result = trackReorderService.resort(placementId, "user");
+        List<ReorderProblemDto> problems = result.problems().stream()
+                .map(p -> new ReorderProblemDto(p.placementId(), p.reason().name()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(new ReorderResponse(sessionMapper.toDto(result.session()), problems));
     }
 
     /**
