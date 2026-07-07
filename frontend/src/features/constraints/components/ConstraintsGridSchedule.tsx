@@ -211,7 +211,7 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
       rowHeightBase={40}
       title={entityLabel ? `Ограничения · ${entityLabel}` : 'Ограничения'}
       toolbarExtras={toolbar}
-      renderCell={({ date, dateStr, slot, slotIdx, weekIdx, zoom }) => {
+      renderCell={({ date, dateStr, slot, slotIdx, weekIdx, factor }) => {
         // Координаты ячейки для прямоугольного выделения. День недели: Пн=1..Сб=6 (getDay()).
         const dayId = date.getDay();
         const row = (dayId - 1) * 4 + slotIdx;
@@ -225,7 +225,9 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
         const cellConstraints = dayConstraints?.filter((c) => !c.timeSlot || c.timeSlot === slot.id);
         const primary = cellConstraints?.[0];
         const style = primary ? CONSTRAINT_STYLES[primary.kindOfConstraint] ?? FALLBACK_CONSTRAINT_STYLE : null;
-        const abbrSize = zoom === 0 ? 'text-[10px]' : zoom === 1 ? 'text-[13px]' : 'text-[15px]';
+        // Равномерный зум (как в расписании): аббревиатура и ширина ячейки из factor.
+        const abbrPx = Math.round(13 * factor);
+        const cellW = Math.round(40 * factor);
         const extraCount = cellConstraints ? cellConstraints.length - 1 : 0;
         const isSelected = painting && selected.has(cellKey(dateStr, slot.id));
 
@@ -239,13 +241,14 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
               isSelected && mode === 'brush' && 'bg-blue-200 ring-1 ring-inset ring-blue-500',
               isSelected && mode === 'erase' && 'bg-red-200 ring-1 ring-inset ring-red-500'
             )}
+            style={{ width: cellW, minWidth: cellW }}
             title={primary ? buildTooltip(cellConstraints!) : undefined}
             onClick={editable ? () => onCellSelect!(dateStr, slot.id) : undefined}
             onMouseDown={painting && !busy ? (e) => { e.preventDefault(); startSelect(row, col); } : undefined}
             onMouseEnter={painting ? () => extendSelect(row, col) : undefined}
           >
             {primary && (
-              <span className={cn('font-black tracking-tighter leading-none', abbrSize, style!.text)}>
+              <span className={cn('font-black tracking-tighter leading-none', style!.text)} style={{ fontSize: abbrPx }}>
                 {primary.abbreviation}
                 {extraCount > 0 && <span className="ml-0.5 opacity-60">+{extraCount}</span>}
               </span>

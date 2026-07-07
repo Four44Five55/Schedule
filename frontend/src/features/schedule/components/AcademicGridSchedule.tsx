@@ -86,7 +86,9 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   const [moving, setMoving] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
   // Дисциплина, подсвеченная наведением (когда занятие ещё не выбрано).
-  const [hoveredDiscipline, setHoveredDiscipline] = useState<string | null>(null);
+  // Наведённое занятие (а не только имя дисциплины) — нужно, чтобы знать его группы
+  // для сужения подсветки у ресурса (преподаватель/аудитория) до общих групп.
+  const [hoveredLesson, setHoveredLesson] = useState<ScheduledLessonDto | null>(null);
   // Временно разомкнутые стыки цепочек (ключ "date_topSlotId") — только для переноса,
   // план (SlotChain) не трогаем. Сбрасываются при снятии выбора.
   const [detachedBoundaries, setDetachedBoundaries] = useState<Set<string>>(new Set());
@@ -96,6 +98,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
 
   const clearSelection = () => {
     setSelectedLesson(null);
+    setHoveredLesson(null);
     setMoveTargets(new Map());
     setSelectedChainIds([]);
     setDetachedBoundaries(new Set()); // временные размыкания живут только на время выбора
@@ -130,6 +133,17 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       setSelectedLesson(null);
     }
   }, [placementCandidate]);
+
+  // Смена просматриваемой сущности (группа/преподаватель/аудитория) сбрасывает выбор —
+  // иначе подсветка и цели переноса «тянутся» от занятия предыдущей сущности, хотя сетка
+  // уже другая. Сбрасываем всё, что привязано к выбору (setter'ы стабильны, deps не нужны).
+  useEffect(() => {
+    setSelectedLesson(null);
+    setHoveredLesson(null);
+    setMoveTargets(new Map());
+    setSelectedChainIds([]);
+    setDetachedBoundaries(new Set());
+  }, [filterType, selectedValue]);
 
   // Подбор доступных ячеек вынесен ниже — после объявления buildChain
   // (от которого зависит), чтобы не словить temporal dead zone в массиве зависимостей.
@@ -171,8 +185,16 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     return set;
   }, [selectedLesson, lessons, selectedEducatorIds]);
 
-  // Активная дисциплина: закреплённая выбором имеет приоритет над наведением.
-  const activeDiscipline = selectedLesson?.disciplineName ?? hoveredDiscipline;
+  // Эталонное занятие для подсветки: закреплённое выбором приоритетнее наведённого.
+  // От него берём и дисциплину, и набор групп.
+  const referenceLesson = selectedLesson ?? hoveredLesson;
+  const activeDiscipline = referenceLesson?.disciplineName ?? null;
+  // Группы эталона: у преподавателя/аудитории подсвечиваем занятия той же дисциплины
+  // ТОЛЬКО если в них участвует хотя бы одна из этих групп (а не все занятия подряд).
+  const activeGroupNames = useMemo(
+    () => new Set(referenceLesson?.groupNames ?? []),
+    [referenceLesson]
+  );
 
   // Сцепки слотов (SlotChain) — пары соседних слотов, идущих единой цепочкой.
   // Храним как множество канонических ключей "minId-maxId" для O(1)-проверки.
@@ -464,9 +486,13 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     const isTeacherBusyHidden = !!selectedLesson && !!lesson && !isSourceCell &&
         teacherBusyCells.has(gridKey) &&
         !lesson.educatorIds.some((id) => selectedEducatorIds.has(id));
-    // Принадлежит ли занятие активной дисциплине (подсветка по виду).
+    // Принадлежит ли занятие активной дисциплине (подсветка по виду) И делит ли группу
+    // с эталоном. В виде группы условие по группам всегда истинно (все занятия несут
+    // выбранную группу) → поведение прежнее; сужение работает у преподавателя/аудитории.
     const cellDiscipline = lesson?.disciplineName ?? null;
-    const isDisciplineMatch = !!cellDiscipline && cellDiscipline === activeDiscipline;
+    const sharesGroup = activeGroupNames.size === 0
+        || !!lesson?.groupNames.some((n) => activeGroupNames.has(n));
+    const isDisciplineMatch = !!cellDiscipline && cellDiscipline === activeDiscipline && sharesGroup;
 
     // Фон занятой ячейки: жёлтый (скрытая занятость) → цвет по виду
     // для активной дисциплины → нейтральный серый в покое.
@@ -511,8 +537,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
               if (isMoveTarget) { handleCellMove(dateStr, slot.id); return; }
               if (lesson) handleLessonClick(lesson);
             }}
-            onMouseEnter={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(cellDiscipline) : undefined}
-            onMouseLeave={cellDiscipline && !selectedLesson ? () => setHoveredDiscipline(null) : undefined}
+            onMouseEnter={lesson && !selectedLesson ? () => setHoveredLesson(lesson) : undefined}
+            onMouseLeave={lesson && !selectedLesson ? () => setHoveredLesson(null) : undefined}
             className={cn(
                 'border-r p-0.5 transition-all relative overflow-hidden',
                 borderClass,

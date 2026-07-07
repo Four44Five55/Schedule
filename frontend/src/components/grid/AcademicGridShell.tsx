@@ -12,16 +12,28 @@ import { cn } from '../../utils/cn';
  * пар, зум и полноэкранный режим. Содержимое каждой ячейки задаётся снаружи через
  * render-prop `renderCell` (паттерн Strategy) — поэтому каркас открыт для новых
  * видов сетки (расписание, ограничения, …) без собственных изменений (OCP).
+ *
+ * ЗУМ (Excel-подобный, равномерный, непрерывный): единый множитель `factor`
+ * масштабирует ВСЁ — высоту строк, ширины «замороженных» колонок, кегли шапок и
+ * подписей, а содержимое ячейки — снаружи через `ctx.factor` (те же базовые px × factor).
+ * Диапазон {@link FACTOR_MIN}..{@link FACTOR_MAX} шагом {@link FACTOR_STEP}; Ctrl+колесо
+ * или кнопки ±; в тулбаре — проценты. Никаких `transform: scale` — sticky-колонки и
+ * попадание кликов/перетаскивания остаются корректными.
  */
-
-export type ZoomLevel = 0 | 1 | 2;
 
 /**
- * Множители зума (Excel-подобный равномерный масштаб). Применяются ОДИНАКОВО
- * к высоте строки, кеглю шрифта и иконкам, поэтому ячейка и текст растут в одной
- * пропорции (×1 = база: ячейка 60px, аббревиатура 15px, тело 11px).
+ * Дискретные уровни зума — ОСТАВЛЕНЫ только для {@link EntityTimelineShell} (гант
+ * ограничений со своим зумом). Академическая сетка использует непрерывный `factor`.
  */
-export const ZOOM_FACTORS: Record<ZoomLevel, number> = { 0: 0.8, 1: 1, 2: 1.25 };
+export type ZoomLevel = 0 | 1 | 2;
+
+/** Границы и шаг непрерывного зума (100% = базовый масштаб: ячейка 60px). */
+export const FACTOR_MIN = 0.4;
+export const FACTOR_MAX = 1.6;
+export const FACTOR_STEP = 0.1;
+
+const clampFactor = (f: number) =>
+  Math.min(FACTOR_MAX, Math.max(FACTOR_MIN, Math.round(f * 100) / 100));
 
 export interface SlotDef {
   id: TimeSlotPair;
@@ -52,22 +64,6 @@ export const SLOTS: SlotDef[] = [
   { id: 'FOURTH', label: '4', time: '16:20' },
 ];
 
-/** Размеры шрифта контента ячейки по уровню зума (общий источник для всех сеток). */
-export interface ZoomFontClasses {
-  /** Основной текст ячейки. */
-  main: string;
-  /** Аббревиатура (на 2pt крупнее основного). */
-  abbr: string;
-  /** Вспомогательный мелкий текст. */
-  sub: string;
-}
-
-export const zoomFontClasses = (zoom: ZoomLevel): ZoomFontClasses => ({
-  main: zoom === 0 ? 'text-[8px]' : zoom === 1 ? 'text-[11px]' : 'text-[13px]',
-  abbr: zoom === 0 ? 'text-[12px]' : zoom === 1 ? 'text-[13px]' : 'text-[15px]',
-  sub: zoom === 0 ? 'text-[7px]' : zoom === 1 ? 'text-[9px]' : 'text-[11px]',
-});
-
 /** Контекст ячейки, передаваемый в renderCell. */
 export interface GridCellContext {
   /** Дата ячейки. */
@@ -82,8 +78,6 @@ export interface GridCellContext {
   slot: SlotDef;
   /** Индекс пары в дне (0..3). */
   slotIdx: number;
-  /** Текущий уровень зума — для адаптивного размера контента ячейки. */
-  zoom: ZoomLevel;
   /** Множитель зума (Excel-подобный): базовые px контента множьте на него. */
   factor: number;
 }
@@ -117,11 +111,13 @@ export interface AcademicGridShellProps {
    */
   chromeless?: boolean;
   /**
-   * Базовая высота строки в px при zoom=1; масштабируется множителем зума.
+   * Базовая высота строки в px при 100%; масштабируется множителем зума.
    * По умолчанию 60 (ячейка расписания 60×60 при 100%). Сетка ограничений
    * (одна строка текста) передаёт меньше, чтобы не раздуваться.
    */
   rowHeightBase?: number;
+  /** Начальный масштаб (по умолчанию 0.8 = 80%). */
+  initialFactor?: number;
 }
 
 export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
@@ -134,21 +130,22 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   maxHeightClass = 'max-h-[700px]',
   chromeless = false,
   rowHeightBase = 60,
+  initialFactor = 0.8,
 }) => {
-  const [zoom, setZoom] = useState<ZoomLevel>(0);
+  const [factor, setFactor] = useState<number>(clampFactor(initialFactor));
   const [isFullscreen, setIsFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Зум колесом мыши: Ctrl+колесо меняет уровень (0/1/2), обычное колесо скроллит
-  // сетку. Слушатель non-passive — иначе preventDefault (отмена зума страницы
-  // браузером) не сработает. Тач-пинч тоже шлёт ctrl+wheel → тоже зумит сетку.
+  // Зум колесом мыши: Ctrl+колесо меняет масштаб непрерывно (шаг FACTOR_STEP),
+  // обычное колесо скроллит сетку. Слушатель non-passive — иначе preventDefault
+  // (отмена зума страницы браузером) не сработает. Тач-пинч тоже шлёт ctrl+wheel.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      setZoom((z) => Math.max(0, Math.min(2, e.deltaY < 0 ? z + 1 : z - 1)) as ZoomLevel);
+      setFactor((f) => clampFactor(f + (e.deltaY < 0 ? FACTOR_STEP : -FACTOR_STEP)));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -175,10 +172,14 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   const borderClass = 'border-slate-300';
   const headerBorderClass = 'border-slate-400';
 
-  // Пропорциональный зум: единый множитель тянет и высоту строки, и кегли/иконки
-  // контента (последние — в renderCell через ctx.factor).
-  const factor = ZOOM_FACTORS[zoom];
-  const rowHeightPx = Math.round(rowHeightBase * factor);
+  // Равномерный зум: единый множитель тянет ВСЕ размеры каркаса. `s(base)` = базовый
+  // размер в px при 100% × factor (минимум 1px, чтобы элемент не схлопнулся в 0).
+  const s = (base: number) => Math.max(1, Math.round(base * factor));
+  const rowHeightPx = s(rowHeightBase);
+  const dayColW = s(24);   // «замороженная» колонка дня (буква)
+  const pairColW = s(40);  // «замороженная» колонка пары
+  const pad = s(2);        // базовый паддинг ячеек шапки/подписей (p-0.5 = 2px при 100%)
+
   const containerMaxHeight = isFullscreen ? 'h-[90vh]' : maxHeightClass;
 
   return (
@@ -198,19 +199,21 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
 
           <div className="flex items-center gap-1 bg-slate-800 rounded-lg p-0.5">
             <button
-              onClick={() => setZoom((z) => (Math.max(0, z - 1) as ZoomLevel))}
-              className="p-1 hover:bg-slate-700 rounded transition-all text-slate-400 hover:text-white"
-              disabled={zoom === 0}
+              onClick={() => setFactor((f) => clampFactor(f - FACTOR_STEP))}
+              className="p-1 hover:bg-slate-700 rounded transition-all text-slate-400 hover:text-white disabled:opacity-40"
+              disabled={factor <= FACTOR_MIN}
+              title="Мельче (Ctrl+колесо вниз)"
             >
               <ZoomOut size={14} />
             </button>
-            <span className="text-[9px] font-black w-16 text-center text-slate-300">
-              {zoom === 0 ? 'MIN' : zoom === 1 ? 'MID' : 'MAX'}
+            <span className="text-[9px] font-black w-12 text-center text-slate-300 tabular-nums">
+              {Math.round(factor * 100)}%
             </span>
             <button
-              onClick={() => setZoom((z) => (Math.min(2, z + 1) as ZoomLevel))}
-              className="p-1 hover:bg-slate-700 rounded transition-all text-slate-400 hover:text-white"
-              disabled={zoom === 2}
+              onClick={() => setFactor((f) => clampFactor(f + FACTOR_STEP))}
+              className="p-1 hover:bg-slate-700 rounded transition-all text-slate-400 hover:text-white disabled:opacity-40"
+              disabled={factor >= FACTOR_MAX}
+              title="Крупнее (Ctrl+колесо вверх)"
             >
               <ZoomIn size={14} />
             </button>
@@ -247,27 +250,48 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
           </button>
         )}
         <div ref={scrollRef} className="overflow-auto custom-scrollbar flex-1">
-          <table className={cn('w-full border-collapse select-none', zoom === 0 ? 'table-fixed' : 'table-auto')}>
+          <table className="w-full border-collapse select-none table-auto">
             <thead>
               <tr className="bg-slate-900 text-white">
-                <th className={cn('w-6 border-r p-0.5 text-[8px] font-black uppercase sticky left-0 bg-slate-900 z-30', headerBorderClass)} rowSpan={3}>Дн</th>
-                <th className={cn('w-10 border-r p-0.5 text-[8px] font-black uppercase sticky left-6 bg-slate-900 z-30', headerBorderClass)} rowSpan={3}>П</th>
+                <th
+                  className={cn('border-r font-black uppercase sticky bg-slate-900 z-30', headerBorderClass)}
+                  rowSpan={3}
+                  style={{ width: dayColW, minWidth: dayColW, left: 0, fontSize: s(8), padding: pad }}
+                >Дн</th>
+                <th
+                  className={cn('border-r font-black uppercase sticky bg-slate-900 z-30', headerBorderClass)}
+                  rowSpan={3}
+                  style={{ width: pairColW, minWidth: pairColW, left: dayColW, fontSize: s(8), padding: pad }}
+                >П</th>
                 {mondays.map((_, idx) => (
-                  <th key={idx} className={cn('border-r p-0.5 text-[7px] font-black bg-slate-800 text-slate-400', headerBorderClass)}>
+                  <th
+                    key={idx}
+                    className={cn('border-r font-black bg-slate-800 text-slate-400', headerBorderClass)}
+                    style={{ fontSize: s(7), padding: pad }}
+                  >
                     {idx + 1}
                   </th>
                 ))}
               </tr>
               <tr className="bg-slate-100">
                 {monthHeaders.map((month, idx) => (
-                  <th key={idx} colSpan={month.count} className={cn('border-r p-0.5 text-center text-[8px] font-black uppercase tracking-widest text-slate-500', headerBorderClass)}>
+                  <th
+                    key={idx}
+                    colSpan={month.count}
+                    className={cn('border-r text-center font-black uppercase tracking-widest text-slate-500', headerBorderClass)}
+                    style={{ fontSize: s(8), padding: pad }}
+                  >
                     {month.name}
                   </th>
                 ))}
               </tr>
               <tr className="bg-white border-b-2 border-slate-400">
                 {mondays.map((monday, idx) => (
-                  <th key={idx} className={cn('border-r p-0.5 text-[7px] font-bold text-slate-400', borderClass)}>
+                  <th
+                    key={idx}
+                    className={cn('border-r font-bold text-slate-400', borderClass)}
+                    style={{ fontSize: s(7), padding: pad }}
+                  >
                     {format(monday, 'dd.MM')}
                   </th>
                 ))}
@@ -278,14 +302,25 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
               {DAYS.map((day) => (
                 <React.Fragment key={day.id}>
                   <tr className="bg-slate-50">
-                    <td className={cn('border-r text-center font-black text-[9px] text-slate-900 sticky left-0 bg-slate-100 z-20 w-6', headerBorderClass)} rowSpan={5}>
+                    <td
+                      className={cn('border-r text-center font-black text-slate-900 sticky bg-slate-100 z-20', headerBorderClass)}
+                      rowSpan={5}
+                      style={{ left: 0, width: dayColW, minWidth: dayColW, fontSize: s(9) }}
+                    >
                       <div className="rotate-90 whitespace-nowrap uppercase">{day.label}</div>
                     </td>
-                    <td className={cn('border-r text-[7px] font-black text-slate-400 text-center sticky left-6 bg-slate-50 z-10 uppercase tracking-tighter h-5', borderClass)}>
+                    <td
+                      className={cn('border-r font-black text-slate-400 text-center sticky bg-slate-50 z-10 uppercase tracking-tighter', borderClass)}
+                      style={{ left: dayColW, width: pairColW, minWidth: pairColW, height: s(20), fontSize: s(7) }}
+                    >
                       D
                     </td>
                     {mondays.map((monday, idx) => (
-                      <td key={idx} className={cn('border-r text-center text-[8px] font-black text-slate-700 bg-slate-50/50', borderClass)}>
+                      <td
+                        key={idx}
+                        className={cn('border-r text-center font-black text-slate-700 bg-slate-50/50', borderClass)}
+                        style={{ fontSize: s(8) }}
+                      >
                         {format(addDays(monday, day.id - 1), 'd')}
                       </td>
                     ))}
@@ -293,9 +328,12 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
 
                   {SLOTS.map((slot, slotIdx) => (
                     <tr key={slot.id} style={{ height: rowHeightPx }} className="group transition-all duration-300">
-                      <td className={cn('border-r p-0.5 text-center sticky left-6 bg-white z-10 w-10 group-hover:bg-slate-50 transition-colors', borderClass)}>
-                        <div className="font-black text-slate-800 text-[9px]">{slot.label}</div>
-                        <div className="text-[6px] text-slate-400 font-mono leading-none">{slot.time}</div>
+                      <td
+                        className={cn('border-r text-center sticky bg-white z-10 group-hover:bg-slate-50 transition-colors', borderClass)}
+                        style={{ left: dayColW, width: pairColW, minWidth: pairColW, padding: pad }}
+                      >
+                        <div className="font-black text-slate-800" style={{ fontSize: s(9) }}>{slot.label}</div>
+                        <div className="text-slate-400 font-mono leading-none" style={{ fontSize: s(6) }}>{slot.time}</div>
                       </td>
 
                       {mondays.map((monday, weekIdx) => {
@@ -303,7 +341,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                         const dateStr = format(date, 'yyyy-MM-dd');
                         return (
                           <React.Fragment key={weekIdx}>
-                            {renderCell({ date, dateStr, monday, weekIdx, slot, slotIdx, zoom, factor })}
+                            {renderCell({ date, dateStr, monday, weekIdx, slot, slotIdx, factor })}
                           </React.Fragment>
                         );
                       })}

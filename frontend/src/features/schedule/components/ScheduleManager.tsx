@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { parseISO } from 'date-fns';
 import { AcademicGridSchedule } from './AcademicGridSchedule';
-import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto, StudyPeriodDto } from '../../../types/api';
+import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto } from '../../../types/api';
 import { ResourceService, ScheduleService } from '../../../services/apiServices';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
+import { usePeriod } from '../../period/PeriodContext';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
   ScheduleSessionDto
@@ -21,14 +23,6 @@ import {
 } from 'lucide-react';
 
 interface ScheduleManagerProps {
-  lessons: ScheduledLessonDto[];
-  grid: Record<string, ScheduledLessonDto[]>;
-  startDate: Date;
-  endDate: Date;
-  onLessonChange?: (lessons: ScheduledLessonDto[], grid: Record<string, ScheduledLessonDto[]>) => void;
-  // Смена периода внутри раздела «Расписание» должна двигать и ось дат сетки
-  // (её задаёт родитель через startDate/endDate), а не только набор занятий.
-  onPeriodChange?: (period: StudyPeriodDto) => void;
   currentSession?: ScheduleSessionDto | null;
   // Расширенный функционал Фичи 2 (пины): тумблер замка + «перегенерировать,
   // сохранив закреплённые». Включается только в планировщике; раздел «Расписание»
@@ -38,7 +32,15 @@ interface ScheduleManagerProps {
 
 type FilterType = 'group' | 'educator' | 'auditorium';
 
-export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid = {}, startDate, endDate, onLessonChange, onPeriodChange, currentSession: sessionProp, pinningEnabled = false }) => {
+export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession: sessionProp, pinningEnabled = false }) => {
+  // Учебный период — из общего контекста (единый выбор в шапке). Раздел сам грузит
+  // занятия этого периода; свой селектор периода убран.
+  const { selectedPeriod } = usePeriod();
+
+  const [lessons, setLessons] = useState<ScheduledLessonDto[]>([]);
+  const [grid, setGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
+  const [loadingPeriodSchedule, setLoadingPeriodSchedule] = useState(false);
+
   // Тип фильтра и выбранный объект переживают обновление страницы (localStorage),
   // иначе F5 сбрасывает открытое расписание и его приходится выбирать заново.
   const [filterType, setFilterType] = useState<FilterType>(() => {
@@ -67,23 +69,38 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
     auditoriums: AuditoriumDto[]
   }>({ groups: [], educators: [], auditoriums: [] });
 
-  const [studyPeriods, setStudyPeriods] = useState<StudyPeriodDto[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<StudyPeriodDto | null>(null);
-  const [loadingPeriodSchedule, setLoadingPeriodSchedule] = useState(false);
-
   useEffect(() => {
     Promise.all([
       ResourceService.getGroups(),
       ResourceService.getEducators(),
       ResourceService.getAuditoriums(),
-      ResourceService.getStudyPeriods(),
-      ResourceService.getActiveStudyPeriod()
-    ]).then(([groups, educators, auditoriums, periods, activePeriod]) => {
+    ]).then(([groups, educators, auditoriums]) => {
       setAllResources({ groups, educators, auditoriums });
-      setStudyPeriods(periods);
-      setSelectedPeriod(activePeriod);
     });
   }, []);
+
+  // Загрузка расписания текущего периода (Query Side). Перезагружается при смене
+  // общего периода и вызывается вручную после переноса/пина/перегенерации.
+  const reloadPeriodSchedule = useCallback(async () => {
+    if (!selectedPeriod) { setLessons([]); setGrid({}); return; }
+    try {
+      const result = await ScheduleService.loadExisting(selectedPeriod.startDate, selectedPeriod.endDate);
+      if (result.status === 'loaded') {
+        setLessons(result.lessons);
+        setGrid(result.grid || {});
+      } else {
+        setLessons([]);
+        setGrid({});
+      }
+    } catch (err) {
+      console.error('Не удалось загрузить расписание:', err);
+    }
+  }, [selectedPeriod]);
+
+  useEffect(() => {
+    setLoadingPeriodSchedule(true);
+    reloadPeriodSchedule().finally(() => setLoadingPeriodSchedule(false));
+  }, [reloadPeriodSchedule]);
 
   // Синхронизируем currentSession с пропом (только если проп задан —
   // иначе не затираем сессию, подтянутую при открытии расписания).
@@ -92,8 +109,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
   }, [sessionProp]);
 
   // При открытии расписания подтягиваем сессию «живого» расписания (и при
-  // необходимости переоткрываем её), чтобы редактирование было доступно сразу —
-  // без повторной генерации.
+  // необходимости переоткрываем её), чтобы редактирование было доступно сразу.
   useEffect(() => {
     if (sessionProp) return;
     CQRSService.getEditableSession().then((s) => {
@@ -133,7 +149,6 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
   }, [filterType, selectedValue, allResources]);
 
   // Ограничения выбранной сущности — общий хук (тот же, что в планировщике).
-  // rootEntityId уже разрешает имя→id по загруженным ресурсам.
   const { constraints, loading: loadingConstraints } = useEntityConstraints(filterType, rootEntityId);
 
   const handleGenerateSchedule = async () => {
@@ -153,21 +168,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
 
   const handleMoveLesson = async (_placementId: string) => {
     setActionMessage('✅ Занятие перенесено!');
-
-    // Перезагружаем расписание за текущий период, чтобы перенос отразился сразу,
-    // без ручного обновления страницы. Query Side обновляется асинхронно, но диалог
-    // переноса уже выждал ~1.5с перед вызовом — к этому моменту view готова.
-    if (selectedPeriod) {
-      try {
-        const result = await ScheduleService.loadExisting(selectedPeriod.startDate, selectedPeriod.endDate);
-        if (result.status === 'loaded') {
-          onLessonChange?.(result.lessons, result.grid || {});
-        }
-      } catch (err) {
-        console.error('Не удалось перезагрузить расписание после переноса:', err);
-      }
-    }
-
+    // Перезагружаем расписание за текущий период, чтобы перенос отразился сразу.
+    // Query Side обновляется асинхронно, но диалог переноса уже выждал перед вызовом.
+    await reloadPeriodSchedule();
     setTimeout(() => setActionMessage(null), 2000);
   };
 
@@ -179,20 +182,6 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
       setCurrentSession(reloaded);
     } finally {
       setLoadingAction(false);
-    }
-  };
-
-  // Перезагрузка расписания за текущий период (Query Side обновляется асинхронно —
-  // вызывающий выжидает перед этим).
-  const reloadPeriodSchedule = async () => {
-    if (!selectedPeriod) return;
-    try {
-      const result = await ScheduleService.loadExisting(selectedPeriod.startDate, selectedPeriod.endDate);
-      if (result.status === 'loaded') {
-        onLessonChange?.(result.lessons, result.grid || {});
-      }
-    } catch (err) {
-      console.error('Не удалось перезагрузить расписание:', err);
     }
   };
 
@@ -236,65 +225,16 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
     }
   };
 
-  const handlePeriodChange = async (period: StudyPeriodDto | null) => {
-    if (!period) return;
-
-    setSelectedPeriod(period);
-    // Сдвигаем ось дат сетки на новый период (иначе занятия нового периода
-    // рисуются поверх старого диапазона — «сетка не меняется»).
-    onPeriodChange?.(period);
-    setLoadingPeriodSchedule(true);
-    setActionMessage('Загрузка расписания за период...');
-
-    try {
-      const result = await ScheduleService.loadExisting(period.startDate, period.endDate);
-      if (result.status === 'loaded' && result.lessons.length > 0) {
-        console.log('✅ Загружено расписание за период:', period.name, '-', result.lessons.length, 'занятий');
-        onLessonChange?.(result.lessons, result.grid || {});
-        setActionMessage(`✅ Загружено ${result.lessons.length} занятий`);
-      } else {
-        console.log('ℹ️ Нет расписания за выбранный период');
-        onLessonChange?.([], {});
-        setActionMessage('ℹ️ Нет расписания за этот период');
-      }
-    } catch (err) {
-      console.error('Ошибка загрузки расписания:', err);
-      setActionMessage('❌ Ошибка загрузки');
-    } finally {
-      setLoadingPeriodSchedule(false);
-      setTimeout(() => setActionMessage(null), 3000);
-    }
-  };
-
   return (
       <div className="space-y-4">
-        {/* Единая липкая панель управления: период · фильтры · статус сессии + кнопки.
-            Раньше это были две отдельные карточки над сеткой (период+фильтры и
-            статус сессии) — слиты в одну строку, чтобы не съедать высоту и
-            оставаться видимой при скролле сетки. */}
+        {/* Единая липкая панель управления: фильтры · статус сессии + кнопки.
+            Период выбирается глобально в шапке приложения, поэтому здесь его нет. */}
         <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border border-slate-100 rounded-xl px-2 py-1.5 shadow-sm flex flex-wrap items-center gap-2">
 
-          {/* Учебный период */}
-          {studyPeriods.length > 0 && (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Calendar className="text-slate-400" size={14} />
-                <select
-                    value={selectedPeriod?.id || ''}
-                    onChange={(e) => {
-                      const period = studyPeriods.find(p => p.id === parseInt(e.target.value));
-                      handlePeriodChange(period || null);
-                    }}
-                    className="max-w-[200px] px-2 py-1 bg-blue-50 border border-blue-100 rounded-lg text-xs font-bold text-blue-900 outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer truncate"
-                >
-                  <option value="">Период...</option>
-                  {studyPeriods.map((period) => (
-                      <option key={period.id} value={period.id}>
-                        {period.name} ({period.startDate} — {period.endDate})
-                      </option>
-                  ))}
-                </select>
-                {loadingPeriodSchedule && <Loader2 size={14} className="animate-spin text-blue-600" />}
-              </div>
+          {loadingPeriodSchedule && (
+              <span className="flex items-center gap-1 text-[10px] text-blue-600 shrink-0">
+                <Loader2 size={12} className="animate-spin" /> период…
+              </span>
           )}
 
           {/* Тип ресурса */}
@@ -386,14 +326,23 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
           )}
         </div>
 
-        {selectedValue ? (
+        {!selectedPeriod ? (
+            <div className="bg-white border border-slate-100 rounded-xl p-8 shadow-sm text-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
+                  <Calendar className="text-slate-400" size={24} />
+                </div>
+                <p className="text-sm font-bold text-slate-900">Выберите учебный период в шапке</p>
+              </div>
+            </div>
+        ) : selectedValue ? (
             <AcademicGridSchedule
                 lessons={lessons}
                 grid={grid}
                 filterType={filterType}
                 selectedValue={selectedValue}
-                startDate={startDate}
-                endDate={endDate}
+                startDate={parseISO(selectedPeriod.startDate)}
+                endDate={parseISO(selectedPeriod.endDate)}
                 constraints={constraints}
                 isEditMode={isEditMode}
                 sessionId={currentSession?.id}
@@ -420,8 +369,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ lessons, grid 
         )}
 
         {/* Тост-уведомления вынесены из потока (fixed), чтобы появление/исчезновение
-            сообщения (напр. «Занятие перенесено») не двигало сетку вверх-вниз.
-            Показывается независимо от наличия сессии. Авто-скрытие — в обработчиках. */}
+            сообщения не двигало сетку вверх-вниз. */}
         {actionMessage && (
             <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl shadow-lg text-xs font-bold border ${
                 actionMessage.includes('✅') ? 'bg-green-600 text-white border-green-500'

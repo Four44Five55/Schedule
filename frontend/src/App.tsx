@@ -9,14 +9,27 @@ import { StudyStreamList } from './features/resources/components/StudyStreamList
 import { ConstraintsManager } from './features/constraints/components/ConstraintsManager';
 import { PlannerManager } from './features/planner/components/PlannerManager';
 import { ScheduleManager } from './features/schedule/components/ScheduleManager';
-import type { ScheduledLessonDto, GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto, DisciplineDto, ScheduleResultDto, StudyPeriodDto } from './types/api';
-import { ScheduleService, ResourceService, CurriculumService } from './services/apiServices';
-import { CQRSService, dateUtils } from './services/cqrsApiService';
+import type { GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto, DisciplineDto, StudyPeriodDto } from './types/api';
+import { ResourceService, CurriculumService } from './services/apiServices';
+import { CQRSService } from './services/cqrsApiService';
+import { PeriodProvider, usePeriod, PeriodSelect } from './features/period/PeriodContext';
 import { HelpCircle, CalendarRange } from 'lucide-react';
 
 const ACTIVE_TAB_STORAGE_KEY = 'unischedule.activeTab';
 
 export default function App() {
+  // Общий контекст учебного периода — единая точка выбора для всех разделов.
+  return (
+    <PeriodProvider>
+      <AppShell />
+    </PeriodProvider>
+  );
+}
+
+function AppShell() {
+  // Смена периода — глобально (шапка). Генерация переключает период на сгенерированный.
+  const { setSelectedPeriodId } = usePeriod();
+
   // Активная вкладка переживает обновление страницы: храним её в localStorage,
   // а не только в state (иначе F5 сбрасывает на дашборд). Восстановленное значение
   // валидируем по списку вкладок, чтобы не открыть несуществующий раздел.
@@ -57,101 +70,35 @@ export default function App() {
         .finally(() => setLoading(false));
   }, []);
 
-  // ========== Загрузка существующего расписания при старте ==========
-  const [scheduleLessons, setScheduleLessons] = useState<ScheduledLessonDto[]>([]);
-  const [scheduleGrid, setScheduleGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
-  const [schedulePeriod, setSchedulePeriod] = useState<StudyPeriodDto | null>(null);
-
-  useEffect(() => {
-    ResourceService.getActiveStudyPeriod()
-        .then((activePeriod) => {
-          if (activePeriod) {
-            console.log('✅ Активный период:', activePeriod.name, '(', activePeriod.startDate, '—', activePeriod.endDate, ')');
-            setSchedulePeriod(activePeriod);
-            return ScheduleService.loadExisting(activePeriod.startDate, activePeriod.endDate);
-          } else {
-            console.log('ℹ️ Нет активного учебного периода');
-            return Promise.resolve({
-              status: 'empty',
-              lessons: [],
-              grid: {},
-              placedCount: 0,
-              unplacedCount: 0,
-              startDate: new Date().toISOString().split('T')[0],
-              endDate: new Date().toISOString().split('T')[0],
-              totalSlots: 0,
-              usedSlots: 0
-            });
-          }
-        })
-        .then((result: ScheduleResultDto) => {
-          if (result.status === 'loaded' && result.lessons.length > 0) {
-            console.log('✅ Загружено существующее расписание:', result.lessons.length, 'занятий');
-            setScheduleLessons(result.lessons);
-            setScheduleGrid(result.grid || {});
-          } else {
-            console.log('ℹ️ Нет существующего расписания, нужна генерация');
-          }
-        })
-        .catch((err) => {
-          console.error('Ошибка загрузки расписания:', err);
-        });
-  }, []);
-
   // ========== CRUD перезагрузки ==========
   const reloadGroups = useCallback(async () => {
-    try {
-      const data = await ResourceService.getGroups();
-      setGroups(data);
-    } catch (err) {
-      console.error('Ошибка загрузки групп:', err);
-    }
+    try { setGroups(await ResourceService.getGroups()); } catch (err) { console.error('Ошибка загрузки групп:', err); }
   }, []);
 
   const reloadEducators = useCallback(async () => {
-    try {
-      const data = await ResourceService.getEducators();
-      setEducators(data);
-    } catch (err) {
-      console.error('Ошибка загрузки преподавателей:', err);
-    }
+    try { setEducators(await ResourceService.getEducators()); } catch (err) { console.error('Ошибка загрузки преподавателей:', err); }
   }, []);
 
   const reloadAuditoriums = useCallback(async () => {
-    try {
-      const data = await ResourceService.getAuditoriums();
-      setAuditoriums(data);
-    } catch (err) {
-      console.error('Ошибка загрузки аудиторий:', err);
-    }
+    try { setAuditoriums(await ResourceService.getAuditoriums()); } catch (err) { console.error('Ошибка загрузки аудиторий:', err); }
   }, []);
 
   const reloadDisciplines = useCallback(async () => {
-    try {
-      const data = await CurriculumService.getDisciplines();
-      setDisciplines(data);
-    } catch (err) {
-      console.error('Ошибка загрузки дисциплин:', err);
-    }
+    try { setDisciplines(await CurriculumService.getDisciplines()); } catch (err) { console.error('Ошибка загрузки дисциплин:', err); }
   }, []);
 
   const reloadStreams = useCallback(async () => {
-    try {
-      const data = await ResourceService.getStreams();
-      setStreams(data);
-    } catch (err) {
-      console.error('Ошибка загрузки потоков:', err);
-    }
+    try { setStreams(await ResourceService.getStreams()); } catch (err) { console.error('Ошибка загрузки потоков:', err); }
   }, []);
 
-  // ========== Расписание ==========
+  // ========== Генерация расписания ==========
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerateSchedule = async (courseIds: number[], period?: StudyPeriodDto) => {
     setIsGenerating(true);
     try {
       // Период обязателен для генерации. Планировщик передаёт выбранный явно;
-      // прочие вызовы (например, дашборд) fallback'ятся на активный период.
+      // прочие вызовы fallback'ятся на активный период.
       const targetPeriod = period ?? await ResourceService.getActiveStudyPeriod();
       if (!targetPeriod) {
         alert('Не выбран учебный период. Создайте/выберите период в планировщике.');
@@ -159,8 +106,8 @@ export default function App() {
       }
 
       // Генерация всегда идёт через сессию периода (не создаём новую «с нуля»):
-      // так закреплённые вручную занятия (пины) не архивируются вместе с прежней
-      // сессией, а сохраняются, и генератор раскладывает вокруг них.
+      // так закреплённые вручную занятия (пины) не архивируются, а генератор
+      // раскладывает вокруг них.
       const session = await CQRSService.getSessionForPeriod(targetPeriod.id);
       await CQRSService.regenerateKeepingLocked(session.id, {
         name: 'Генерация от ' + new Date().toLocaleString('ru-RU'),
@@ -168,13 +115,9 @@ export default function App() {
         courseIds: courseIds
       });
 
-      // Показываем именно сгенерированный период (а не «активный на сегодня»),
-      // чтобы можно было готовить будущий семестр.
-      setSchedulePeriod(targetPeriod);
-      const result = await ScheduleService.loadExisting(targetPeriod.startDate, targetPeriod.endDate);
-      setScheduleLessons(result.lessons);
-      setScheduleGrid(result.grid || {});
-
+      // Показываем именно сгенерированный период (общий выбор) и открываем расписание —
+      // раздел «Расписание» сам подтянет занятия этого периода.
+      setSelectedPeriodId(targetPeriod.id);
       setActiveTab('schedule');
     } catch (err) {
       console.error(err);
@@ -252,19 +195,9 @@ export default function App() {
             </div>
         );
       case 'schedule':
-        return (
-            <ScheduleManager
-                lessons={scheduleLessons}
-                grid={scheduleGrid}
-                startDate={schedulePeriod ? dateUtils.parseDate(schedulePeriod.startDate) : new Date(2026, 1, 9)}
-                endDate={schedulePeriod ? dateUtils.parseDate(schedulePeriod.endDate) : new Date(2026, 7, 31)}
-                onLessonChange={(lessons, grid) => {
-                  setScheduleLessons(lessons);
-                  setScheduleGrid(grid);
-                }}
-                onPeriodChange={setSchedulePeriod}
-            />
-        );
+        // Раздел «Расписание» самодостаточен: период берёт из общего контекста и сам
+        // грузит занятия этого периода.
+        return <ScheduleManager />;
       default:
         return (
             <div className="flex flex-col items-center justify-center h-96 text-slate-300">
@@ -281,9 +214,8 @@ export default function App() {
 
         <main className="flex-1 flex flex-col min-w-0">
           <div className="p-6 max-w-[1600px] mx-auto w-full">
-            {/* Тонкий заголовок раздела: иконка + имя в одну строку. Декоративная
-                подпись «Management System» и хлебные крошки убраны, чтобы не съедать
-                высоту над контентом (актуально для сеток расписания/ограничений). */}
+            {/* Тонкий заголовок раздела + ЕДИНЫЙ глобальный выбор учебного периода справа
+                (одна точка смены периода для планировщика/расписания/ограничений/дашборда). */}
             <div className="mb-3 flex items-center gap-2.5">
               <div className="p-1.5 bg-blue-600 rounded-lg text-white">
                 <CalendarRange size={14} />
@@ -291,6 +223,9 @@ export default function App() {
               <h1 className="text-base font-black text-slate-900 capitalize tracking-tight leading-none">
                 {activeTab === 'dashboard' ? 'Dashboard' : activeTab}
               </h1>
+              <div className="ml-auto">
+                <PeriodSelect />
+              </div>
             </div>
             {renderContent()}
           </div>

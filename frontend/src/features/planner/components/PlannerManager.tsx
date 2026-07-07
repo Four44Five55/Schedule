@@ -11,6 +11,7 @@ import {
 import { parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { DisciplineCourseFormModal } from '../../curriculum/components/DisciplineCourseFormModal';
+import { usePeriod } from '../../period/PeriodContext';
 import { ConstraintsWorkspace } from '../../constraints/components/ConstraintsWorkspace';
 import { ManualPlacementWorkspace } from './ManualPlacementWorkspace';
 import { CourseSelector } from './CourseSelector';
@@ -21,8 +22,6 @@ import { PeriodFormModal } from './PeriodFormModal';
 import { ClonePlanFromPeriodModal } from './ClonePlanFromPeriodModal';
 
 type TabType = 'courses' | 'streams' | 'assignments' | 'constraints' | 'schedule' | 'generation';
-
-const PERIOD_STORAGE_KEY = 'unischedule.planner.selectedPeriodId';
 
 interface PlannerManagerProps {
   disciplines: DisciplineDto[];
@@ -35,13 +34,9 @@ interface PlannerManagerProps {
 export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, educators, groups, onGenerate, isGenerating }) => {
   const [activeTab, setActiveTab] = useState<TabType>('courses');
 
-  // Учебный период — первичный контекст планировщика: он задаёт набор курсов и даты.
-  // Выбор переживает уход с вкладки и F5 (localStorage), как фильтры в др. разделах.
-  const [periods, setPeriods] = useState<StudyPeriodDto[]>([]);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(() => {
-    const saved = localStorage.getItem(PERIOD_STORAGE_KEY);
-    return saved ? Number(saved) : null;
-  });
+  // Учебный период — из общего контекста (единый выбор в шапке приложения). Он задаёт
+  // набор курсов и даты; планировщик лишь читает его и умеет создавать новый период.
+  const { periods, selectedPeriodId, selectedPeriod, setSelectedPeriodId, reloadPeriods } = usePeriod();
   const [showPeriodForm, setShowPeriodForm] = useState(false);
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [showCloneModal, setShowCloneModal] = useState(false);
@@ -53,34 +48,10 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   const [streams, setStreams] = useState<StudyStreamDto[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const selectedPeriod = periods.find(p => p.id === selectedPeriodId) ?? null;
-
-  // Периоды + потоки грузим один раз. Сохранённый выбор имеет приоритет (если такой
-  // период ещё существует); иначе — активный период, иначе первый из списка.
+  // Потоки грузим один раз (периоды теперь в общем контексте).
   useEffect(() => {
-    Promise.all([
-      ResourceService.getStudyPeriods(),
-      ResourceService.getActiveStudyPeriod(),
-      ResourceService.getStreams(),
-    ]).then(([allPeriods, active, str]) => {
-      setPeriods(allPeriods);
-      setStreams(str);
-      setSelectedPeriodId(prev =>
-        prev != null && allPeriods.some(p => p.id === prev)
-          ? prev
-          : (active?.id ?? allPeriods[0]?.id ?? null)
-      );
-    });
+    ResourceService.getStreams().then(setStreams);
   }, []);
-
-  // Персист выбранного периода между вкладками и перезагрузками.
-  useEffect(() => {
-    if (selectedPeriodId != null) {
-      localStorage.setItem(PERIOD_STORAGE_KEY, String(selectedPeriodId));
-    } else {
-      localStorage.removeItem(PERIOD_STORAGE_KEY);
-    }
-  }, [selectedPeriodId]);
 
   // Курсы зависят от выбранного периода: меняется период — перезагружаем курсы и
   // сбрасываем выбор (курсы другого периода не должны «прилипать»).
@@ -97,8 +68,9 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
       .finally(() => setLoading(false));
   }, [selectedPeriodId]);
 
-  const handlePeriodCreated = (created: StudyPeriodDto) => {
-    setPeriods(prev => [...prev, created]);
+  const handlePeriodCreated = async (created: StudyPeriodDto) => {
+    // Обновляем общий список периодов и делаем новый период выбранным (глобально).
+    await reloadPeriods();
     setSelectedPeriodId(created.id);
     setShowPeriodForm(false);
   };
@@ -215,19 +187,12 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
 
         <div className="flex items-center gap-2 flex-1 min-w-[240px]">
           <Calendar size={16} className="text-blue-600 shrink-0" />
-          <select
-            value={selectedPeriodId ?? ''}
-            onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
-            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">— выберите период —</option>
-            {periods.map(p => (
-              <option key={p.id} value={p.id}>{p.name} ({p.studyYear})</option>
-            ))}
-          </select>
+          <span className="text-sm font-bold text-slate-700 truncate">
+            {selectedPeriod ? `${selectedPeriod.name} (${selectedPeriod.studyYear})` : 'Период выбирается в шапке'}
+          </span>
           <button
             onClick={() => setShowPeriodForm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors shrink-0 ml-auto"
           >
             <CalendarPlus size={14} /> Новый период
           </button>

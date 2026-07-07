@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
-import { ResourceService, ScheduleService } from '../../../services/apiServices';
-import { StudyPeriodDto, ScheduleResultDto, PeriodReadinessDto, PeriodScheduleQualityDto, TimeSlotPair } from '../../../types/api';
+import { ScheduleService } from '../../../services/apiServices';
+import { ScheduleResultDto, PeriodReadinessDto, PeriodScheduleQualityDto, TimeSlotPair } from '../../../types/api';
+import { usePeriod } from '../../period/PeriodContext';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
   AlertTriangle, CalendarClock, ArrowRight, Info
@@ -21,7 +22,6 @@ interface DashboardProps {
 }
 
 const SLOTS_13: ReadonlySet<TimeSlotPair> = new Set<TimeSlotPair>(['FIRST', 'SECOND', 'THIRD']);
-const PERIOD_STORAGE_KEY = 'unischedule.dashboard.selectedPeriodId';
 
 interface GroupDensity { group: string; occ13: number; inFourth: number; free13: number; total: number; }
 
@@ -37,48 +37,12 @@ interface GroupDensity { group: string; occ13: number; inFourth: number; free13:
  * на бэк отдельными эндпоинтами.
  */
 export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
-  const [periods, setPeriods] = useState<StudyPeriodDto[]>([]);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(() => {
-    const saved = localStorage.getItem(PERIOD_STORAGE_KEY);
-    return saved ? Number(saved) : null;
-  });
+  // Учебный период — из общего контекста (единый выбор в шапке приложения).
+  const { periods, selectedPeriodId, selectedPeriod: period, loading: periodsLoading } = usePeriod();
   const [result, setResult] = useState<ScheduleResultDto | null>(null);
   const [readiness, setReadiness] = useState<PeriodReadinessDto | null>(null);
   const [quality, setQuality] = useState<PeriodScheduleQualityDto | null>(null);
   const [loading, setLoading] = useState(true);
-  const [bootstrapped, setBootstrapped] = useState(false);
-
-  const period = periods.find((p) => p.id === selectedPeriodId) ?? null;
-
-  // Список периодов + начальный выбор: сохранённый (если ещё существует) → активный → первый.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [all, active] = await Promise.all([
-          ResourceService.getStudyPeriods(),
-          ResourceService.getActiveStudyPeriod().catch(() => null),
-        ]);
-        if (cancelled) return;
-        setPeriods(all);
-        setSelectedPeriodId((prev) =>
-          prev != null && all.some((p) => p.id === prev)
-            ? prev
-            : (active?.id ?? all[0]?.id ?? null)
-        );
-      } catch (e) {
-        console.error('Дашборд: не удалось загрузить периоды:', e);
-      } finally {
-        if (!cancelled) setBootstrapped(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Персист выбранного периода между заходами/F5.
-  useEffect(() => {
-    if (selectedPeriodId != null) localStorage.setItem(PERIOD_STORAGE_KEY, String(selectedPeriodId));
-  }, [selectedPeriodId]);
 
   // Данные выбранного периода — перезагружаются при смене периода.
   // Размещённое расписание (для плотности/суббот) + готовность (всего/размещено/не размещено).
@@ -140,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // отсортированы бэком: компактные первыми, худшие (больший штраф) сверху.
   const compactEducators = quality?.educators.filter((e) => e.compact) ?? [];
 
-  if (!bootstrapped) {
+  if (periodsLoading) {
     return (
       <div className="flex items-center justify-center h-96 text-slate-400 gap-3">
         <Loader2 className="animate-spin" size={20} />
@@ -165,15 +129,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
       <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3">
         <div className="p-2 bg-blue-600 rounded-lg text-white shrink-0"><CalendarRange size={18} /></div>
         <div className="flex items-center gap-2 min-w-0">
-          <select
-            value={selectedPeriodId ?? ''}
-            onChange={(e) => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
-            className="max-w-[240px] text-sm font-black text-slate-900 border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 truncate cursor-pointer"
-          >
-            {periods.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} ({p.studyYear})</option>
-            ))}
-          </select>
+          <span className="max-w-[240px] text-sm font-black text-slate-900 truncate">
+            {period ? `${period.name} (${period.studyYear})` : '— период не выбран —'}
+          </span>
           {period && (
             <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
               {period.startDate} — {period.endDate}

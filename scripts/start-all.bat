@@ -30,5 +30,5 @@ echo Backend:  http://localhost:8080
 echo Frontend: http://localhost:5173/
 echo Swagger:  http://localhost:8080/swagger-ui.html
 echo.
-echo (To restart only the backend after code changes use scripts\restart.bat)
+echo (To restart only the backend after code changes use start-backend.bat)
 endlocal
