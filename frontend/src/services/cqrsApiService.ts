@@ -16,7 +16,8 @@ import {
   FindMoveOptionsRequest,
   FindChainMoveOptionsRequest,
   MoveChainRequest,
-  UnplacedLessonDto
+  UnplacedLessonDto,
+  PlacementBoardDto
 } from '../types/cqrs';
 
 /**
@@ -175,6 +176,21 @@ export const CQRSService = {
     return api
       .get<UnplacedLessonDto[]>(`/schedule/command/sessions/${sessionId}/unplaced`, {
         params: { courseIds: courseIds.join(',') }
+      })
+      .then(r => r.data);
+  },
+
+  /**
+   * Доска раскладки: все сущности выбранных курсов со счётчиками total/placed/unplaced
+   * (сущность → дисциплина → занятие). Показывает и полностью размещённые/сгенерированные
+   * сущности, в отличие от getUnplaced (только очередь). Ось = группы/преподаватели.
+   */
+  getPlacementBoard: (
+    sessionId: string, courseIds: number[], axis: 'GROUP' | 'EDUCATOR'
+  ): Promise<PlacementBoardDto> => {
+    return api
+      .get<PlacementBoardDto>(`/schedule/command/sessions/${sessionId}/placement-board`, {
+        params: { courseIds: courseIds.join(','), axis }
       })
       .then(r => r.data);
   },

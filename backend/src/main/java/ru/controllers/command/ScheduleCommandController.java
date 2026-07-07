@@ -12,10 +12,13 @@ import ru.dto.command.MoveLessonRequest;
 import ru.dto.command.ReorderProblemDto;
 import ru.dto.command.ReorderResponse;
 import ru.dto.command.ScheduleSessionDto;
+import ru.dto.board.PlacementBoardDto;
 import ru.dto.manualPlacement.ManualPlacementRequest;
 import ru.dto.manualPlacement.PlacementOptionsRequest;
 import ru.dto.manualPlacement.UnplacedLessonDto;
 import ru.dto.moveLesson.MoveOptionDto;
+import ru.services.board.BoardAxis;
+import ru.services.board.PlacementBoardService;
 import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 import ru.enums.SessionStatus;
@@ -55,6 +58,7 @@ public class ScheduleCommandController {
     private final LessonChainMoveService lessonChainMoveService;
     private final LessonPinService lessonPinService;
     private final ManualPlacementService manualPlacementService;
+    private final PlacementBoardService placementBoardService;
     private final TrackReorderService trackReorderService;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
@@ -320,6 +324,26 @@ public class ScheduleCommandController {
         List<UnplacedLessonDto> unplaced = manualPlacementService.findUnplaced(
             sessionId, courseIds == null ? List.of() : courseIds);
         return ResponseEntity.ok(unplaced);
+    }
+
+    /**
+     * Доска раскладки: все сущности выбранных курсов со счётчиками total/placed/unplaced
+     * (сущность → дисциплина → занятие). Показывает и полностью размещённые/сгенерированные
+     * сущности, в отличие от {@code /unplaced} (только очередь).
+     *
+     * <p>GET /api/schedule/command/sessions/{sessionId}/placement-board?courseIds=1,2&axis=GROUP</p>
+     *
+     * @param axis ось группировки (GROUP по умолчанию | EDUCATOR)
+     */
+    @GetMapping("/sessions/{sessionId}/placement-board")
+    public ResponseEntity<PlacementBoardDto> placementBoard(
+        @PathVariable UUID sessionId,
+        @RequestParam(required = false) List<Integer> courseIds,
+        @RequestParam(defaultValue = "GROUP") BoardAxis axis
+    ) {
+        PlacementBoardDto board = placementBoardService.build(
+            sessionId, courseIds == null ? List.of() : courseIds, axis);
+        return ResponseEntity.ok(board);
     }
 
     /**

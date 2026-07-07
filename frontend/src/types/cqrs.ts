@@ -92,6 +92,65 @@ export interface UnplacedLessonDto {
 }
 
 /**
+ * Занятие на «доске раскладки» (Фаза B). Поля размещения (placementId/date/slot/locked/source)
+ * заполнены у размещённых и null у тех, что ещё в очереди — фронт делит список по placementId.
+ */
+export interface BoardLessonDto {
+  assignmentId: number;
+  courseId: number;
+  curriculumSlotId: number;
+  kindOfStudy: string;
+  kindOfStudyAbbr: string;
+  position: number;
+  themeNumber?: string | null;
+  themeTitle?: string | null;
+  studyStreamId: number;
+  streamName: string;
+  groupIds: number[];
+  groupNames: string[];
+  educatorIds: number[];
+  educatorNames: string[];
+  placementId?: string | null;
+  date?: string | null;
+  slot?: string | null;
+  locked?: boolean | null;
+  source?: string | null;
+}
+
+/** Узел «дисциплина» доски раскладки: счётчики + занятия сущности по дисциплине. */
+export interface DisciplinePlacementDto {
+  courseId: number;
+  abbreviation: string;
+  name: string;
+  total: number;
+  placed: number;
+  unplaced: number;
+  lessons: BoardLessonDto[];
+}
+
+/** Узел «сущность» (группа/преподаватель) доски раскладки: счётчики + разбивка по дисциплинам. */
+export interface EntityPlacementDto {
+  id: number;
+  name: string;
+  total: number;
+  placed: number;
+  unplaced: number;
+  disciplines: DisciplinePlacementDto[];
+}
+
+/**
+ * «Доска раскладки» — дерево сущность→дисциплина→занятие со счётчиками total/placed/unplaced.
+ * Строится на бэке из полного набора назначений курсов, поэтому показывает и полностью
+ * размещённые/сгенерированные сущности; заголовочные счётчики считают назначения (не зависят от оси).
+ */
+export interface PlacementBoardDto {
+  total: number;
+  placed: number;
+  unplaced: number;
+  entities: EntityPlacementDto[];
+}
+
+/**
  * Ответ при конфликте optimistic lock
  */
 export interface ConflictResponse {
