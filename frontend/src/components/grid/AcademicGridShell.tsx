@@ -118,6 +118,14 @@ export interface AcademicGridShellProps {
   rowHeightBase?: number;
   /** Начальный масштаб (по умолчанию 0.8 = 80%). */
   initialFactor?: number;
+  /**
+   * Декоратор «замороженной» колонки дня (левая колонка «Дн»): по {@link DayDef} возвращает
+   * доп. Tailwind-класс (напр. фон приоритета преподавателя). Пусто/undefined → без изменений.
+   * Этот канал независим от подсветки ячеек-недель (free/busy), поэтому не конфликтует с ней.
+   */
+  decorateDayLabel?: (day: DayDef) => string | undefined;
+  /** Декоратор «замороженной» колонки пары («П») — аналогично {@link decorateDayLabel}. */
+  decorateSlotLabel?: (slot: SlotDef) => string | undefined;
 }
 
 export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
@@ -131,6 +139,8 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
   chromeless = false,
   rowHeightBase = 60,
   initialFactor = 0.8,
+  decorateDayLabel,
+  decorateSlotLabel,
 }) => {
   const [factor, setFactor] = useState<number>(clampFactor(initialFactor));
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -303,7 +313,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                 <React.Fragment key={day.id}>
                   <tr className="bg-slate-50">
                     <td
-                      className={cn('border-r text-center font-black text-slate-900 sticky bg-slate-100 z-20', headerBorderClass)}
+                      className={cn('border-r text-center font-black text-slate-900 sticky bg-slate-100 z-20', headerBorderClass, decorateDayLabel?.(day))}
                       rowSpan={5}
                       style={{ left: 0, width: dayColW, minWidth: dayColW, fontSize: s(9) }}
                     >
@@ -329,7 +339,7 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                   {SLOTS.map((slot, slotIdx) => (
                     <tr key={slot.id} style={{ height: rowHeightPx }} className="group transition-all duration-300">
                       <td
-                        className={cn('border-r text-center sticky bg-white z-10 group-hover:bg-slate-50 transition-colors', borderClass)}
+                        className={cn('border-r text-center sticky bg-white z-10 group-hover:bg-slate-50 transition-colors', borderClass, decorateSlotLabel?.(slot))}
                         style={{ left: dayColW, width: pairColW, minWidth: pairColW, padding: pad }}
                       >
                         <div className="font-black text-slate-800" style={{ fontSize: s(9) }}>{slot.label}</div>

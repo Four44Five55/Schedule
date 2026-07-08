@@ -1,11 +1,16 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {ConstraintDto, ScheduledLessonDto, TimeSlotPair} from '../../../types/api';
+import {ConstraintDto, DayOfWeek, ScheduledLessonDto, TimeSlotPair} from '../../../types/api';
 import {isWithinInterval, parseISO} from 'date-fns';
 import {cn} from '../../../utils/cn';
 import {AlertTriangle, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
 import {CQRSService} from '../../../services/cqrsApiService';
 import {CurriculumService} from '../../../services/apiServices';
-import {AcademicGridShell, GridCellContext, SLOTS} from '../../../components/grid/AcademicGridShell';
+import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
+
+/** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб). */
+const WEEKDAY_ID: Record<DayOfWeek, number> = {
+  MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6, SUNDAY: 7,
+};
 
 interface AcademicGridScheduleProps {
   lessons: ScheduledLessonDto[];
@@ -39,6 +44,10 @@ interface AcademicGridScheduleProps {
   // когда пользователь кликает существующее занятие для переноса (иначе клик заблокирован
   // активным placementCandidate). Позволяет двигать раскладку, не удаляя занятие.
   onExitPlacementCandidate?: () => void;
+  // Приоритеты преподавателя (Фича «приоритетные дни/пары»): предпочитаемые дни недели и
+  // пары. Показываются только в виде «преподаватель» отдельным визуальным каналом — тинтом
+  // «замороженных» колонок «Дн»/«П», который не пересекается с free/busy подсветкой ячеек.
+  educatorPriority?: { days: DayOfWeek[]; slots: TimeSlotPair[] } | null;
   // Потолок высоты сетки (Tailwind-класс) — пробрасывается в AcademicGridShell.
   // Позволяет хосту растянуть сетку до низа экрана вместо дефолтных 700px.
   maxHeightClass?: string;
@@ -66,6 +75,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             studyPeriodId,
                                                                             onPlace,
                                                                             onExitPlacementCandidate,
+                                                                            educatorPriority,
                                                                             maxHeightClass,
                                                                             chromeless
                                                                           }) => {
@@ -691,6 +701,22 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     );
   };
 
+  // Декораторы «замороженных» колонок «Дн»/«П» под приоритеты преподавателя. Показываем
+  // ТОЛЬКО в виде «преподаватель» и только если предпочтения заданы (иначе колонки нейтральны —
+  // не выдаём «всё не приоритетно»). Дни и пары — независимо, каждый на своей колонке.
+  const priorityDecorators = useMemo(() => {
+    if (filterType !== 'educator' || !educatorPriority) return null;
+    const dayIds = new Set((educatorPriority.days ?? []).map((d) => WEEKDAY_ID[d]));
+    const slots = new Set(educatorPriority.slots ?? []);
+    if (dayIds.size === 0 && slots.size === 0) return null;
+    return {
+      day: dayIds.size === 0 ? undefined : (d: DayDef) =>
+          dayIds.has(d.id) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400',
+      slot: slots.size === 0 ? undefined : (s: SlotDef) =>
+          slots.has(s.id) ? 'bg-emerald-50 text-emerald-800' : 'text-slate-300',
+    };
+  }, [filterType, educatorPriority]);
+
   return (
       <AcademicGridShell
           startDate={startDate}
@@ -698,6 +724,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           maxHeightClass={maxHeightClass}
           chromeless={chromeless}
           renderCell={renderScheduleCell}
+          decorateDayLabel={priorityDecorators?.day}
+          decorateSlotLabel={priorityDecorators?.slot}
           overlay={selectedLesson && (
               <div
                   className={cn(

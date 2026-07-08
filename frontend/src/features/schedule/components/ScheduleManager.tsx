@@ -4,6 +4,7 @@ import { AcademicGridSchedule } from './AcademicGridSchedule';
 import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto } from '../../../types/api';
 import { ResourceService, ScheduleService } from '../../../services/apiServices';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
+import { useEducatorPriority } from '../useEducatorPriority';
 import { usePeriod } from '../../period/PeriodContext';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
@@ -152,6 +153,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
 
   // Ограничения выбранной сущности — общий хук (тот же, что в планировщике).
   const { constraints, loading: loadingConstraints } = useEntityConstraints(filterType, rootEntityId);
+
+  // Приоритеты преподавателя (предпочитаемые дни/пары) для подсветки «замороженных» колонок —
+  // только в виде «преподаватель». Общий хук (тот же источник, что и в ручной раскладке).
+  const educatorPriority = useEducatorPriority(rootEntityId, filterType === 'educator');
 
   const handleGenerateSchedule = async () => {
     if (!currentSession) return;
@@ -380,6 +385,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
                 currentVersion={currentSession?.version || 0}
                 rootEntityType={rootEntityType}
                 rootEntityId={rootEntityId}
+                educatorPriority={educatorPriority}
                 onMoveLesson={handleMoveLesson}
                 onToggleLock={pinningEnabled ? handleToggleLock : undefined}
                 chromeless
