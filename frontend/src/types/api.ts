@@ -448,6 +448,23 @@ export interface PeriodScheduleQualityDto {
   educators: EducatorScheduleQualityDto[]; // все ведущие; компактные первыми, по убыванию штрафа
 }
 
+// ============ ПЛОТНОСТЬ ГРУПП 1–3 (дашборд) ============
+
+/**
+ * Плотность одной группы в парах 1–3 за период. Ёмкость считается на бэке ЧЕСТНО —
+ * с учётом закрытых пар (Вс, Сб-4) и групповых ограничений; фронт капасити не считает.
+ */
+export interface GroupDensityDto {
+  groupId: number;
+  groupName: string;
+  demand: number;      // всего занятий к размещению (набор генерации)
+  placed13: number;    // размещено в парах 1–3
+  inFourth: number;    // размещено в 4-й паре
+  remaining: number;   // осталось разместить = max(0, demand - placed13 - inFourth)
+  capacity13: number;  // реально доступные ячейки 1–3 (закрытые пары + ограничения вычтены)
+  free13: number;      // свободная ёмкость 1–3 = capacity13 - placed13 (может быть < 0)
+}
+
 // ============ SCHEDULE RESULT ============
 export interface ScheduleResultDto {
   status: string;

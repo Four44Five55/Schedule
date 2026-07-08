@@ -46,6 +46,7 @@ import {
   ScheduleResultDto,
   PeriodReadinessDto,
   PeriodScheduleQualityDto,
+  GroupDensityDto,
   StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
 
@@ -186,6 +187,15 @@ export const ScheduleService = {
       api.get<PeriodScheduleQualityDto>('/schedule/query/reports/educator-quality', { params: { periodId } })
       .then((r) => r.data)
       .catch(() => null),
+
+  /**
+   * Плотность групп в парах 1–3: спрос/размещено/остаток и ЧЕСТНАЯ свободная ёмкость
+   * (закрытые пары и групповые ограничения учтены на бэке). Самые «забитые» группы первыми.
+   */
+  getGroupDensity: (periodId: number): Promise<GroupDensityDto[]> =>
+      api.get<GroupDensityDto[]>('/schedule/query/reports/group-density', { params: { periodId } })
+      .then((r) => r.data)
+      .catch(() => []),
 
   loadExisting: (startDate: string, endDate: string): Promise<ScheduleResultDto> =>
       api.get<ScheduleResultDto>('/schedule/query/all', {

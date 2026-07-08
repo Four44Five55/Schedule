@@ -41,6 +41,8 @@ public class ScheduleQueryController {
     private final GenerationScopeResolver scopeResolver;
     // Аналитика качества расписания преподавателей (компактность + равномерность) для дашборда.
     private final ru.services.EducatorScheduleReportService educatorScheduleReportService;
+    // Плотность групп в парах 1–3 (честная ёмкость с учётом закрытых пар и ограничений) для дашборда.
+    private final ru.services.GroupDensityReportService groupDensityReportService;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -343,5 +345,22 @@ public class ScheduleQueryController {
     public ru.dto.PeriodScheduleQualityDto getEducatorQuality(@RequestParam Integer periodId) {
         log.info("Query: Educator schedule quality report for periodId={}", periodId);
         return educatorScheduleReportService.compute(periodId);
+    }
+
+    /**
+     * GET /api/schedule/query/reports/group-density?periodId=X
+     *
+     * <p>Плотность групп в парах 1–3 за период: спрос (сколько занятий надо разместить),
+     * размещено в 1–3 и в 4-й паре, и <b>честная</b> свободная ёмкость 1–3 — с учётом
+     * закрытых бэком дней/пар ({@code ScheduleDaysSlotsConfig}) и групповых ограничений.
+     * Прежде это считалось на фронте упрощённо (Пн–Сб × 3, без ограничений).</p>
+     *
+     * @param periodId учебный период
+     * @return плотность по группам (самые «забитые» первыми; при периоде без курсов — пусто)
+     */
+    @GetMapping("/reports/group-density")
+    public List<ru.dto.GroupDensityDto> getGroupDensity(@RequestParam Integer periodId) {
+        log.info("Query: Group density report for periodId={}", periodId);
+        return groupDensityReportService.compute(periodId);
     }
 }

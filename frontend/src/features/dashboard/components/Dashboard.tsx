@@ -3,7 +3,7 @@ import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
 import { ScheduleService } from '../../../services/apiServices';
-import { ScheduleResultDto, PeriodReadinessDto, PeriodScheduleQualityDto, TimeSlotPair } from '../../../types/api';
+import { PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto } from '../../../types/api';
 import { usePeriod } from '../../period/PeriodContext';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
@@ -21,80 +21,57 @@ interface DashboardProps {
   onNavigate?: (tab: 'planner' | 'schedule') => void;
 }
 
-const SLOTS_13: ReadonlySet<TimeSlotPair> = new Set<TimeSlotPair>(['FIRST', 'SECOND', 'THIRD']);
-
-interface GroupDensity { group: string; occ13: number; inFourth: number; free13: number; total: number; }
-
 /**
- * Дашборд «Готовность периода». Все метрики считаются НА ФРОНТЕ из одного запроса
- * `ScheduleService.loadExisting(активный период)` — сколько занятий размещено/не
- * размещено, плотность групп в парах 1–3 (сколько свободно / уже в 4-й паре) и
- * субботняя нагрузка по преподавателям (для равномерного распределения).
+ * Дашборд «Готовность периода». Метрики берутся из бэковых отчётов по активному периоду:
+ * готовность (всего/размещено/не размещено), плотность групп в парах 1–3 (спрос, занято,
+ * остаток и ЧЕСТНАЯ свободная ёмкость) и качество расписания преподавателей.
  *
- * ВАЖНО (тех-долг, см. docs/FOLLOWUPS.md): ёмкость 1–3 здесь считается упрощённо
- * (рабочие дни Пн–Сб × 3), без учёта закрытых бэком дней/пар (ScheduleDaysSlotsConfig)
- * и без вычитания ограничений сущностей. Для точности эти агрегаты должны переехать
- * на бэк отдельными эндпоинтами.
+ * Плотность 1–3 раньше считалась на фронте упрощённо (Пн–Сб × 3, без ограничений); теперь
+ * ёмкость честная и живёт на бэке (getGroupDensity): учтены закрытые пары
+ * (ScheduleDaysSlotsConfig) и групповые ограничения. На фронте — только рабочие дни для шапки.
  */
 export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // Учебный период — из общего контекста (единый выбор в шапке приложения).
   const { periods, selectedPeriodId, selectedPeriod: period, loading: periodsLoading } = usePeriod();
-  const [result, setResult] = useState<ScheduleResultDto | null>(null);
   const [readiness, setReadiness] = useState<PeriodReadinessDto | null>(null);
   const [quality, setQuality] = useState<PeriodScheduleQualityDto | null>(null);
+  const [density, setDensity] = useState<GroupDensityDto[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Данные выбранного периода — перезагружаются при смене периода.
-  // Размещённое расписание (для плотности/суббот) + готовность (всего/размещено/не размещено).
+  // Готовность + плотность групп (честная ёмкость с бэка) + качество преподавателей.
   useEffect(() => {
-    if (!period) { setResult(null); setReadiness(null); setQuality(null); setLoading(false); return; }
+    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      ScheduleService.loadExisting(period.startDate, period.endDate),
       ScheduleService.getReadiness(period.id),
       ScheduleService.getEducatorQuality(period.id),
+      ScheduleService.getGroupDensity(period.id),
     ])
-      .then(([res, rd, q]) => {
+      .then(([rd, q, dens]) => {
         if (cancelled) return;
-        setResult(res);
         setReadiness(rd);
         setQuality(q);
+        setDensity(dens);
       })
       .catch((e) => {
         console.error('Дашборд: не удалось загрузить данные периода:', e);
-        if (!cancelled) { setResult(null); setReadiness(null); setQuality(null); }
+        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedPeriodId, period?.startDate, period?.endDate]);
+  }, [selectedPeriodId, period?.id]);
 
   const metrics = useMemo(() => {
-    if (!result || !period) return null;
-    const lessons = result.lessons;
-
+    if (!period) return null;
     // Рабочие дни периода Пн–Сб (getDay: 0=Вс … 6=Сб). Воскресенья не учебные.
     const workingDays = eachDayOfInterval({
       start: parseISO(period.startDate),
       end: parseISO(period.endDate),
     }).filter((d) => { const g = getDay(d); return g >= 1 && g <= 6; }).length;
-
-    const capacity13 = workingDays * 3; // ячеек «1–3 пара» на одну сущность за период
-
-    // Плотность групп в парах 1–3.
-    const groupSet = new Set<string>();
-    lessons.forEach((l) => l.groupNames.forEach((g) => groupSet.add(g)));
-    const groupStats: GroupDensity[] = Array.from(groupSet).map((group) => {
-      const grp = lessons.filter((l) => l.groupNames.includes(group));
-      const occ13 = grp.filter((l) => SLOTS_13.has(l.timeSlotPair)).length;
-      const inFourth = grp.filter((l) => l.timeSlotPair === 'FOURTH').length;
-      return { group, occ13, inFourth, free13: capacity13 - occ13, total: grp.length };
-    }).sort((a, b) => a.free13 - b.free13); // самые «забитые» сверху
-
-    // Субботняя нагрузка преподавателей больше НЕ считается здесь — она уехала на бэк
-    // (единый отчёт качества расписания преподавателей, см. getEducatorQuality).
-    return { workingDays, capacity13, groupStats };
-  }, [result, period]);
+    return { workingDays };
+  }, [period]);
 
   const readyPct = readiness && readiness.total > 0
     ? Math.round((readiness.placed / readiness.total) * 100)
@@ -181,10 +158,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         <Kpi label="Учебных дней" value={metrics?.workingDays ?? 0} tone="slate" icon={CalendarRange} hint="Пн–Сб" />
       </div>
 
-      {!result || result.lessons.length === 0 ? (
+      {density.length === 0 ? (
         <EmptyState
-          title="За период нет размещённого расписания"
-          subtitle="Сформируйте план и запустите генерацию в планировщике"
+          title="За период нет данных по группам"
+          subtitle="Сформируйте план в планировщике (нужны курсы с назначениями на этот период)"
           onNavigate={onNavigate}
         />
       ) : (
@@ -194,29 +171,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
             <div className="space-y-3">
               <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
                 <Info size={13} className="shrink-0 mt-0.5" />
-                Ёмкость 1–3 = {metrics?.capacity13 ?? 0} пар/группу (Пн–Сб × 3). Оценка без учёта
-                ограничений и закрытых пар — точный расчёт см. тех-долг.
+                «Всего» — сколько занятий нужно разместить группе; «Осталось» — ещё не размещено.
+                Ёмкость 1–3 считается на бэке честно: закрытые пары (Вс, Сб-4) и групповые
+                ограничения уже вычтены. «Своб. 1–3» может стать отрицательной при перегрузе.
               </p>
               <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
                 <table className="w-full text-xs">
                   <thead className="text-[10px] uppercase tracking-wide text-slate-400">
                     <tr className="border-b border-slate-100">
                       <th className="text-left font-bold py-1.5">Группа</th>
+                      <th className="text-right font-bold px-2">Всего</th>
+                      <th className="text-right font-bold px-2">Осталось</th>
                       <th className="text-right font-bold px-2">Своб. 1–3</th>
                       <th className="text-right font-bold px-2">Занято 1–3</th>
                       <th className="text-right font-bold pl-2">В 4-й</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {metrics?.groupStats.map((g) => {
+                    {density.map((g) => {
                       const tight = g.free13 <= 0;
                       return (
-                        <tr key={g.group} className={cn('transition-colors', tight && 'bg-red-50/60')}>
-                          <td className="py-1.5 font-bold text-slate-700 truncate max-w-[120px]">{g.group}</td>
+                        <tr key={g.groupId} className={cn('transition-colors', tight && 'bg-red-50/60')}>
+                          <td className="py-1.5 font-bold text-slate-700 truncate max-w-[120px]">{g.groupName}</td>
+                          <td className="text-right px-2 tabular-nums text-slate-500">{g.demand}</td>
+                          <td className={cn('text-right px-2 tabular-nums font-bold', g.remaining > 0 ? 'text-blue-600' : 'text-emerald-600')}>
+                            {g.remaining}
+                          </td>
                           <td className={cn('text-right px-2 font-black tabular-nums', tight ? 'text-red-600' : 'text-emerald-600')}>
                             {g.free13}
                           </td>
-                          <td className="text-right px-2 tabular-nums text-slate-500">{g.occ13}</td>
+                          <td className="text-right px-2 tabular-nums text-slate-500">{g.placed13}</td>
                           <td className={cn('text-right pl-2 tabular-nums font-bold', g.inFourth > 0 ? 'text-amber-600' : 'text-slate-300')}>
                             {g.inFourth}
                           </td>
