@@ -446,10 +446,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       );
     }
 
+    // Ограничение действует на ячейку, если дата в диапазоне И оно либо целодневное
+    // (timeSlot пуст), либо назначено ровно на эту пару. Раньше матчили только по дате —
+    // пер-парное ограничение красило весь день (рассинхрон с сеткой ограничений, где фильтр
+    // по паре есть: `!c.timeSlot || c.timeSlot === slot`).
     const activeConstraint = constraints.find(c => {
       const start = parseISO(c.startDate);
       const end = parseISO(c.endDate);
-      return isWithinInterval(date, { start, end });
+      if (!isWithinInterval(date, { start, end })) return false;
+      return !c.timeSlot || c.timeSlot === slot.id;
     });
 
     // Конфликт: занятие стоит в день, на который у ресурса есть ограничение —
