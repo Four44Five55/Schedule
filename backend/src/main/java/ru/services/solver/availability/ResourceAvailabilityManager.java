@@ -1,7 +1,6 @@
 package ru.services.solver.availability;
 
 import ru.entity.Auditorium;
-import ru.entity.CellForLesson;
 import ru.entity.Educator;
 import ru.entity.Group;
 import ru.entity.constraints.ConstraintData;
@@ -54,13 +53,7 @@ public final class ResourceAvailabilityManager {
         Map<Integer, SchedulableResource> resourceMap = new HashMap<>();
         for (Educator educator : educators) {
             EducatorResource resource = new EducatorResource(educator);
-            List<ConstraintData> constraints = constraintsMap.getOrDefault(educator.getId(), Collections.emptyList());
-            for (ConstraintData data : constraints) {
-                // Предполагаем, что ограничение на день - это ограничение на все пары в этот день
-                for (var pair : ru.enums.TimeSlotPair.values()) {
-                    resource.addHardConstraint(new CellForLesson(data.cell().getDate(), pair), data.kind());
-                }
-            }
+            applyConstraints(resource, constraintsMap.getOrDefault(educator.getId(), Collections.emptyList()));
             resourceMap.put(educator.getId(), resource);
         }
         return resourceMap;
@@ -73,12 +66,7 @@ public final class ResourceAvailabilityManager {
         Map<Integer, SchedulableResource> resourceMap = new HashMap<>();
         for (Group group : groups) {
             SchedulableResource resource = new SchedulableResource(group.getId(), group.getName());
-            List<ConstraintData> constraints = constraintsMap.getOrDefault(group.getId(), Collections.emptyList());
-            for (ConstraintData data : constraints) {
-                for (var pair : ru.enums.TimeSlotPair.values()) {
-                    resource.addHardConstraint(new CellForLesson(data.cell().getDate(), pair), data.kind());
-                }
-            }
+            applyConstraints(resource, constraintsMap.getOrDefault(group.getId(), Collections.emptyList()));
             resourceMap.put(group.getId(), resource);
         }
         return resourceMap;
@@ -91,15 +79,24 @@ public final class ResourceAvailabilityManager {
         Map<Integer, SchedulableResource> resourceMap = new HashMap<>();
         for (Auditorium auditorium : auditoriums) {
             SchedulableResource resource = new SchedulableResource(auditorium.getId(), auditorium.getName());
-            List<ConstraintData> constraints = constraintsMap.getOrDefault(auditorium.getId(), Collections.emptyList());
-            for (ConstraintData data : constraints) {
-                for (var pair : ru.enums.TimeSlotPair.values()) {
-                    resource.addHardConstraint(new CellForLesson(data.cell().getDate(), pair), data.kind());
-                }
-            }
+            applyConstraints(resource, constraintsMap.getOrDefault(auditorium.getId(), Collections.emptyList()));
             resourceMap.put(auditorium.getId(), resource);
         }
         return resourceMap;
+    }
+
+    /**
+     * Добавляет ограничения ресурсу как есть — по конкретным ячейкам.
+     *
+     * <p>{@link ConstraintData} уже развёрнуты в нужные ячейки в
+     * {@code ConstraintServiceImpl.expandToCells}: пер-парное ограничение — одна ячейка
+     * {@code (дата, пара)}, целодневное — все 4 пары дня. Поэтому здесь НЕ раскидываем по
+     * всем парам (иначе ограничение на одну пару заблокировало бы весь день — так было).</p>
+     */
+    private static void applyConstraints(SchedulableResource resource, List<ConstraintData> constraints) {
+        for (ConstraintData data : constraints) {
+            resource.addHardConstraint(data.cell(), data.kind());
+        }
     }
 
     /**
