@@ -448,6 +448,11 @@ export interface PeriodScheduleQualityDto {
   educators: EducatorScheduleQualityDto[]; // все ведущие; компактные первыми, по убыванию штрафа
 }
 
+// ============ ВЫГРУЗКА РАСПИСАНИЯ В EXCEL ============
+
+/** Перспектива выгрузки расписания: с чьей точки зрения строится файл. */
+export type ExportAxis = 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
+
 // ============ ПЛОТНОСТЬ ГРУПП 1–3 (дашборд) ============
 
 /**

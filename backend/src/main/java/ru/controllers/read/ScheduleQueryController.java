@@ -43,6 +43,8 @@ public class ScheduleQueryController {
     private final ru.services.EducatorScheduleReportService educatorScheduleReportService;
     // Плотность групп в парах 1–3 (честная ёмкость с учётом закрытых пар и ограничений) для дашборда.
     private final ru.services.GroupDensityReportService groupDensityReportService;
+    // Выгрузка расписания периода в Excel (Query Side → книга .xlsx).
+    private final ru.services.exporting.ScheduleExportService scheduleExportService;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -362,5 +364,37 @@ public class ScheduleQueryController {
     public List<ru.dto.GroupDensityDto> getGroupDensity(@RequestParam Integer periodId) {
         log.info("Query: Group density report for periodId={}", periodId);
         return groupDensityReportService.compute(periodId);
+    }
+
+    /**
+     * GET /api/schedule/query/export?periodId=X&axis=GROUP|EDUCATOR|AUDITORIUM[&entityId=Y]
+     *
+     * <p>Выгрузка расписания периода в Excel из {@code schedule_view} (то, что реально размещено).
+     * Ось задаёт перспективу файла; без {@code entityId} — все сущности оси, по листу на каждую.
+     * Отдаётся как вложение (скачивание в браузере), кириллица в имени — по RFC 5987.</p>
+     *
+     * @param periodId учебный период
+     * @param axis     перспектива (по умолчанию {@code GROUP})
+     * @param entityId опционально — одна сущность оси; иначе выгружаются все
+     * @return тело .xlsx с заголовками Content-Type/Content-Disposition
+     */
+    @GetMapping("/export")
+    public org.springframework.http.ResponseEntity<byte[]> exportSchedule(
+            @RequestParam Integer periodId,
+            @RequestParam(defaultValue = "GROUP") ru.services.exporting.ExportAxis axis,
+            @RequestParam(required = false) Integer entityId
+    ) {
+        log.info("Query: Export schedule for periodId={}, axis={}, entityId={}", periodId, axis, entityId);
+        var result = scheduleExportService.export(periodId, axis, entityId);
+
+        String encoded = java.net.URLEncoder.encode(result.filename(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        // ASCII-фолбэк filename + UTF-8 filename* (кириллица) — понимают все современные браузеры.
+        headers.set(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"schedule.xlsx\"; filename*=UTF-8''" + encoded);
+        return new org.springframework.http.ResponseEntity<>(result.bytes(), headers, org.springframework.http.HttpStatus.OK);
     }
 }

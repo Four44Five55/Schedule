@@ -47,8 +47,10 @@ import {
   PeriodReadinessDto,
   PeriodScheduleQualityDto,
   GroupDensityDto,
+  ExportAxis,
   StudyStreamCreateDto, StudyStreamUpdateDto
 } from '../types/api';
+import { downloadBlob, filenameFromContentDisposition } from '../utils/download';
 
 // ============ 1. СПРАВОЧНИКИ (ENUMS) ============
 export const EnumService = {
@@ -196,6 +198,20 @@ export const ScheduleService = {
       api.get<GroupDensityDto[]>('/schedule/query/reports/group-density', { params: { periodId } })
       .then((r) => r.data)
       .catch(() => []),
+
+  /**
+   * Выгрузка расписания периода в Excel (из schedule_view — то, что реально размещено).
+   * Без entityId выгружаются все сущности оси (лист на каждую). Бэк отдаёт файл вложением —
+   * здесь запускаем скачивание браузером; имя берём из Content-Disposition.
+   */
+  exportSchedule: async (periodId: number, axis: ExportAxis = 'GROUP', entityId?: number): Promise<void> => {
+      const response = await api.get('/schedule/query/export', {
+        params: { periodId, axis, ...(entityId != null ? { entityId } : {}) },
+        responseType: 'blob',
+      });
+      const filename = filenameFromContentDisposition(response.headers['content-disposition']) ?? 'schedule.xlsx';
+      downloadBlob(response.data as Blob, filename);
+  },
 
   loadExisting: (startDate: string, endDate: string): Promise<ScheduleResultDto> =>
       api.get<ScheduleResultDto>('/schedule/query/all', {

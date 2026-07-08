@@ -19,7 +19,8 @@ import {
   Save,
   CheckCircle,
   RefreshCw,
-  Calendar
+  Calendar,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface ScheduleManagerProps {
@@ -62,6 +63,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
   const [currentSession, setCurrentSession] = useState<ScheduleSessionDto | null>(sessionProp || null);
   const [loadingAction, setLoadingAction] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [allResources, setAllResources] = useState<{
     groups: GroupDto[],
@@ -199,6 +201,22 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
     }
   };
 
+  // Выгрузка расписания ВЫБРАННОЙ сущности в Excel (та же ось/сущность, через которую
+  // открыто расписание). Бэк отдаёт файл, ScheduleService сам запускает скачивание.
+  const handleExportEntity = async () => {
+    if (!selectedPeriod || rootEntityId == null) return;
+    setExporting(true);
+    try {
+      await ScheduleService.exportSchedule(selectedPeriod.id, rootEntityType, rootEntityId);
+    } catch (e) {
+      console.error('Не удалось выгрузить расписание:', e);
+      setActionMessage('❌ Ошибка выгрузки');
+      setTimeout(() => setActionMessage(null), 3000);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Перегенерация с сохранением закреплённых занятий (Фаза A).
   const handleRegenerate = async () => {
     if (!currentSession || !selectedPeriod) return;
@@ -259,6 +277,19 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
             </select>
             {loadingConstraints && <Loader2 size={12} className="animate-spin text-blue-600 absolute right-3 top-1/2 -translate-y-1/2" />}
           </div>
+
+          {/* Выгрузка расписания выбранной сущности в Excel (доступна, как только объект выбран) */}
+          {selectedValue && rootEntityId != null && (
+              <button
+                  onClick={handleExportEntity}
+                  disabled={exporting}
+                  title={`Выгрузить в Excel: ${selectedValue}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-black rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors shrink-0"
+              >
+                {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+                Excel
+              </button>
+          )}
 
           {/* Статус сессии + действия — в том же баре, прижаты вправо */}
           {currentSession && (

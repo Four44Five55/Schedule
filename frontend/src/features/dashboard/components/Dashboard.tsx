@@ -3,11 +3,11 @@ import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
 import { ScheduleService } from '../../../services/apiServices';
-import { PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto } from '../../../types/api';
+import { PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto, ExportAxis } from '../../../types/api';
 import { usePeriod } from '../../period/PeriodContext';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
-  AlertTriangle, CalendarClock, ArrowRight, Info
+  AlertTriangle, CalendarClock, ArrowRight, Info, FileSpreadsheet
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -37,6 +37,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   const [quality, setQuality] = useState<PeriodScheduleQualityDto | null>(null);
   const [density, setDensity] = useState<GroupDensityDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportAxis, setExportAxis] = useState<ExportAxis>('GROUP');
+  const [exporting, setExporting] = useState(false);
+
+  // Выгрузка расписания периода в Excel (все сущности выбранной оси). Бэк отдаёт файл,
+  // ScheduleService сам запускает скачивание — здесь только состояние кнопки.
+  const handleExport = async () => {
+    if (!period) return;
+    setExporting(true);
+    try {
+      await ScheduleService.exportSchedule(period.id, exportAxis);
+    } catch (e) {
+      console.error('Не удалось выгрузить расписание:', e);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Данные выбранного периода — перезагружаются при смене периода.
   // Готовность + плотность групп (честная ёмкость с бэка) + качество преподавателей.
@@ -117,8 +133,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
           )}
           {loading && <Loader2 size={14} className="animate-spin text-blue-600" />}
         </div>
-        {onNavigate && (
+        {period && (
           <div className="flex items-center gap-2 ml-auto">
+            <select
+              value={exportAxis}
+              onChange={(e) => setExportAxis(e.target.value as ExportAxis)}
+              disabled={exporting}
+              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700"
+              title="Перспектива выгрузки"
+            >
+              <option value="GROUP">Группы</option>
+              <option value="EDUCATOR">Преподаватели</option>
+              <option value="AUDITORIUM">Аудитории</option>
+            </select>
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60"
+              title="Выгрузить расписание периода в Excel"
+            >
+              {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+              Excel
+            </button>
+          </div>
+        )}
+        {onNavigate && (
+          <div className="flex items-center gap-2">
             <button
               onClick={() => onNavigate('planner')}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
