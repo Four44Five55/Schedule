@@ -347,6 +347,20 @@ public class ScheduleCommandController {
     }
 
     /**
+     * Лёгкие счётчики «распределено N/M» по каждому курсу (для индикатора во вкладке генерации).
+     *
+     * <p>GET /api/schedule/command/sessions/{sessionId}/placement-counts?courseIds=1,2</p>
+     */
+    @GetMapping("/sessions/{sessionId}/placement-counts")
+    public ResponseEntity<List<ru.dto.board.CoursePlacementCountDto>> placementCounts(
+        @PathVariable UUID sessionId,
+        @RequestParam(required = false) List<Integer> courseIds
+    ) {
+        return ResponseEntity.ok(placementBoardService.countsByCourse(
+            sessionId, courseIds == null ? List.of() : courseIds));
+    }
+
+    /**
      * Куда можно поставить занятие из палитры (подсветка ячеек, Фаза B).
      *
      * POST /api/schedule/command/sessions/{sessionId}/placement-options

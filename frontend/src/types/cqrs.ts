@@ -150,6 +150,13 @@ export interface PlacementBoardDto {
   entities: EntityPlacementDto[];
 }
 
+/** Лёгкий счётчик «распределено N/M» по курсу (вкладка генерации). */
+export interface CoursePlacementCountDto {
+  courseId: number;
+  total: number;
+  placed: number;
+}
+
 /**
  * Ответ при конфликте optimistic lock
  */

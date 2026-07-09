@@ -17,7 +17,8 @@ import {
   FindChainMoveOptionsRequest,
   MoveChainRequest,
   UnplacedLessonDto,
-  PlacementBoardDto
+  PlacementBoardDto,
+  CoursePlacementCountDto
 } from '../types/cqrs';
 
 /**
@@ -191,6 +192,17 @@ export const CQRSService = {
     return api
       .get<PlacementBoardDto>(`/schedule/command/sessions/${sessionId}/placement-board`, {
         params: { courseIds: courseIds.join(','), axis }
+      })
+      .then(r => r.data);
+  },
+
+  /**
+   * Лёгкие счётчики «распределено N/M» по каждому курсу сессии (вкладка генерации).
+   */
+  getPlacementCounts: (sessionId: string, courseIds: number[]): Promise<CoursePlacementCountDto[]> => {
+    return api
+      .get<CoursePlacementCountDto[]>(`/schedule/command/sessions/${sessionId}/placement-counts`, {
+        params: { courseIds: courseIds.join(',') }
       })
       .then(r => r.data);
   },
