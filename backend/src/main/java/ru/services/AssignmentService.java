@@ -7,12 +7,15 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.dto.assignment.AssignmentCreateDto;
 import ru.dto.assignment.AssignmentDto;
 import ru.dto.assignment.AssignmentUpdateDto;
+import ru.dto.assignment.RemoveAssignmentsImpactDto;
 import ru.entity.Assignment;
 import ru.entity.Educator;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.StudyStream;
 import ru.mapper.AssignmentMapper;
 import ru.repository.AssignmentRepository;
+import ru.repository.read.ScheduleViewRepository;
+import ru.repository.write.LessonPlacementRepository;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -20,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -34,6 +38,8 @@ public class AssignmentService {
     private final StudyStreamService studyStreamService;
     private final EducatorService educatorService;
     private final AssignmentMapper assignmentMapper;
+    private final LessonPlacementRepository placementRepository;
+    private final ScheduleViewRepository scheduleViewRepository;
 
     @Transactional
     public List<AssignmentDto> createAssignments(AssignmentCreateDto createDto) {
@@ -102,6 +108,68 @@ public class AssignmentService {
         return assignmentMapper.toDtoList(affected);
     }
 
+    /**
+     * Массовое снятие «однотипных» назначений — зеркало {@link #applyToCourse}. Удаляет
+     * назначения курса с тем же потоком И тем же составом преподавателей, что у варианта,
+     * в пределах охвата {@code slotIds} (пусто → все слоты курса).
+     *
+     * <p>Каскад write-стороны (размещения) выполняет БД по FK. Read-модель
+     * {@code schedule_view} чистим синхронно в этой же транзакции (см. {@link #purge}).</p>
+     *
+     * @return число удалённых назначений
+     */
+    @Transactional
+    public int removeFromCourse(Integer courseId, Integer studyStreamId,
+                                List<Integer> educatorIds, List<Integer> slotIds) {
+        List<Assignment> matched = matchHomogeneous(courseId, studyStreamId, educatorIds, slotIds);
+        purge(matched);
+        return matched.size();
+    }
+
+    /** Предпросмотр последствий: сколько назначений подпадёт и сколько среди них размещено. */
+    @Transactional(readOnly = true)
+    public RemoveAssignmentsImpactDto removeImpact(Integer courseId, Integer studyStreamId,
+                                                   List<Integer> educatorIds, List<Integer> slotIds) {
+        List<Assignment> matched = matchHomogeneous(courseId, studyStreamId, educatorIds, slotIds);
+        List<Integer> ids = matched.stream().map(Assignment::getId).toList();
+        long placed = ids.isEmpty() ? 0L : placementRepository.findIdsByAssignmentIdIn(ids).size();
+        return new RemoveAssignmentsImpactDto(matched.size(), placed);
+    }
+
+    /**
+     * Назначения курса, «однотипные» выбранному варианту: тот же поток, тот же состав
+     * преподавателей (сравнение множеств), в пределах охвата слотов.
+     */
+    private List<Assignment> matchHomogeneous(Integer courseId, Integer studyStreamId,
+                                              List<Integer> educatorIds, List<Integer> slotIds) {
+        Set<Integer> wantedEducators = educatorIds == null ? Set.of() : new HashSet<>(educatorIds);
+        Set<Integer> scope = (slotIds == null || slotIds.isEmpty()) ? null : new HashSet<>(slotIds);
+
+        return assignmentRepository.findAllByCourseIdWithDetails(courseId).stream()
+                .filter(a -> a.getStudyStream().getId().equals(studyStreamId))
+                .filter(a -> scope == null || scope.contains(a.getCurriculumSlot().getId()))
+                .filter(a -> a.getEducators().stream().map(Educator::getId)
+                        .collect(Collectors.toSet()).equals(wantedEducators))
+                .toList();
+    }
+
+    /**
+     * Удалить набор назначений, синхронно вычистив read-модель. Общий примитив для
+     * массового и точечного удаления, чтобы {@code schedule_view} не оставляла «призраков»
+     * (у неё нет FK на {@code lesson_placement}, поэтому FK-каскад БД её не трогает).
+     */
+    private void purge(List<Assignment> assignments) {
+        if (assignments.isEmpty()) {
+            return;
+        }
+        List<Integer> ids = assignments.stream().map(Assignment::getId).toList();
+        List<UUID> placementIds = placementRepository.findIdsByAssignmentIdIn(ids);
+        if (!placementIds.isEmpty()) {
+            scheduleViewRepository.deleteByPlacementIdIn(placementIds);
+        }
+        assignmentRepository.deleteAllById(ids);
+    }
+
     /** Сборка сущности назначения из уже разрешённых связей (DRY для create/applyToCourse). */
     private Assignment buildAssignment(CurriculumSlot slot, StudyStream stream, List<Educator> educators) {
         Assignment newAssignment = new Assignment();
@@ -130,10 +198,10 @@ public class AssignmentService {
 
     @Transactional
     public void deleteAssignment(Integer assignmentId) {
-        if (!assignmentRepository.existsById(assignmentId)) {
-            throw new EntityNotFoundException("Assignment с id=" + assignmentId + " не найден.");
-        }
-        assignmentRepository.deleteById(assignmentId);
+        Assignment assignment = assignmentRepository.findById(assignmentId)
+                .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + assignmentId + " не найден."));
+        // Через общий примитив — чтобы точечное удаление тоже чистило read-модель.
+        purge(List.of(assignment));
     }
 
     @Transactional(readOnly = true)

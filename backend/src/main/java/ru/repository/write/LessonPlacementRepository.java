@@ -90,6 +90,17 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
     long countByCourseId(@Param("courseId") Integer courseId);
 
     /**
+     * Id размещений набора назначений. Нужны при удалении назначений, чтобы синхронно
+     * вычистить строки read-модели {@code schedule_view} (у неё нет FK на placement),
+     * захватив их ДО FK-каскадного удаления назначений.
+     *
+     * @param assignmentIds id назначений
+     * @return id размещений этих назначений
+     */
+    @Query("SELECT lp.id FROM LessonPlacement lp WHERE lp.assignment.id IN :assignmentIds")
+    List<UUID> findIdsByAssignmentIdIn(@Param("assignmentIds") java.util.Collection<Integer> assignmentIds);
+
+    /**
      * Найти размещения по дате в рамках сессии.
      *
      * @param sessionId ID сессии

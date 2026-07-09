@@ -8,6 +8,8 @@ import ru.dto.assignment.ApplyAssignmentToCourseDto;
 import ru.dto.assignment.AssignmentCreateDto;
 import ru.dto.assignment.AssignmentDto;
 import ru.dto.assignment.AssignmentUpdateDto;
+import ru.dto.assignment.RemoveAssignmentsFromCourseDto;
+import ru.dto.assignment.RemoveAssignmentsImpactDto;
 import ru.mapper.AssignmentMapper;
 import ru.repository.AssignmentRepository;
 import ru.services.AssignmentService;
@@ -53,6 +55,29 @@ public class AssignmentController {
                 dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.overwrite(), dto.slotIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
+    /**
+     * Предпросмотр массового снятия «однотипных» назначений: сколько назначений подпадёт
+     * под критерий (поток + состав преподавателей ∩ охват) и сколько среди них размещено.
+     */
+    @PostMapping("/remove-from-course/impact")
+    public ResponseEntity<RemoveAssignmentsImpactDto> removeFromCourseImpact(
+            @Valid @RequestBody RemoveAssignmentsFromCourseDto dto) {
+        return ResponseEntity.ok(assignmentService.removeImpact(
+                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.slotIds()));
+    }
+
+    /**
+     * Массово снять «однотипные» назначения (зеркало apply-to-course): удаляет назначения
+     * с тем же потоком и составом преподавателей в пределах выбранных занятий, чистит и
+     * размещения (FK-каскад), и read-модель. Возвращает число удалённых.
+     */
+    @PostMapping("/remove-from-course")
+    public ResponseEntity<Integer> removeFromCourse(@Valid @RequestBody RemoveAssignmentsFromCourseDto dto) {
+        int removed = assignmentService.removeFromCourse(
+                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.slotIds());
+        return ResponseEntity.ok(removed);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<AssignmentDto> update(@PathVariable Integer id, @Valid @RequestBody AssignmentUpdateDto dto) {
         AssignmentDto updated = assignmentService.updateAssignment(id, dto);

@@ -312,6 +312,21 @@ export interface AssignmentUpdateDto {
   educatorIds?: number[];
 }
 
+// Массовое снятие «однотипных» назначений (зеркало apply-to-course): удаляются назначения
+// с тем же потоком И составом преподавателей в пределах выбранных занятий (slotIds).
+export interface RemoveAssignmentsFromCourseDto {
+  courseId: number;
+  studyStreamId: number;
+  educatorIds: number[];
+  slotIds?: number[]; // охват: пусто → все слоты курса; иначе только выбранные
+}
+
+// Предпросмотр последствий массового снятия назначений.
+export interface RemoveAssignmentsImpactDto {
+  matchedAssignments: number;
+  placedLessons: number;
+}
+
 // ============ CONSTRAINTS ============
 export interface EducatorConstraintDto {
   id: number;

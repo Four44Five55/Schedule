@@ -30,6 +30,8 @@ import {
   AssignmentDto,
   AssignmentCreateDto,
   ApplyAssignmentToCourseDto,
+  RemoveAssignmentsFromCourseDto,
+  RemoveAssignmentsImpactDto,
   AssignmentUpdateDto,
   LocationDto,
   BuildingDto,
@@ -145,6 +147,10 @@ export const CurriculumService = {
   getAssignmentsByCourse: (courseId: number) => api.get<AssignmentDto[]>(`/assignments/by-course/${courseId}`).then((r) => r.data).catch(() => []),
   createAssignment: (data: AssignmentCreateDto) => api.post<AssignmentDto[]>('/assignments', data).then((r) => r.data),
   applyAssignmentToCourse: (data: ApplyAssignmentToCourseDto) => api.post<AssignmentDto[]>('/assignments/apply-to-course', data).then((r) => r.data),
+  getRemoveAssignmentsImpact: (data: RemoveAssignmentsFromCourseDto) =>
+    api.post<RemoveAssignmentsImpactDto>('/assignments/remove-from-course/impact', data).then((r) => r.data),
+  removeAssignmentsFromCourse: (data: RemoveAssignmentsFromCourseDto) =>
+    api.post<number>('/assignments/remove-from-course', data).then((r) => r.data),
   updateAssignment: (id: number, data: AssignmentUpdateDto) => api.put<AssignmentDto>(`/assignments/${id}`, data).then((r) => r.data),
   deleteAssignment: (id: number) => api.delete(`/assignments/${id}`).then(() => {}),
 };
