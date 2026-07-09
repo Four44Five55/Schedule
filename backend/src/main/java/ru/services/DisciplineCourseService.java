@@ -26,6 +26,7 @@ public class DisciplineCourseService {
     private final DisciplineService disciplineService;
     private final StudyPeriodService studyPeriodService;
     private final DisciplineCourseMapper disciplineCourseMapper;
+    private final CourseDeletionService courseDeletionService;
 
     @Transactional
     public DisciplineCourseDto createCourse(DisciplineCourseCreateDto createDto) {
@@ -90,13 +91,13 @@ public class DisciplineCourseService {
         return disciplineCourseMapper.toDto(disciplineCourseRepository.save(courseToUpdate));
     }
 
+    /**
+     * Удаление курса — тонкий фасад над {@link CourseDeletionService}, который выполняет
+     * каскадное удаление write-графа и синхронную очистку read-модели {@code schedule_view}.
+     */
     @Transactional
     public void deleteCourse(Integer id) {
-        if (!disciplineCourseRepository.existsById(id)) {
-            throw new EntityNotFoundException("Курс с id=" + id + " не найден.");
-        }
-        // TODO: Добавить проверку, не используется ли курс в CurriculumSlot
-        disciplineCourseRepository.deleteById(id);
+        courseDeletionService.delete(id);
     }
 
     @Transactional(readOnly = true)

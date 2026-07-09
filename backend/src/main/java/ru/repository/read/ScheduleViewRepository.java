@@ -172,6 +172,20 @@ public interface ScheduleViewRepository extends org.springframework.data.jpa.rep
     void deleteByPlacementId(UUID placementId);
 
     /**
+     * Массово удалить строки read-модели по набору id размещений.
+     *
+     * <p>Используется при удалении курса: {@code schedule_view} не имеет FK на
+     * {@code lesson_placement}, поэтому FK-каскад БД её не чистит — делаем это явно и
+     * синхронно в той же транзакции, чтобы не осталось «призрачных» занятий.</p>
+     *
+     * @param placementIds id размещений удаляемого курса
+     */
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM ScheduleView s WHERE s.placementId IN :placementIds")
+    void deleteByPlacementIdIn(@Param("placementIds") java.util.Collection<UUID> placementIds);
+
+    /**
      * Удалить устаревшие view по списку placement_id.
      *
      * <p>Используется при перегенерации расписания (удаляем старые записи для сессии).</p>

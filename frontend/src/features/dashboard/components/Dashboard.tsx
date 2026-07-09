@@ -93,9 +93,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
     ? Math.round((readiness.placed / readiness.total) * 100)
     : 0;
 
-  // Только преподаватели с флагом компактности (для остальных это не приоритет). Уже
-  // отсортированы бэком: компактные первыми, худшие (больший штраф) сверху.
-  const compactEducators = quality?.educators.filter((e) => e.compact) ?? [];
+  // Все задействованные в расписании преподаватели. Бэк уже отсортировал: с требованием
+  // компактности первыми, худшие (больший штраф) сверху. Для остальных компактность не
+  // приоритет — штраф/подсветку к ним не применяем (см. таблицу ниже).
+  const educators = quality?.educators ?? [];
 
   if (periodsLoading) {
     return (
@@ -254,7 +255,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
           </Card>
 
           {/* Преподаватели: компактность + равномерность (единый отчёт с бэка) */}
-          {compactEducators.length > 0 && (
+          {educators.length > 0 && (
             <Card title="Преподаватели: компактность и нагрузка">
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2 text-[11px]">
@@ -267,7 +268,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                 <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
                   <Info size={13} className="shrink-0 mt-0.5" />
                   Штраф = окна + 2·одиночные дни + лишние дни (меньше — плотнее; суббота в штраф не входит).
-                  Цель — 2–3 пары в учебный день без окон. Флаговые преподаватели, худшие сверху.
+                  Цель — 2–3 пары в учебный день без окон. Штраф и подсветка — только для преподавателей
+                  с требованием компактности (отмечены точкой), худшие сверху; для остальных метрики
+                  справочные и штрафом не считаются.
                 </p>
                 <div className="max-h-[360px] overflow-auto custom-scrollbar -mx-1 px-1">
                   <table className="w-full text-xs">
@@ -283,16 +286,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {compactEducators.map((e) => {
-                        const hot = e.windowSlots > 0 || e.singlePairDays >= 5;
+                      {educators.map((e) => {
+                        // Штраф/подсветка — только там, где компактность важна (флаг). Для
+                        // остальных «проблемные» колонки нейтральны: окна/одиночные — не нарушение.
+                        const tracked = e.compact;
+                        const hot = tracked && (e.windowSlots > 0 || e.singlePairDays >= 5);
                         return (
                           <tr key={e.educatorId} className={cn('transition-colors', hot && 'bg-red-50/60')}>
-                            <td className="py-1.5 font-bold text-slate-700 truncate max-w-[160px]">{e.educatorName}</td>
+                            <td className="py-1.5 font-bold text-slate-700 truncate max-w-[160px]">
+                              {tracked && (
+                                <span
+                                  title="Требуется компактное расписание"
+                                  className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5 align-middle"
+                                />
+                              )}
+                              {e.educatorName}
+                            </td>
                             <td className="text-right px-2 tabular-nums text-slate-500">{e.avgPairsPerDay.toFixed(1)}</td>
-                            <td className={cn('text-right px-2 tabular-nums font-bold', e.singlePairDays > 0 ? 'text-amber-600' : 'text-slate-300')}>
+                            <td className={cn('text-right px-2 tabular-nums font-bold',
+                              !tracked ? 'text-slate-300' : e.singlePairDays > 0 ? 'text-amber-600' : 'text-slate-300')}>
                               {e.singlePairDays}
                             </td>
-                            <td className={cn('text-right px-2 tabular-nums font-bold', e.windowSlots > 0 ? 'text-red-600' : 'text-slate-300')}>
+                            <td className={cn('text-right px-2 tabular-nums font-bold',
+                              !tracked ? 'text-slate-300' : e.windowSlots > 0 ? 'text-red-600' : 'text-slate-300')}>
                               {e.windowSlots}
                             </td>
                             <td className="text-right px-2 tabular-nums text-slate-500">{e.saturdayPairs}</td>
@@ -300,8 +316,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                               e.saturdayDeviation > 0.05 ? 'text-red-500' : e.saturdayDeviation < -0.05 ? 'text-emerald-500' : 'text-slate-300')}>
                               {e.saturdayDeviation > 0 ? '+' : ''}{e.saturdayDeviation.toFixed(1)}
                             </td>
-                            <td className={cn('text-right pl-2 tabular-nums font-black', e.penalty === 0 ? 'text-emerald-600' : hot ? 'text-red-600' : 'text-slate-600')}>
-                              {e.penalty}
+                            <td className={cn('text-right pl-2 tabular-nums font-black',
+                              !tracked ? 'text-slate-300' : e.penalty === 0 ? 'text-emerald-600' : hot ? 'text-red-600' : 'text-slate-600')}
+                              title={!tracked ? 'Компактность не требуется — штрафом не считается' : undefined}>
+                              {tracked ? e.penalty : '—'}
                             </td>
                           </tr>
                         );

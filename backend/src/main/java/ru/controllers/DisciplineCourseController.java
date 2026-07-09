@@ -1,15 +1,18 @@
 package ru.controllers;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.dto.disciplineCourse.CourseCloneRequestDto;
+import ru.dto.disciplineCourse.CourseDeletionImpactDto;
 import ru.dto.disciplineCourse.DisciplineCourseCreateDto;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
 import ru.repository.DisciplineCourseRepository;
 import ru.mapper.DisciplineCourseMapper;
+import ru.services.CourseDeletionService;
 import ru.services.CurriculumCloneService;
 import ru.services.DisciplineCourseService;
 import java.util.List;
@@ -20,6 +23,7 @@ import java.util.stream.Collectors;
 public class DisciplineCourseController {
     private final DisciplineCourseService disciplineCourseService;
     private final CurriculumCloneService curriculumCloneService;
+    private final CourseDeletionService courseDeletionService;
     private final DisciplineCourseRepository disciplineCourseRepository;
     private final DisciplineCourseMapper disciplineCourseMapper;
     /**
@@ -72,9 +76,30 @@ public class DisciplineCourseController {
         DisciplineCourseDto updated = disciplineCourseService.updateCourse(id, dto);
         return ResponseEntity.ok(updated);
     }
+    /**
+     * Предпросмотр последствий удаления курса: число слотов/назначений/размещённых занятий.
+     * Фронт показывает эти числа в подтверждении перед удалением.
+     */
+    @GetMapping("/{id}/deletion-impact")
+    public ResponseEntity<?> deletionImpact(@PathVariable Integer id) {
+        try {
+            return ResponseEntity.ok(courseDeletionService.preview(id));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * Каскадное удаление курса (слоты, назначения, размещения, сцепки + очистка read-модели).
+     * Глобального ControllerAdvice нет, поэтому 404 маппим здесь.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        disciplineCourseService.deleteCourse(id);
-        return ResponseEntity.noContent().build();
+        try {
+            disciplineCourseService.deleteCourse(id);
+            return ResponseEntity.noContent().build();
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

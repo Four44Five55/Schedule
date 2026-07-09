@@ -47,6 +47,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   const [courseAssignments, setCourseAssignments] = useState<Map<number, AssignmentDto[]>>(new Map());
   const [streams, setStreams] = useState<StudyStreamDto[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingCourseId, setDeletingCourseId] = useState<number | null>(null);
 
   // Потоки грузим один раз (периоды теперь в общем контексте).
   useEffect(() => {
@@ -85,6 +86,36 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   const handleCourseSaved = () => {
     setShowCourseForm(false);
     reloadCourses();
+  };
+
+  // Удаление курса. Целостность и каскад — на бэке; фронт лишь показывает последствия
+  // (запрос impact), подтверждает и обновляет список. Снимаем курс из выбранных, чтобы
+  // производные (слоты/счётчики/назначения) не ссылались на удалённый id.
+  const handleDeleteCourse = async (courseId: number) => {
+    let confirmMsg = 'Удалить курс? Действие необратимо.';
+    try {
+      const impact = await CurriculumService.getCourseDeletionImpact(courseId);
+      confirmMsg =
+        `Удалить курс «${impact.disciplineName}», семестр ${impact.semester}?\n\n` +
+        `Будет безвозвратно удалено:\n` +
+        `• занятий плана: ${impact.slots}\n` +
+        `• назначений: ${impact.assignments}\n` +
+        `• размещённых в расписании: ${impact.placedLessons}`;
+    } catch {
+      // Предпросмотр не критичен — при сбое падаем на общий текст подтверждения.
+    }
+    if (!confirm(confirmMsg)) return;
+
+    setDeletingCourseId(courseId);
+    try {
+      await CurriculumService.deleteCourse(courseId);
+      setSelectedCourses(prev => { const next = new Set(prev); next.delete(courseId); return next; });
+      reloadCourses();
+    } catch {
+      alert('Не удалось удалить курс');
+    } finally {
+      setDeletingCourseId(null);
+    }
   };
 
   useEffect(() => {
@@ -294,6 +325,8 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
                   courseSlots={courseSlots}
                   onToggle={toggleCourse}
                   onCourseChanged={reloadCourseSlots}
+                  onDelete={handleDeleteCourse}
+                  deletingCourseId={deletingCourseId}
                 />
               </div>
             )}

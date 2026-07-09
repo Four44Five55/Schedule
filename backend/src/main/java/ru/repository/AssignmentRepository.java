@@ -44,4 +44,12 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
      * @return Список назначений.
      */
     List<Assignment> findByCurriculumSlotId(Integer slotId);
+
+    /**
+     * Число назначений курса — для предпросмотра последствий удаления.
+     *
+     * @param courseId id курса (DisciplineCourse).
+     * @return количество {@link Assignment} курса.
+     */
+    long countByCurriculumSlot_DisciplineCourse_Id(Integer courseId);
 }

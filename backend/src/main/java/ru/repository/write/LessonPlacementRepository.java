@@ -53,6 +53,43 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
     List<LessonPlacement> findByAssignmentId(@Param("assignmentId") Integer assignmentId);
 
     /**
+     * Найти размещения по набору id, сразу подтянув всех преподавателей занятия.
+     *
+     * <p>Нужно аналитике качества: {@code schedule_view} денормализует лишь одного
+     * преподавателя на строку, а занятие могут вести несколько. Через {@code JOIN FETCH}
+     * восстанавливаем полный состав, чтобы учитывать со-преподавателей.</p>
+     *
+     * @param ids id размещений
+     * @return размещения с инициализированной коллекцией {@code assignment.educators}
+     */
+    @Query("SELECT DISTINCT lp FROM LessonPlacement lp " +
+            "JOIN FETCH lp.assignment a LEFT JOIN FETCH a.educators " +
+            "WHERE lp.id IN :ids")
+    List<LessonPlacement> findByIdInWithEducators(@Param("ids") java.util.Collection<UUID> ids);
+
+    /**
+     * Id всех размещений курса (через слот → назначение). Нужны при удалении курса,
+     * чтобы синхронно вычистить строки read-модели {@code schedule_view} (у неё нет FK
+     * на {@code lesson_placement}), захватив их ДО FK-каскадного удаления write-стороны.
+     *
+     * @param courseId id курса ({@link ru.entity.logicSchema.DisciplineCourse})
+     * @return id размещений курса
+     */
+    @Query("SELECT lp.id FROM LessonPlacement lp " +
+            "WHERE lp.assignment.curriculumSlot.disciplineCourse.id = :courseId")
+    List<UUID> findIdsByCourseId(@Param("courseId") Integer courseId);
+
+    /**
+     * Число размещённых занятий курса — для предпросмотра последствий удаления.
+     *
+     * @param courseId id курса
+     * @return количество {@link LessonPlacement} курса
+     */
+    @Query("SELECT COUNT(lp) FROM LessonPlacement lp " +
+            "WHERE lp.assignment.curriculumSlot.disciplineCourse.id = :courseId")
+    long countByCourseId(@Param("courseId") Integer courseId);
+
+    /**
      * Найти размещения по дате в рамках сессии.
      *
      * @param sessionId ID сессии
