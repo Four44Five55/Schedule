@@ -1,6 +1,7 @@
 package ru.services;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.dto.moveLesson.MoveOptionDto;
 import ru.dto.moveLesson.MoveSuggestionRequest;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 /**
  * Сервис поиска доступных мест для переноса.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MoveLessonSuggestionService {
@@ -96,20 +98,34 @@ public class MoveLessonSuggestionService {
      */
     public List<MoveOptionDto> findPlacementSuggestions(ScheduleWorkspace workspace, Lesson lesson,
                                                         String rootType, Integer rootId) {
+        long t0 = System.nanoTime();
         List<CellForLesson> candidates = new ArrayList<>(CellForLessonFactory.getAllCells());
+        int allCells = candidates.size();
 
         SchedulableResource rootResource = getRootResourceByType(workspace, rootType, rootId);
         candidates.removeIf(cell -> !rootResource.isFree(cell));
+        int afterRoot = candidates.size();
+        long t1 = System.nanoTime();
 
         List<SchedulableResource> otherParticipants = getParticipantsExceptRoot(workspace, lesson, rootId);
         for (SchedulableResource participant : otherParticipants) {
             if (candidates.isEmpty()) break;
             candidates.removeIf(cell -> !participant.isFree(cell));
         }
+        int afterParticipants = candidates.size();
+        long t2 = System.nanoTime();
 
         if (!candidates.isEmpty()) {
             candidates.removeIf(cell -> workspace.findAvailableAuditoriumsFor(lesson, cell).isEmpty());
         }
+        long t3 = System.nanoTime();
+
+        // Временный тайминг: где съедаются кандидаты и время (диагностика скорости подсветки).
+        log.info("⏱ suggestions root={}#{}, участников={}: ячеек {} → root {} ({}мс) → люди {} ({}мс) → ауд {} ({}мс)",
+                rootType, rootId, otherParticipants.size(),
+                allCells, afterRoot, (t1 - t0) / 1_000_000,
+                afterParticipants, (t2 - t1) / 1_000_000,
+                candidates.size(), (t3 - t2) / 1_000_000);
 
         return candidates.stream()
                 .map(cell -> new MoveOptionDto(cell.getDate(), cell.getTimeSlotPair()))
