@@ -265,12 +265,12 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
               <tr className="bg-slate-900 text-white">
                 <th
                   className={cn('border-r font-black uppercase sticky bg-slate-900 z-30', headerBorderClass)}
-                  rowSpan={3}
+                  rowSpan={2}
                   style={{ width: dayColW, minWidth: dayColW, left: 0, fontSize: s(8), padding: pad }}
                 >Дн</th>
                 <th
                   className={cn('border-r font-black uppercase sticky bg-slate-900 z-30', headerBorderClass)}
-                  rowSpan={3}
+                  rowSpan={2}
                   style={{ width: pairColW, minWidth: pairColW, left: dayColW, fontSize: s(8), padding: pad }}
                 >П</th>
                 {mondays.map((_, idx) => (
@@ -283,26 +283,15 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                   </th>
                 ))}
               </tr>
-              <tr className="bg-slate-100">
+              <tr className="bg-slate-100 border-b-2 border-slate-400">
                 {monthHeaders.map((month, idx) => (
                   <th
                     key={idx}
                     colSpan={month.count}
-                    className={cn('border-r text-center font-black uppercase tracking-widest text-slate-500', headerBorderClass)}
-                    style={{ fontSize: s(8), padding: pad }}
+                    className={cn('border-r text-center font-black uppercase tracking-widest text-slate-900', headerBorderClass)}
+                    style={{ fontSize: s(10), padding: pad }}
                   >
                     {month.name}
-                  </th>
-                ))}
-              </tr>
-              <tr className="bg-white border-b-2 border-slate-400">
-                {mondays.map((monday, idx) => (
-                  <th
-                    key={idx}
-                    className={cn('border-r font-bold text-slate-400', borderClass)}
-                    style={{ fontSize: s(7), padding: pad }}
-                  >
-                    {format(monday, 'dd.MM')}
                   </th>
                 ))}
               </tr>
@@ -328,8 +317,8 @@ export const AcademicGridShell: React.FC<AcademicGridShellProps> = ({
                     {mondays.map((monday, idx) => (
                       <td
                         key={idx}
-                        className={cn('border-r text-center font-black text-slate-700 bg-slate-50/50', borderClass)}
-                        style={{ fontSize: s(8) }}
+                        className={cn('border-r text-center font-black text-slate-700 bg-slate-50/50 leading-none', borderClass)}
+                        style={{ fontSize: s(10) }}
                       >
                         {format(addDays(monday, day.id - 1), 'd')}
                       </td>

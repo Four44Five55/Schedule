@@ -50,4 +50,8 @@
     <!-- Фича 2 (Путь 2): привязка сессии расписания к учебному периоду -->
     <include file="015-add-session-study-period.sql" relativeToChangelogFile="true"/>
 
+    <!-- Совместные занятия: UNIQUE schedule_view → (placement_id, study_stream_id, educator_id),
+         чтобы занятие с несколькими преподавателями проецировалось по строке на каждого -->
+    <include file="016-widen-schedule-view-educator-unique.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

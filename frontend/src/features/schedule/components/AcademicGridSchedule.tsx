@@ -162,7 +162,7 @@ const ScheduleCell = React.memo(({
               lesson && !isEditMode && 'cursor-help',
               isConflict && 'ring-2 ring-inset ring-red-500',
               (isSourceCell || isChainMember) && !isConflict && 'ring-2 ring-inset ring-blue-600',
-              pinningEnabled && lesson?.locked && !isConflict && !isSourceCell && !isChainMember && 'ring-2 ring-inset ring-amber-500'
+              pinningEnabled && lesson?.locked && !isConflict && !isSourceCell && !isChainMember && 'ring-1 ring-inset ring-amber-500'
           )}
           title={
             isMoveTarget ? 'Нажмите, чтобы перенести занятие сюда'
@@ -248,7 +248,7 @@ const ScheduleCell = React.memo(({
                         {lesson.disciplineAbbreviation}
                       </span>
                       <span className="font-bold opacity-60" style={{ fontSize: bodyPx }}>
-                        {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
+                        {lesson.kindOfStudyAbbr}{lesson.themeNumber ? `/Т.${lesson.themeNumber}` : ''}
                       </span>
                     </div>
                     <div className="font-bold text-center leading-tight break-words flex-1 flex items-center justify-center">
@@ -261,7 +261,7 @@ const ScheduleCell = React.memo(({
               ) : (
                   <>
                     <div className="font-bold whitespace-nowrap overflow-hidden opacity-60">
-                      {lesson.kindOfStudyAbbr}/Т.{lesson.themeNumber || '—'}
+                      {lesson.kindOfStudyAbbr}{lesson.themeNumber ? `/Т.${lesson.themeNumber}` : ''}
                     </div>
                     <div className="font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center" style={{ fontSize: abbrPx }}>
                       {lesson.disciplineAbbreviation}

@@ -19,6 +19,9 @@ import ru.repository.write.LessonPlacementRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -118,72 +121,25 @@ public class ScheduleSynchronizer {
         }
 
         int syncedCount = 0;
-        int createdCount = 0;
-        int updatedCount = 0;
-        int viewsPerPlacement = 0;
 
+        // Период уже очищен выше — пишем строки заново. На один placement приходится строка
+        // на КАЖДУЮ пару (группа × преподаватель): так read-модель несёт всех преподавателей
+        // совместного занятия (напр. английский вдвоём), а mergeViewsToDto собирает их обратно
+        // в одно занятие (distinct по преподавателям/группам). Прежде бралась лишь первая пара
+        // getEducators().iterator().next() → второй преподаватель терялся и в сетке, и в тултипе.
         for (LessonPlacement placement : event.getPlacements()) {
             try {
-                // ✅ ВАРИАНТ 3: Создаём НЕСКОЛЬКО ScheduleView для ОДНОГО placement (по одной на группу)
-                Assignment assignment = placement.getAssignment();
-
-                // Если у assignment нет study_stream или групп - создаем один view
-                if (assignment.getStudyStream() == null || assignment.getStudyStream().getGroups() == null || assignment.getStudyStream().getGroups().isEmpty()) {
-                    // Создаём один view (как раньше)
-                    var existingView = viewRepository.findByPlacementId(placement.getId());
-
-                    if (existingView.isEmpty()) {
-                        ScheduleView view = createViewFromPlacement(placement);
-                        viewRepository.save(view);
-                        createdCount++;
-                        log.debug("✅ Создана ScheduleView для placementId={} (без групп)", placement.getId());
-                    } else {
-                        ScheduleView view = existingView.get();
-                        updateViewFromPlacement(view, placement);
-                        viewRepository.save(view);
-                        updatedCount++;
-                        log.debug("🔄 Обновлена ScheduleView для placementId={}", placement.getId());
-                    }
-                    syncedCount++;
-                    viewsPerPlacement++;
-                } else {
-                    // ✅ Создаём несколько view (по одной на группу)
-                    for (ru.entity.Group group : assignment.getStudyStream().getGroups()) {
-                        // ✅ Генерируем уникальный ключ: (placement_id, group_id)
-                        String uniqueKey = placement.getId().toString() + "-" + group.getId();
-
-                        // Проверяем, существует ли view по уникальному ключу
-                        var existingView = viewRepository.findByPlacementIdAndGroupId(
-                            placement.getId(),
-                            group.getId()
-                        );
-
-                        if (existingView.isEmpty()) {
-                            // ✅ Создаём новую view для группы (id генерируется автоматически!)
-                            ScheduleView view = createViewFromPlacementForGroup(placement, group);
-                            viewRepository.save(view);
-                            createdCount++;
-                            log.debug("✅ Создана ScheduleView для placementId={}, groupId={}", placement.getId(), group.getId());
-                        } else {
-                            // Обновляем существующую view
-                            ScheduleView view = existingView.get();
-                            updateViewFromPlacementForGroup(view, placement, group);
-                            viewRepository.save(view);
-                            updatedCount++;
-                            log.debug("🔄 Обновлена ScheduleView для placementId={}, groupId={}", placement.getId(), group.getId());
-                        }
-                        syncedCount++;
-                        viewsPerPlacement++;
-                    }
-                }
+                List<ScheduleView> views = buildViewsForPlacement(placement);
+                viewRepository.saveAll(views);
+                syncedCount += views.size();
             } catch (Exception e) {
                 log.error("❌ Ошибка синхронизации placementId={}: {}", placement.getId(), e.getMessage(), e);
                 // Продолжаем синхронизацию остальных placement
             }
         }
 
-        log.info("✅ Синхронизация завершена: {} view records (создано: {}, обновлено: {}, среднее view на placement: {})",
-                syncedCount, createdCount, updatedCount, event.getPlacementsCount() > 0 ? syncedCount / event.getPlacementsCount() : 0);
+        log.info("✅ Синхронизация завершена: {} строк read-модели для {} placements",
+                syncedCount, event.getPlacementsCount());
     }
 
     /**
@@ -230,74 +186,74 @@ public class ScheduleSynchronizer {
     }
 
     /**
-     * Создаёт или обновляет все {@link ScheduleView} для одного размещения.
-     *
-     * <p>Учитывает «вариант 3»: на один {@link LessonPlacement} приходится по одной
-     * view на каждую группу потока. Симметрично логике в {@link #onScheduleGenerated},
-     * благодаря чему перенос обновляет ровно те же строки, что создала генерация.</p>
+     * Пересоздаёт все {@link ScheduleView} одного размещения: удаляет прежние строки и
+     * пишет заново по паре (группа × преподаватель). Delete+recreate (а не update-in-place)
+     * корректно отражает и смену состава — например добавление/снятие второго преподавателя,
+     * — и держит логику симметричной {@link #onScheduleGenerated}.
      *
      * @param placement изменённое размещение
      */
     private void syncPlacementViews(LessonPlacement placement) {
+        // ВАЖНО: bulk-delete (@Modifying) выполняется НЕМЕДЛЕННО, а производный
+        // deleteByPlacementId (select+remove) откладывается до flush; Hibernate во flush
+        // выполняет INSERT'ы ПЕРЕД DELETE'ами, из-за чего при переносе новая строка
+        // (placement, group, educator) сталкивалась бы со старой (ещё не удалённой) →
+        // нарушение UNIQUE. Поэтому старые строки сносим сразу, затем вставляем новые.
+        viewRepository.deleteByPlacementIdIn(java.util.List.of(placement.getId()));
+        viewRepository.saveAll(buildViewsForPlacement(placement));
+    }
+
+    /**
+     * Строит все строки read-модели для одного размещения — по паре
+     * (группа × преподаватель). Нет групп → одна «строка потока» (прежнее поведение);
+     * нет преподавателей → строка без преподавателя. Благодаря паре по преподавателю
+     * совместное занятие (напр. английский вдвоём) попадает в расписание каждого из них.
+     */
+    private List<ScheduleView> buildViewsForPlacement(LessonPlacement placement) {
         Assignment assignment = placement.getAssignment();
 
         boolean hasGroups = assignment != null
                 && assignment.getStudyStream() != null
                 && assignment.getStudyStream().getGroups() != null
                 && !assignment.getStudyStream().getGroups().isEmpty();
+        // null-группа = «строка на весь поток» (сохраняет прежнюю ветку без групп).
+        List<ru.entity.Group> groups = hasGroups
+                ? new ArrayList<>(assignment.getStudyStream().getGroups())
+                : Collections.singletonList((ru.entity.Group) null);
 
-        if (!hasGroups) {
-            // Один view (без групп)
-            var existingView = viewRepository.findByPlacementId(placement.getId());
-            if (existingView.isEmpty()) {
-                viewRepository.save(createViewFromPlacement(placement));
-            } else {
-                ScheduleView view = existingView.get();
-                updateViewFromPlacement(view, placement);
-                viewRepository.save(view);
-            }
-            return;
-        }
+        boolean hasEducators = assignment != null
+                && assignment.getEducators() != null
+                && !assignment.getEducators().isEmpty();
+        // null-преподаватель = строка без преподавателя (как раньше при пустом составе).
+        List<ru.entity.Educator> educators = hasEducators
+                ? new ArrayList<>(assignment.getEducators())
+                : Collections.singletonList((ru.entity.Educator) null);
 
-        // По одной view на каждую группу потока
-        for (ru.entity.Group group : assignment.getStudyStream().getGroups()) {
-            var existingView = viewRepository.findByPlacementIdAndGroupId(placement.getId(), group.getId());
-            if (existingView.isEmpty()) {
-                viewRepository.save(createViewFromPlacementForGroup(placement, group));
-            } else {
-                ScheduleView view = existingView.get();
-                updateViewFromPlacementForGroup(view, placement, group);
-                viewRepository.save(view);
+        List<ScheduleView> views = new ArrayList<>(groups.size() * educators.size());
+        for (ru.entity.Group group : groups) {
+            for (ru.entity.Educator educator : educators) {
+                views.add(buildOneView(placement, assignment, group, educator));
             }
         }
+        return views;
     }
 
     /**
-     * Создаёт ScheduleView из LessonPlacement.
-     *
-     * @param placement Размещение
-     * @return ScheduleView
+     * Одна строка read-модели для конкретной пары (группа, преподаватель).
+     * {@code group}/{@code educator} могут быть null (нет групп / нет преподавателей).
      */
-    private ScheduleView createViewFromPlacement(LessonPlacement placement) {
-        Assignment assignment = placement.getAssignment();
+    private ScheduleView buildOneView(LessonPlacement placement, Assignment assignment,
+                                      ru.entity.Group group, ru.entity.Educator educator) {
+        ScheduleView view = new ScheduleView(); // id генерируется автоматически (UUID)
 
-        // ✅ Создаём view с автоматической генерацией id (JPA сгенерирует UUID)
-        ScheduleView view = new ScheduleView();
-
-        // Заполняем данные размещения
         view.setScheduledDate(placement.getScheduledDate());
         view.setTimeSlot(placement.getScheduledSlot());
         view.setPlacementId(placement.getId());
 
-        // Заполняем денормализованные данные из Assignment
         if (assignment != null) {
-            view.setDiscipline(
-                extractDisciplineName(assignment),
-                extractDisciplineAbbr(assignment)
-            );
+            view.setDiscipline(extractDisciplineName(assignment), extractDisciplineAbbr(assignment));
             view.setKindOfStudy(assignment.getCurriculumSlot().getKindOfStudy().name());
             view.setCurriculumSlotId(assignment.getCurriculumSlot().getId());
-
             if (assignment.getCurriculumSlot().getThemeLesson() != null) {
                 view.setTheme(
                     assignment.getCurriculumSlot().getThemeLesson().getThemeNumber(),
@@ -306,164 +262,26 @@ public class ScheduleSynchronizer {
             }
         }
 
-        // Заполняем данные из Placement (аудитории)
+        // Аудитория — денормализуем первую назначенную (как и прежде).
         if (placement.getAssignedAuditoriums() != null && !placement.getAssignedAuditoriums().isEmpty()) {
-            view.setAuditorium(
-                placement.getAssignedAuditoriums().iterator().next().getId(),
-                placement.getAssignedAuditoriums().iterator().next().getName()
-            );
+            var aud = placement.getAssignedAuditoriums().iterator().next();
+            view.setAuditorium(aud.getId(), aud.getName());
         }
 
-        // Заполняем данные из Assignment (участники)
-        if (assignment != null) {
-            // Преподаватели
-            if (assignment.getEducators() != null && !assignment.getEducators().isEmpty()) {
-                view.setEducator(
-                    assignment.getEducators().iterator().next().getId(),
-                    assignment.getEducators().iterator().next().getName()
-                );
-            }
-
-            // Группа
-            if (assignment.getStudyStream() != null && assignment.getStudyStream().getGroups() != null) {
-                view.setGroup(
-                    assignment.getStudyStream().getId(),
-                    assignment.getStudyStream().getName()
-                );
-            }
+        if (educator != null) {
+            view.setEducator(educator.getId(), educator.getName());
         }
 
-        applyPinMetadata(view, placement);
-        view.setLastUpdated(LocalDateTime.now());
-
-        log.debug("Создана ScheduleView: date={}, slot={}, discipline={}",
-                view.getScheduledDate(), view.getTimeSlot(), view.getDisciplineAbbr());
-
-        return view;
-    }
-
-    /**
-     * ✅ НОВЫЙ МЕТОД: Создаёт ScheduleView для конкретной группы из LessonPlacement.
-     *
-     * <p>Используется в варианте 3: один placement → несколько ScheduleView (по одной на группу).</p>
-     *
-     * @param placement Размещение
-     * @param group Группа
-     * @return ScheduleView для конкретной группы
-     */
-    private ScheduleView createViewFromPlacementForGroup(LessonPlacement placement, ru.entity.Group group) {
-        Assignment assignment = placement.getAssignment();
-
-        // ✅ Создаём view с автоматической генерацией id (JPA сгенерирует UUID)
-        ScheduleView view = new ScheduleView();
-
-        // Заполняем данные размещения
-        view.setScheduledDate(placement.getScheduledDate());
-        view.setTimeSlot(placement.getScheduledSlot());
-        view.setPlacementId(placement.getId());
-
-        // Заполняем денормализованные данные из Assignment
-        if (assignment != null) {
-            view.setDiscipline(
-                extractDisciplineName(assignment),
-                extractDisciplineAbbr(assignment)
-            );
-            view.setKindOfStudy(assignment.getCurriculumSlot().getKindOfStudy().name());
-            view.setCurriculumSlotId(assignment.getCurriculumSlot().getId());
-
-            if (assignment.getCurriculumSlot().getThemeLesson() != null) {
-                view.setTheme(
-                    assignment.getCurriculumSlot().getThemeLesson().getThemeNumber(),
-                    assignment.getCurriculumSlot().getThemeLesson().getTitle()
-                );
-            }
-        }
-
-        // Заполняем данные из Placement (аудитории)
-        if (placement.getAssignedAuditoriums() != null && !placement.getAssignedAuditoriums().isEmpty()) {
-            view.setAuditorium(
-                placement.getAssignedAuditoriums().iterator().next().getId(),
-                placement.getAssignedAuditoriums().iterator().next().getName()
-            );
-        }
-
-        // ✅ Заполняем данные для КОНКРЕТНОЙ ГРУППЫ
-        if (assignment != null) {
-            // Преподаватели
-            if (assignment.getEducators() != null && !assignment.getEducators().isEmpty()) {
-                view.setEducator(
-                    assignment.getEducators().iterator().next().getId(),
-                    assignment.getEducators().iterator().next().getName()
-                );
-            }
-
-            // ✅ Конкретная группа (не stream!)
+        // Конкретная группа, если есть; иначе — сам поток (ветка «без групп»).
+        if (group != null) {
             view.setGroup(group.getId(), group.getName());
+        } else if (assignment != null && assignment.getStudyStream() != null) {
+            view.setGroup(assignment.getStudyStream().getId(), assignment.getStudyStream().getName());
         }
 
         applyPinMetadata(view, placement);
         view.setLastUpdated(LocalDateTime.now());
-
-        log.debug("Создана ScheduleView для группы: date={}, slot={}, group={}, discipline={}",
-                view.getScheduledDate(), view.getTimeSlot(), group.getName(), view.getDisciplineAbbr());
-
         return view;
-    }
-
-    /**
-     * Обновляет ScheduleView из LessonPlacement.
-     *
-     * @param view Существующая view
-     * @param placement Размещение
-     */
-    private void updateViewFromPlacement(ScheduleView view, LessonPlacement placement) {
-        view.setScheduledDate(placement.getScheduledDate());
-        view.setTimeSlot(placement.getScheduledSlot());
-        view.setPlacementId(placement.getId());
-
-        // Обновляем аудитории (после переноса они могли измениться)
-        if (placement.getAssignedAuditoriums() != null && !placement.getAssignedAuditoriums().isEmpty()) {
-            view.setAuditorium(
-                placement.getAssignedAuditoriums().iterator().next().getId(),
-                placement.getAssignedAuditoriums().iterator().next().getName()
-            );
-        }
-
-        applyPinMetadata(view, placement);
-        view.setLastUpdated(LocalDateTime.now());
-
-        log.debug("Обновлена ScheduleView: date={}, slot={}",
-                view.getScheduledDate(), view.getTimeSlot());
-    }
-
-    /**
-     * ✅ НОВЫЙ МЕТОД: Обновляет ScheduleView для конкретной группы из LessonPlacement.
-     *
-     * @param view Существующая view
-     * @param placement Размещение
-     * @param group Группа
-     */
-    private void updateViewFromPlacementForGroup(ScheduleView view, LessonPlacement placement, ru.entity.Group group) {
-        view.setScheduledDate(placement.getScheduledDate());
-        view.setTimeSlot(placement.getScheduledSlot());
-        view.setPlacementId(placement.getId());
-
-        // ✅ Обновляем группу
-        view.setGroup(group.getId(), group.getName());
-
-        // Обновляем аудитории
-        if (placement.getAssignedAuditoriums() != null && !placement.getAssignedAuditoriums().isEmpty()) {
-            view.setAuditorium(
-                placement.getAssignedAuditoriums().iterator().next().getId(),
-                placement.getAssignedAuditoriums().iterator().next().getName()
-            );
-        }
-
-        applyPinMetadata(view, placement);
-        view.setLastUpdated(LocalDateTime.now());
-
-        log.debug("Обновлена ScheduleView для группы: date={}, slot={}, group={}",
-                view.getScheduledDate(), view.getTimeSlot(), group.getName());
     }
 
     // ========== Helper Methods ==========
