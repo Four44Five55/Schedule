@@ -31,6 +31,7 @@ import ru.services.LessonMoveService;
 import ru.services.LessonPinService;
 import ru.services.ManualPlacementService;
 import ru.services.ScheduleGenerationService;
+import ru.services.ScheduleSynchronizer;
 import ru.services.TrackReorderService;
 
 import java.util.List;
@@ -60,6 +61,7 @@ public class ScheduleCommandController {
     private final ManualPlacementService manualPlacementService;
     private final PlacementBoardService placementBoardService;
     private final TrackReorderService trackReorderService;
+    private final ScheduleSynchronizer scheduleSynchronizer;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
 
@@ -168,6 +170,22 @@ public class ScheduleCommandController {
 
         int removed = generationService.clearPlacements(sessionId, courseId, kinds, "admin");
         return ResponseEntity.ok(removed);
+    }
+
+    /**
+     * Пересобрать read-модель сессии из write-стороны (ремонт отображения).
+     *
+     * POST /api/schedule/command/sessions/{sessionId}/reproject
+     *
+     * <p>Расписание не меняется: даты, слоты и замки берутся из тех же размещений — обновляются
+     * только денормализованные поля (преподаватель, группа, тема, аудитория). Нужно для данных,
+     * разошедшихся до появления автоматической перепроекции при правке назначений.</p>
+     *
+     * @return количество перепроецированных размещений
+     */
+    @PostMapping("/sessions/{sessionId}/reproject")
+    public ResponseEntity<Integer> reproject(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(scheduleSynchronizer.reprojectSession(sessionId));
     }
 
     /**

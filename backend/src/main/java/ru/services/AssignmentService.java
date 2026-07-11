@@ -2,6 +2,7 @@ package ru.services;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.dto.assignment.AssignmentCreateDto;
@@ -12,6 +13,7 @@ import ru.entity.Assignment;
 import ru.entity.Educator;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.StudyStream;
+import ru.events.AssignmentsChangedEvent;
 import ru.mapper.AssignmentMapper;
 import ru.repository.AssignmentRepository;
 import ru.repository.read.ScheduleViewRepository;
@@ -40,6 +42,7 @@ public class AssignmentService {
     private final AssignmentMapper assignmentMapper;
     private final LessonPlacementRepository placementRepository;
     private final ScheduleViewRepository scheduleViewRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public List<AssignmentDto> createAssignments(AssignmentCreateDto createDto) {
@@ -95,6 +98,7 @@ public class AssignmentService {
                 .collect(Collectors.toMap(a -> a.getCurriculumSlot().getId(), a -> a));
 
         List<Assignment> affected = new ArrayList<>();
+        List<Assignment> overwritten = new ArrayList<>(); // только они меняют уже стоящие занятия
         for (CurriculumSlot slot : slots) {
             Assignment existing = existingBySlot.get(slot.getId());
             if (existing == null) {
@@ -102,9 +106,11 @@ public class AssignmentService {
             } else if (overwrite) {
                 existing.setEducators(new HashSet<>(educators));
                 affected.add(assignmentRepository.save(existing));
+                overwritten.add(existing);
             }
             // overwrite=false и назначение уже есть → SKIP
         }
+        announceChanged(overwritten);
         return assignmentMapper.toDtoList(affected);
     }
 
@@ -126,14 +132,35 @@ public class AssignmentService {
         return matched.size();
     }
 
-    /** Предпросмотр последствий: сколько назначений подпадёт и сколько среди них размещено. */
+    /**
+     * Предпросмотр последствий: сколько назначений подпадёт, сколько среди них размещено
+     * и сколько из размещённых закреплено (замок) — см. {@link RemoveAssignmentsImpactDto}.
+     */
     @Transactional(readOnly = true)
     public RemoveAssignmentsImpactDto removeImpact(Integer courseId, Integer studyStreamId,
                                                    List<Integer> educatorIds, List<Integer> slotIds) {
         List<Assignment> matched = matchHomogeneous(courseId, studyStreamId, educatorIds, slotIds);
-        List<Integer> ids = matched.stream().map(Assignment::getId).toList();
-        long placed = ids.isEmpty() ? 0L : placementRepository.findIdsByAssignmentIdIn(ids).size();
-        return new RemoveAssignmentsImpactDto(matched.size(), placed);
+        return impactOf(matched.stream().map(Assignment::getId).toList());
+    }
+
+    /**
+     * Предпросмотр последствий удаления ОДНОГО назначения — для подтверждения точечного
+     * удаления (иконка корзины): размещения уходят каскадом, включая закреплённые.
+     */
+    @Transactional(readOnly = true)
+    public RemoveAssignmentsImpactDto deleteImpact(Integer assignmentId) {
+        getEntityById(assignmentId); // 404, если назначения нет — не считаем последствия пустоты
+        return impactOf(List.of(assignmentId));
+    }
+
+    /** Счётчики последствий для набора назначений (общий примитив массового и точечного удаления). */
+    private RemoveAssignmentsImpactDto impactOf(List<Integer> assignmentIds) {
+        if (assignmentIds.isEmpty()) {
+            return new RemoveAssignmentsImpactDto(0, 0L, 0L);
+        }
+        long placed = placementRepository.findIdsByAssignmentIdIn(assignmentIds).size();
+        long locked = placementRepository.countLockedByAssignmentIdIn(assignmentIds);
+        return new RemoveAssignmentsImpactDto(assignmentIds.size(), placed, locked);
     }
 
     /**
@@ -170,6 +197,24 @@ public class AssignmentService {
         assignmentRepository.deleteAllById(ids);
     }
 
+    /**
+     * Объявить, что состав преподавателей и/или поток назначений изменился.
+     *
+     * <p>Сервис назначений не знает и не должен знать, как это отражается на расписании:
+     * подписчик ({@link ru.services.ScheduleSynchronizer}) сам найдёт уже стоящие размещения
+     * и перепроецирует read-модель — она несёт преподавателя снимком. Событие обрабатывается
+     * после коммита, поэтому проекция видит уже сохранённый состав.</p>
+     *
+     * @param changed назначения, у которых изменился состав преподавателей и/или поток
+     */
+    private void announceChanged(List<Assignment> changed) {
+        if (changed.isEmpty()) {
+            return;
+        }
+        eventPublisher.publishEvent(
+                new AssignmentsChangedEvent(changed.stream().map(Assignment::getId).toList()));
+    }
+
     /** Сборка сущности назначения из уже разрешённых связей (DRY для create/applyToCourse). */
     private Assignment buildAssignment(CurriculumSlot slot, StudyStream stream, List<Educator> educators) {
         Assignment newAssignment = new Assignment();
@@ -193,6 +238,9 @@ public class AssignmentService {
         assignment.setEducators(new HashSet<>(educators));
 
         Assignment updatedAssignment = assignmentRepository.save(assignment);
+        // Уже размещённые занятия несут снимок прежнего преподавателя/потока — иначе правка
+        // «дойдёт» только до раздела «Назначения», а сетка и отчёты останутся со старым.
+        announceChanged(List.of(updatedAssignment));
         return assignmentMapper.toDto(updatedAssignment);
     }
 

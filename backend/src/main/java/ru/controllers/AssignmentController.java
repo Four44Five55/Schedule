@@ -78,6 +78,16 @@ public class AssignmentController {
         return ResponseEntity.ok(removed);
     }
 
+    /**
+     * Предпросмотр последствий удаления одного назначения: сколько его занятий стоит в
+     * расписании и сколько из них закреплено (замок). Размещения уносит FK-каскад, поэтому
+     * ручная раскладка теряется без спроса — фронт показывает это в подтверждении.
+     */
+    @GetMapping("/{id}/delete-impact")
+    public ResponseEntity<RemoveAssignmentsImpactDto> deleteImpact(@PathVariable Integer id) {
+        return ResponseEntity.ok(assignmentService.deleteImpact(id));
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<AssignmentDto> update(@PathVariable Integer id, @Valid @RequestBody AssignmentUpdateDto dto) {
         AssignmentDto updated = assignmentService.updateAssignment(id, dto);

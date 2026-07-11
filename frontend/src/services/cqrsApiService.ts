@@ -120,6 +120,17 @@ export const CQRSService = {
   },
 
   /**
+   * Пересобрать read-модель сессии из размещений (ремонт отображения). Расписание не меняется —
+   * обновляются только денормализованные преподаватель/группа/тема/аудитория.
+   * @returns количество перепроецированных размещений
+   */
+  reproject: (sessionId: string): Promise<number> => {
+    return api
+      .post<number>(`/schedule/command/sessions/${sessionId}/reproject`)
+      .then(r => r.data);
+  },
+
+  /**
    * Куда можно поставить ещё не размещённое занятие из палитры (Фича 2, Фаза B).
    * Зеркало findMoveOptions, но по assignmentId — занятие ещё не в сетке.
    */

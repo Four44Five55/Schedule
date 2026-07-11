@@ -12,6 +12,7 @@ import ru.entity.Assignment;
 import ru.entity.read.ScheduleView;
 import ru.entity.write.LessonPlacement;
 import ru.enums.TimeSlotPair;
+import ru.events.AssignmentsChangedEvent;
 import ru.events.PlacementChangedEvent;
 import ru.events.ScheduleGeneratedEvent;
 import ru.repository.read.ScheduleViewRepository;
@@ -183,6 +184,52 @@ public class ScheduleSynchronizer {
         } catch (Exception e) {
             log.error("❌ Ошибка синхронизации placementId={}: {}", event.getPlacementId(), e.getMessage(), e);
         }
+    }
+
+    /**
+     * Синхронизация после правки назначений: перепроецирует уже стоящие занятия.
+     *
+     * <p>{@link ScheduleView} денормализует преподавателя и группу СНИМКОМ, поэтому смена
+     * состава преподавателей или потока у {@link Assignment} сама по себе размещённые занятия
+     * не меняет — сетка, отчёты и экспорт продолжали бы показывать прежнего преподавателя.
+     * Расписание при этом не трогается: даты, слоты, аудитории и замки берутся из тех же
+     * {@link LessonPlacement}.</p>
+     *
+     * @param event Событие правки назначений
+     * @see AssignmentsChangedEvent
+     */
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAssignmentsChanged(AssignmentsChangedEvent event) {
+        List<LessonPlacement> placements =
+                placementRepository.findByAssignmentIdIn(event.getAssignmentIds());
+        for (LessonPlacement placement : placements) {
+            syncPlacementViews(placement);
+        }
+        log.info("🔄 Правка {} назначений: перепроецировано {} размещений",
+                event.getAssignmentIds().size(), placements.size());
+    }
+
+    /**
+     * Пересобрать read-модель по всем размещениям сессии (ремонтная операция).
+     *
+     * <p>Строки {@code schedule_view} — снимок назначения на момент проекции. Если данные
+     * разошлись (например назначения правились версией до автоматической перепроекции),
+     * этот метод перечитывает write-сторону и переписывает view, не трогая расписание:
+     * даты, слоты и замки берутся из тех же {@link LessonPlacement}.</p>
+     *
+     * @param sessionId сессия расписания
+     * @return сколько размещений перепроецировано
+     */
+    @Transactional
+    public int reprojectSession(UUID sessionId) {
+        List<LessonPlacement> placements = placementRepository.findBySessionId(sessionId);
+        for (LessonPlacement placement : placements) {
+            syncPlacementViews(placement);
+        }
+        log.info("♻️  Read-модель пересобрана для сессии {}: {} размещений", sessionId, placements.size());
+        return placements.size();
     }
 
     /**

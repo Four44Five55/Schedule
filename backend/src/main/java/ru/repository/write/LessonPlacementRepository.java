@@ -101,6 +101,30 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
     List<UUID> findIdsByAssignmentIdIn(@Param("assignmentIds") java.util.Collection<Integer> assignmentIds);
 
     /**
+     * Сколько размещений набора назначений ЗАКРЕПЛЕНО (замок). Нужно предупредить перед
+     * удалением назначений: их размещения уносит FK-каскад БД, который про {@code locked}
+     * ничего не знает, — то есть ручная раскладка теряется бесшумно.
+     *
+     * @param assignmentIds id назначений
+     * @return число закреплённых размещений этих назначений
+     */
+    @Query("SELECT COUNT(lp) FROM LessonPlacement lp " +
+            "WHERE lp.assignment.id IN :assignmentIds AND lp.locked = true")
+    long countLockedByAssignmentIdIn(@Param("assignmentIds") java.util.Collection<Integer> assignmentIds);
+
+    /**
+     * Размещения набора назначений. Нужны при ПРАВКЕ назначения (смена состава преподавателей
+     * или потока): {@code schedule_view} денормализует преподавателя/группу снимком, поэтому
+     * уже стоящие занятия надо перепроецировать — иначе сетка и отчёты показывают прежнего
+     * преподавателя.
+     *
+     * @param assignmentIds id назначений
+     * @return размещения этих назначений
+     */
+    @Query("SELECT lp FROM LessonPlacement lp WHERE lp.assignment.id IN :assignmentIds")
+    List<LessonPlacement> findByAssignmentIdIn(@Param("assignmentIds") java.util.Collection<Integer> assignmentIds);
+
+    /**
      * Найти размещения по дате в рамках сессии.
      *
      * @param sessionId ID сессии

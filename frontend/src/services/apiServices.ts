@@ -152,6 +152,8 @@ export const CurriculumService = {
   removeAssignmentsFromCourse: (data: RemoveAssignmentsFromCourseDto) =>
     api.post<number>('/assignments/remove-from-course', data).then((r) => r.data),
   updateAssignment: (id: number, data: AssignmentUpdateDto) => api.put<AssignmentDto>(`/assignments/${id}`, data).then((r) => r.data),
+  getDeleteAssignmentImpact: (id: number) =>
+    api.get<RemoveAssignmentsImpactDto>(`/assignments/${id}/delete-impact`).then((r) => r.data),
   deleteAssignment: (id: number) => api.delete(`/assignments/${id}`).then(() => {}),
 };
 

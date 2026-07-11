@@ -321,10 +321,11 @@ export interface RemoveAssignmentsFromCourseDto {
   slotIds?: number[]; // охват: пусто → все слоты курса; иначе только выбранные
 }
 
-// Предпросмотр последствий массового снятия назначений.
+// Предпросмотр последствий снятия назначений (массового и точечного).
 export interface RemoveAssignmentsImpactDto {
   matchedAssignments: number;
   placedLessons: number;
+  lockedLessons: number; // из них закреплённых — ручная раскладка, теряется каскадом
 }
 
 // ============ CONSTRAINTS ============
