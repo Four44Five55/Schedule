@@ -79,9 +79,12 @@ public class ManualPlacementService {
                 .map(p -> p.getAssignment().getId())
                 .collect(Collectors.toSet());
 
+        // Назначения всех курсов одним запросом (раньше — по запросу на курс).
+        var assignmentsByCourse = assignmentService.getAllEntitiesByCourseIds(courseIds);
+
         List<UnplacedLessonDto> result = new ArrayList<>();
         for (Integer courseId : courseIds) {
-            for (Assignment a : assignmentService.getAllEntitiesByCourseId(courseId)) {
+            for (Assignment a : assignmentsByCourse.getOrDefault(courseId, List.of())) {
                 if (placedAssignmentIds.contains(a.getId())) {
                     continue;
                 }
@@ -92,7 +95,7 @@ public class ManualPlacementService {
     }
 
     /**
-     * Доступные ячейки для установки занятия из палитры (подсветка зелёным, как у переноса).
+     * Доступные ячейки для установки занятия из палитры (тот же подбор, что и у переноса).
      *
      * @param sessionId     сессия (засев существующих размещений → занятость ресурсов)
      * @param assignmentId  что ставим
@@ -104,26 +107,15 @@ public class ManualPlacementService {
     @Transactional(readOnly = true)
     public List<MoveOptionDto> findPlacementOptions(UUID sessionId, Integer assignmentId,
                                                     String rootType, Integer rootId, Integer studyPeriodId) {
-        long t0 = System.nanoTime();
         StudyPeriod period = studyPeriodService.getEntityById(studyPeriodId);
         ScheduleWorkspace workspace = workspaceRecreationService
                 .recreateWorkspaceForPeriod(sessionId, period.getStartDate(), period.getEndDate())
                 .workspace();
-        long tWorkspace = System.nanoTime();
 
         Assignment assignment = assignmentService.getEntityById(assignmentId);
         Lesson lesson = placementSeeder.buildLesson(assignment);
-        long tLesson = System.nanoTime();
 
-        List<MoveOptionDto> result = moveSuggestionService.findPlacementSuggestions(workspace, lesson, rootType, rootId);
-        long tDone = System.nanoTime();
-
-        // Временный тайминг (диагностика скорости подсветки): где именно уходит время.
-        log.info("⏱ findPlacementOptions assignmentId={}, root={}#{}: workspace={}мс, lesson={}мс, cascade={}мс, итог={}мс, ячеек={}",
-                assignmentId, rootType, rootId,
-                (tWorkspace - t0) / 1_000_000, (tLesson - tWorkspace) / 1_000_000,
-                (tDone - tLesson) / 1_000_000, (tDone - t0) / 1_000_000, result.size());
-        return result;
+        return moveSuggestionService.findPlacementSuggestions(workspace, lesson, rootType, rootId);
     }
 
     /**

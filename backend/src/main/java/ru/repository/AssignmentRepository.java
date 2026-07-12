@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import ru.entity.Assignment;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -35,6 +36,31 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
     })
     @Query("SELECT a FROM Assignment a WHERE a.curriculumSlot.disciplineCourse.id = :courseId")
     List<Assignment> findAllByCourseIdWithDetails(@Param("courseId") Integer courseId);
+
+    /**
+     * То же, но сразу по НАБОРУ курсов — один запрос вместо запроса на каждый курс.
+     *
+     * <p>Потребители (доска раскладки, палитра неразмещённых, счётчики по дисциплинам) работают
+     * с выбранным набором курсов и вызывали {@link #findAllByCourseIdWithDetails} в цикле: на 23
+     * курсах это 23 запроса по 2–13 мс, то есть ~60–80 мс на каждое действие в планировщике.
+     * Тот же {@code @EntityGraph}, тот же результат — но одним походом в БД. Группировку по курсу
+     * делает вызывающий (в памяти, по {@code a.curriculumSlot.disciplineCourse.id}).</p>
+     *
+     * @param courseIds курсы ({@link ru.entity.logicSchema.DisciplineCourse})
+     * @return полностью загруженные назначения всех этих курсов
+     */
+    @EntityGraph(attributePaths = {
+            "curriculumSlot",
+            "curriculumSlot.themeLesson",
+            "curriculumSlot.disciplineCourse",
+            "curriculumSlot.disciplineCourse.discipline",
+            "curriculumSlot.kindOfStudy",
+            "studyStream",
+            "studyStream.groups",
+            "educators"
+    })
+    @Query("SELECT a FROM Assignment a WHERE a.curriculumSlot.disciplineCourse.id IN :courseIds")
+    List<Assignment> findAllByCourseIdsWithDetails(@Param("courseIds") Collection<Integer> courseIds);
 
     /**
      * Находит все назначения, связанные с одним конкретным слотом учебного плана.

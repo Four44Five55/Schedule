@@ -30,14 +30,12 @@ public class ScheduleMoveController {
 
     @PostMapping("/find-move-options")
     public ResponseEntity<List<MoveOptionDto>> findOptions(@RequestBody MoveSuggestionRequest request) {
-        long t0 = System.nanoTime();
         try {
             // 1. Пересоздаём workspace по самому размещению (сессию берём из него же,
             //    а не из sessionId с фронта — он может указывать на другую сессию).
             var recreated = workspaceRecreationService.recreateWorkspaceForPlacement(
                 request.placementId()
             );
-            long tWorkspace = System.nanoTime();
 
             // 2. Находим целевое занятие по placementId — надёжному уникальному ключу
             Lesson targetLesson = recreated.lessonByPlacementId().get(request.placementId());
@@ -47,15 +45,8 @@ public class ScheduleMoveController {
             }
 
             // 3. Ищем варианты переноса
-            List<MoveOptionDto> options = moveService.findMoveSuggestions(
-                recreated.workspace(), targetLesson, request);
-            long tDone = System.nanoTime();
-
-            // Временный тайминг (диагностика скорости подсветки). Убрать после замера.
-            log.info("⏱ move-options: workspace={}мс, каскад={}мс, вариантов={}, ИТОГО={}мс",
-                    (tWorkspace - t0) / 1_000_000, (tDone - tWorkspace) / 1_000_000,
-                    options.size(), (tDone - t0) / 1_000_000);
-            return ResponseEntity.ok(options);
+            return ResponseEntity.ok(moveService.findMoveSuggestions(
+                recreated.workspace(), targetLesson, request));
 
         } catch (Exception e) {
             log.error("❌ Ошибка при поиске вариантов: {}", e.getMessage(), e);

@@ -234,3 +234,31 @@ export interface MoveChainRequest {
   newStartSlot: string;            // пара первого звена; остальные — следом
   version: number;                 // оптимистичная блокировка
 }
+
+/**
+ * Вид находки правила порядка изучения.
+ * - BEFORE_LECTURE — занятие стоит РАНЬШЕ предшествующей ему по плану лекции (ошибка).
+ * - FAR_FROM_LECTURE — занятие стоит слишком ДАЛЕКО после неё (предупреждение; порог —
+ *   настройка бэка `schedule.order.max-lecture-gap-days`, аттестации из проверки исключены).
+ */
+export type OrderViolationKind = 'BEFORE_LECTURE' | 'FAR_FROM_LECTURE';
+
+/**
+ * Находка правила порядка изучения (лекция поз. 20 → практика поз. 21).
+ *
+ * Это подсказка, а не запрет: расписание валидно по ресурсам, перенос/установка не
+ * блокируются — сетка лишь штрихует занятие (красным ошибку, янтарным отрыв).
+ */
+export interface OrderViolationDto {
+  placementId: string;         // занятие
+  lecturePlacementId: string;  // лекция-причина
+  groupId: number;             // группа, в чьей дорожке видна находка
+  kind: OrderViolationKind;
+  gapDays: number;             // дней от лекции (осмысленно для FAR_FROM_LECTURE)
+}
+
+/** Находка по занятию — то, что сетка держит в памяти для подсветки. */
+export interface OrderFinding {
+  kind: OrderViolationKind;
+  gapDays: number;
+}

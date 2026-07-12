@@ -17,6 +17,7 @@ import ru.dto.manualPlacement.ManualPlacementRequest;
 import ru.dto.manualPlacement.PlacementOptionsRequest;
 import ru.dto.manualPlacement.UnplacedLessonDto;
 import ru.dto.moveLesson.MoveOptionDto;
+import ru.dto.order.OrderViolationDto;
 import ru.services.board.BoardAxis;
 import ru.services.board.PlacementBoardService;
 import ru.entity.write.LessonPlacement;
@@ -28,6 +29,7 @@ import ru.mapper.command.LessonPlacementMapper;
 import ru.mapper.command.ScheduleSessionMapper;
 import ru.services.LessonChainMoveService;
 import ru.services.LessonMoveService;
+import ru.services.LessonOrderService;
 import ru.services.LessonPinService;
 import ru.services.ManualPlacementService;
 import ru.services.ScheduleGenerationService;
@@ -61,6 +63,7 @@ public class ScheduleCommandController {
     private final ManualPlacementService manualPlacementService;
     private final PlacementBoardService placementBoardService;
     private final TrackReorderService trackReorderService;
+    private final LessonOrderService lessonOrderService;
     private final ScheduleSynchronizer scheduleSynchronizer;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
@@ -186,6 +189,27 @@ public class ScheduleCommandController {
     @PostMapping("/sessions/{sessionId}/reproject")
     public ResponseEntity<Integer> reproject(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(scheduleSynchronizer.reprojectSession(sessionId));
+    }
+
+    /**
+     * Находки правила порядка изучения во всём расписании сессии.
+     *
+     * <p>GET /api/schedule/command/sessions/{sessionId}/order-violations</p>
+     *
+     * <p>Два вида (см. {@link ru.services.order.OrderViolation.Kind}), оба — относительно
+     * предшествующей по плану лекции (лекция поз. 20 → практика поз. 21): занятие стоит раньше
+     * неё (ошибка порядка) либо слишком далеко после (предупреждение об отрыве, порог —
+     * {@code schedule.order.max-lecture-gap-days}).</p>
+     *
+     * <p>Это <b>подсказка, а не запрет</b>: расписание валидно по ресурсам, перенос и установка
+     * не блокируются. Как показывать находку — решает UI; контракт несёт только семантику.</p>
+     *
+     * <p>Отдаётся <b>одним запросом на всё расписание</b> (а не на каждое наведение): клиент
+     * держит карту находок и перезапрашивает её после каждого изменения.</p>
+     */
+    @GetMapping("/sessions/{sessionId}/order-violations")
+    public ResponseEntity<List<OrderViolationDto>> orderViolations(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok(lessonOrderService.violationsOf(sessionId));
     }
 
     /**
@@ -379,7 +403,7 @@ public class ScheduleCommandController {
     }
 
     /**
-     * Куда можно поставить занятие из палитры (подсветка ячеек, Фаза B).
+     * Куда можно поставить занятие из палитры — допустимые ячейки (Фаза B).
      *
      * POST /api/schedule/command/sessions/{sessionId}/placement-options
      */

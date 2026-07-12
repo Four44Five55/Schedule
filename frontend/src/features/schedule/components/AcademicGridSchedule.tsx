@@ -4,6 +4,7 @@ import {isWithinInterval, parseISO} from 'date-fns';
 import {cn} from '../../../utils/cn';
 import {AlertTriangle, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
 import {CQRSService} from '../../../services/cqrsApiService';
+import type {OrderFinding, OrderViolationKind} from '../../../types/cqrs';
 import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
 
@@ -48,6 +49,12 @@ interface AcademicGridScheduleProps {
   // пары. Показываются только в виде «преподаватель» отдельным визуальным каналом — тинтом
   // «замороженных» колонок «Дн»/«П», который не пересекается с free/busy подсветкой ячеек.
   educatorPriority?: { days: DayOfWeek[]; slots: TimeSlotPair[] } | null;
+  // Находки правила порядка изучения: placementId → что не так. Два вида — занятие стоит
+  // раньше своей лекции (ошибка, красная штриховка) и слишком далеко после неё
+  // (предупреждение, салатовая штриховка). Подсказка, а не запрет: ячейки не фильтруются,
+  // перенос не блокируется. Карта приходит одним запросом на всё расписание
+  // (CQRSService.getOrderViolations), хост перезапрашивает её после каждого изменения.
+  orderViolations?: Map<string, OrderFinding>;
   // Потолок высоты сетки (Tailwind-класс) — пробрасывается в AcademicGridShell.
   // Позволяет хосту растянуть сетку до низа экрана вместо дефолтных 700px.
   maxHeightClass?: string;
@@ -78,6 +85,10 @@ interface ScheduleCellProps {
   isQuiz: boolean;
   isTeacherBusyHidden: boolean;
   isDisciplineMatch: boolean;
+  // Находка порядка изучения — примитивы, а не объект: ячейка обёрнута в React.memo с
+  // поверхностным сравнением, и новая ссылка на каждый рендер сводила бы мемоизацию на нет.
+  orderKind?: OrderViolationKind;
+  orderGapDays: number;
   spineAbove: boolean;
   spineBelow: boolean;
   chainedBelow: boolean;
@@ -100,7 +111,7 @@ interface ScheduleCellProps {
 const ScheduleCell = React.memo(({
   lesson, constraintFullName, constraintAbbr, hasConstraint, isConflict,
   isMoveTarget, isTeacherBusy, isSourceCell, isChainMember, isExamOrCredit, isQuiz,
-  isTeacherBusyHidden, isDisciplineMatch, spineAbove, spineBelow, chainedBelow,
+  isTeacherBusyHidden, isDisciplineMatch, orderKind, orderGapDays, spineAbove, spineBelow, chainedBelow,
   detachedBelow, isChainedSpine, factor, dateStr, slotId, isEditMode, isEducatorView,
   pinningEnabled, selectionActive, onLessonClick, onCellMove, onToggleDetach,
   onToggleLock, onHover,
@@ -116,6 +127,10 @@ const ScheduleCell = React.memo(({
 
   const tooltipContent = lesson ? [
     ...(isConflict ? [`⚠ КОНФЛИКТ: занятие в день ограничения «${constraintFullName}»`] : []),
+    ...(orderKind === 'BEFORE_LECTURE'
+        ? ['⚠ ПОРЯДОК: занятие стоит раньше своей лекции по учебному плану'] : []),
+    ...(orderKind === 'FAR_FROM_LECTURE'
+        ? [`⚠ ОТРЫВ: ${orderGapDays} дн. от своей лекции — материал успевает забыться`] : []),
     `Дисциплина: ${lesson.disciplineName}`,
     `Тип: ${lesson.kindOfStudyName}`,
     `Тема: Т.${lesson.themeNumber || '—'}`,
@@ -171,6 +186,26 @@ const ScheduleCell = React.memo(({
                         : tooltipContent
           }
       >
+        {/* Находки правила порядка изучения. Диагональная штриховка — отдельный визуальный
+            канал, не конкурирующий ни с фоном по виду занятия, ни с красным «конфликтом
+            ограничения», ни с синим кольцом выбора. Не перехватывает клики: подсказка, а не
+            запрет.
+              • красная (плотная)   — занятие стоит РАНЬШЕ своей лекции: ошибка порядка;
+              • салатовая (редкая)  — стоит слишком ДАЛЕКО после неё: предупреждение.
+            Оттенок для отрыва — лаймовый, а не изумрудный: изумрудным в этой сетке залиты
+            ячейки «сюда можно поставить занятие», и путать их не стоит. Штриховка ложится
+            только на ЗАНЯТЫЕ ячейки, а зелёная заливка — только на пустые, поэтому в одной
+            ячейке они не встречаются. */}
+        {orderKind && (
+            <div
+                className="absolute inset-0 z-10 pointer-events-none"
+                style={{
+                  backgroundImage: orderKind === 'BEFORE_LECTURE'
+                      ? 'repeating-linear-gradient(45deg, rgba(190,18,60,0.30) 0 3px, transparent 3px 7px)'
+                      : 'repeating-linear-gradient(45deg, rgba(132,204,22,0.45) 0 2px, transparent 2px 8px)',
+                }}
+            />
+        )}
         {(isChainedSpine || chainedBelow) && (
             <>
               {/* Левая «скоба» вдоль неразомкнутых звеньев цепочки */}
@@ -301,6 +336,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             onPlace,
                                                                             onExitPlacementCandidate,
                                                                             educatorPriority,
+                                                                            orderViolations,
                                                                             maxHeightClass,
                                                                             chromeless
                                                                           }) => {
@@ -545,35 +581,48 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     onToggleLock, buildChain,
   };
 
-  // Подбор доступных ячеек для выбранного занятия/цепочки (то, что подсветится зелёным).
+  // Подсветка мест для УСТАНОВКИ из палитры (занятия ещё нет в сетке) — отдельный эффект.
+  //
+  // Раньше эта ветка жила внутри общего эффекта подбора, а тот зависит от `buildChain`, который
+  // пересоздаётся при каждом изменении `lessons`. В итоге после установки прилетала свежая сетка
+  // → `buildChain` менялся → эффект перезапускался → уходил ПОВТОРНЫЙ запрос тех же ячеек
+  // (~140 мс и лишнее пересоздание workspace на бэке). Цепочки этой ветке не нужны вовсе:
+  // сцепка появляется, только когда оба звена уже стоят в сетке. Разделив эффекты, мы заодно
+  // развели зависимости: здесь — только примитивы кандидата.
+  const candidateAssignmentId = placementCandidate?.assignmentId;
+  const candidateRootType = placementCandidate?.rootEntityType;
+  const candidateRootId = placementCandidate?.rootEntityId;
+
   useEffect(() => {
-    // Установка не размещённого занятия из палитры — отдельная, более простая ветка:
-    // один слот, без раскрытия в «след» цепочки (цепочка размещений появляется только
-    // когда оба звена уже стоят в сетке).
-    if (placementCandidate) {
-      if (!sessionId || !studyPeriodId) {
-        setMoveTargets(new Map());
-        return;
-      }
-      let cancelled = false;
-      setLoadingTargets(true);
-      setSelectedChainIds([]);
-      CQRSService.getPlacementOptions(sessionId, {
-        assignmentId: placementCandidate.assignmentId,
-        rootEntityType: placementCandidate.rootEntityType,
-        rootEntityId: placementCandidate.rootEntityId,
-        studyPeriodId,
-      })
-        .then((options) => {
-          if (cancelled) return;
-          const targets = new Map<string, TimeSlotPair>();
-          for (const o of options) targets.set(`${o.date}_${o.timeSlot}`, o.timeSlot);
-          setMoveTargets(targets);
-        })
-        .catch(() => { if (!cancelled) setMoveTargets(new Map()); })
-        .finally(() => { if (!cancelled) setLoadingTargets(false); });
-      return () => { cancelled = true; };
+    if (candidateAssignmentId == null) return;
+    if (!sessionId || !studyPeriodId || !candidateRootType || candidateRootId == null) {
+      setMoveTargets(new Map());
+      return;
     }
+    let cancelled = false;
+    setLoadingTargets(true);
+    setSelectedChainIds([]);
+    CQRSService.getPlacementOptions(sessionId, {
+      assignmentId: candidateAssignmentId,
+      rootEntityType: candidateRootType,
+      rootEntityId: candidateRootId,
+      studyPeriodId,
+    })
+      .then((options) => {
+        if (cancelled) return;
+        const targets = new Map<string, TimeSlotPair>();
+        for (const o of options) targets.set(`${o.date}_${o.timeSlot}`, o.timeSlot);
+        setMoveTargets(targets);
+      })
+      .catch(() => { if (!cancelled) setMoveTargets(new Map()); })
+      .finally(() => { if (!cancelled) setLoadingTargets(false); });
+    return () => { cancelled = true; };
+  }, [candidateAssignmentId, candidateRootType, candidateRootId, sessionId, studyPeriodId]);
+
+  // Подбор доступных ячеек для ПЕРЕНОСА выбранного занятия/цепочки (подсветка зелёным).
+  useEffect(() => {
+    // Установка из палитры обслуживается отдельным эффектом выше.
+    if (placementCandidate) return;
 
     if (!selectedLesson || !sessionId || !selectedLesson.placementId) {
       setMoveTargets(new Map());
@@ -730,6 +779,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         || !!lesson?.groupNames.some((n) => activeGroupNames.has(n));
     const isDisciplineMatch = !!lesson?.disciplineName
         && lesson.disciplineName === activeDiscipline && sharesGroup;
+    const orderFinding = lesson?.placementId ? orderViolations?.get(lesson.placementId) : undefined;
 
     // Сцепка с соседними по времени парами того же дня (для «скобы» и кнопки размыкания).
     const lessonAbove = slotIdx > 0
@@ -761,6 +811,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             isQuiz={isQuiz}
             isTeacherBusyHidden={isTeacherBusyHidden}
             isDisciplineMatch={isDisciplineMatch}
+            orderKind={orderFinding?.kind}
+            orderGapDays={orderFinding?.gapDays ?? 0}
             spineAbove={spineAbove}
             spineBelow={spineBelow}
             chainedBelow={chainedBelow}

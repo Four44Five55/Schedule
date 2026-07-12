@@ -67,14 +67,19 @@ public class PlacementBoardService {
         Map<Integer, LessonPlacement> placementByAssignment = placementRepo.findBySessionId(sessionId).stream()
                 .collect(Collectors.toMap(p -> p.getAssignment().getId(), p -> p, (a, b) -> a));
 
+        // Назначения ВСЕХ выбранных курсов одним запросом (раньше — по запросу на курс).
+        Map<Integer, List<Assignment>> assignmentsByCourse =
+                assignmentService.getAllEntitiesByCourseIds(courseIds);
+
         // Аккумулятор дерева: id сущности → её узел; внутри — courseId → узел дисциплины.
         Map<Integer, EntityAgg> byEntity = new LinkedHashMap<>();
 
         int total = 0;
         int placed = 0;
 
+        // Обходим в порядке запрошенных курсов — от него зависит порядок дисциплин в дереве.
         for (Integer courseId : courseIds) {
-            for (Assignment a : assignmentService.getAllEntitiesByCourseId(courseId)) {
+            for (Assignment a : assignmentsByCourse.getOrDefault(courseId, List.of())) {
                 LessonPlacement placement = placementByAssignment.get(a.getId());
 
                 // Заголовочные счётчики: назначение один раз, независимо от оси.
@@ -123,9 +128,12 @@ public class PlacementBoardService {
                 .map(p -> p.getAssignment().getId())
                 .collect(Collectors.toSet());
 
+        Map<Integer, List<Assignment>> assignmentsByCourse =
+                assignmentService.getAllEntitiesByCourseIds(courseIds);
+
         List<CoursePlacementCountDto> result = new ArrayList<>();
         for (Integer courseId : courseIds) {
-            List<Assignment> assignments = assignmentService.getAllEntitiesByCourseId(courseId);
+            List<Assignment> assignments = assignmentsByCourse.getOrDefault(courseId, List.of());
             int total = assignments.size();
             int placed = (int) assignments.stream()
                     .filter(a -> placedAssignmentIds.contains(a.getId())).count();

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScheduledLessonDto, StudyPeriodDto } from '../../../types/api';
-import { ScheduleSessionDto, PlacementBoardDto, BoardLessonDto } from '../../../types/cqrs';
+import { ScheduleSessionDto, PlacementBoardDto, BoardLessonDto, OrderFinding } from '../../../types/cqrs';
 import { CQRSService, dateUtils } from '../../../services/cqrsApiService';
 import { ScheduleService } from '../../../services/apiServices';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
@@ -43,6 +43,10 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   const [selectedUnplaced, setSelectedUnplaced] = useState<BoardLessonDto | null>(null);
   const [placeError, setPlaceError] = useState<string | null>(null);
 
+  // Находки правила порядка изучения: placementId → что не так (раньше своей лекции /
+  // слишком далеко после неё). Сетка штрихует занятие красным или салатовым.
+  const [orderViolations, setOrderViolations] = useState<Map<string, OrderFinding>>(new Map());
+
   // Загрузка размещений периода для СЕТКИ (ручные пины проецируются в schedule_view).
   const reloadSchedule = useCallback(async () => {
     const result = await ScheduleService.loadExisting(period.startDate, period.endDate);
@@ -54,6 +58,21 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
       setGrid({});
     }
   }, [period.startDate, period.endDate]);
+
+  // Нарушения порядка изучения — ОДНИМ запросом на всё расписание (не на каждое наведение).
+  // Занятие, стоящее раньше предшествующей ему по плану лекции. Подсказка, а не запрет:
+  // сетка лишь штрихует нарушителя, перенос и установка не блокируются.
+  const reloadOrderViolations = useCallback(async (sessionId: string) => {
+    try {
+      const violations = await CQRSService.getOrderViolations(sessionId);
+      setOrderViolations(new Map(
+        violations.map((v) => [v.placementId, { kind: v.kind, gapDays: v.gapDays }])
+      ));
+    } catch (e) {
+      console.error('Не удалось загрузить находки порядка изучения:', e);
+      setOrderViolations(new Map());
+    }
+  }, []);
 
   // Загрузка доски (палитра + счётчики). Command Side читается напрямую — в отличие от
   // schedule_view, тут нет асинхронной проекции: свежие данные сразу после commit.
@@ -200,6 +219,14 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
     if (!sessionId) return;
     reloadBoard(sessionId).catch((e) => console.error('Не удалось загрузить доску раскладки:', e));
   }, [sessionId, reloadBoard]);
+
+  // Нарушения порядка — вслед за сеткой: `lessons` меняется после КАЖДОЙ мутации
+  // (установка, снятие, перенос — все зовут reloadSchedule), поэтому одна подписка
+  // покрывает все пути, и не нужно дёргать перезагрузку в каждом обработчике.
+  useEffect(() => {
+    if (!sessionId) return;
+    reloadOrderViolations(sessionId);
+  }, [sessionId, lessons, reloadOrderViolations]);
 
   const toggleExpand = (key: string) => {
     setExpanded((prev) => {
@@ -452,6 +479,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                   if (session) CQRSService.getSession(session.id).then(setSession).catch(() => {});
                 }}
                 onToggleLock={handleToggleLock}
+                orderViolations={orderViolations}
                 placementCandidate={placementCandidate}
                 studyPeriodId={period.id}
                 onPlace={handlePlace}

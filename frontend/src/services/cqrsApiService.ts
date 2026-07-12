@@ -18,7 +18,8 @@ import {
   MoveChainRequest,
   UnplacedLessonDto,
   PlacementBoardDto,
-  CoursePlacementCountDto
+  CoursePlacementCountDto,
+  OrderViolationDto
 } from '../types/cqrs';
 
 /**
@@ -204,6 +205,19 @@ export const CQRSService = {
       .get<PlacementBoardDto>(`/schedule/command/sessions/${sessionId}/placement-board`, {
         params: { courseIds: courseIds.join(','), axis }
       })
+      .then(r => r.data);
+  },
+
+  /**
+   * Нарушения порядка изучения во всём расписании сессии — ОДНИМ запросом.
+   *
+   * Занятие, стоящее раньше предшествующей ему по плану лекции. Подсказка, а не запрет:
+   * ячейки не фильтруются, перенос не блокируется. Карта держится на фронте и
+   * перезапрашивается после каждого изменения расписания — HTTP на наведение не нужен.
+   */
+  getOrderViolations: (sessionId: string): Promise<OrderViolationDto[]> => {
+    return api
+      .get<OrderViolationDto[]>(`/schedule/command/sessions/${sessionId}/order-violations`)
       .then(r => r.data);
   },
 

@@ -20,6 +20,7 @@ import ru.repository.read.ScheduleViewRepository;
 import ru.repository.write.LessonPlacementRepository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -267,6 +268,28 @@ public class AssignmentService {
     @Transactional(readOnly = true)
     public List<Assignment> getAllEntitiesByCourseId(Integer courseId) {
         return assignmentRepository.findAllByCourseIdWithDetails(courseId);
+    }
+
+    /**
+     * Назначения НАБОРА курсов, сгруппированные по курсу — одним запросом.
+     *
+     * <p>Замена вызову {@link #getAllEntitiesByCourseId} в цикле: потребители (доска раскладки,
+     * палитра неразмещённых, счётчики «распределено N/M») всегда работают с набором выбранных
+     * курсов, и цикл давал по запросу на курс. Группировка сделана здесь, а не у вызывающих,
+     * чтобы ключ («курс назначения» = {@code curriculumSlot.disciplineCourse.id}) выводился в
+     * одном месте.</p>
+     *
+     * @param courseIds курсы; пусто/{@code null} → пустая карта
+     * @return курс → его назначения (курсы без назначений в карте отсутствуют)
+     */
+    @Transactional(readOnly = true)
+    public Map<Integer, List<Assignment>> getAllEntitiesByCourseIds(Collection<Integer> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) {
+            return Map.of();
+        }
+        return assignmentRepository.findAllByCourseIdsWithDetails(courseIds).stream()
+                .collect(Collectors.groupingBy(
+                        a -> a.getCurriculumSlot().getDisciplineCourse().getId()));
     }
 
     @Transactional(readOnly = true)

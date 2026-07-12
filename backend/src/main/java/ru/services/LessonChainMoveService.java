@@ -60,10 +60,8 @@ public class LessonChainMoveService {
     public List<MoveOptionDto> findChainMoveOptions(List<UUID> placementIds) {
         if (placementIds == null || placementIds.isEmpty()) return List.of();
 
-        long t0 = System.nanoTime();
         var recreated = workspaceRecreationService.recreateWorkspaceForPlacement(placementIds.get(0));
         ScheduleWorkspace workspace = recreated.workspace();
-        long tWorkspace = System.nanoTime();
 
         List<Lesson> chain = resolveChainLessons(placementIds, recreated.lessonByPlacementId());
         if (chain == null) return List.of();
@@ -79,10 +77,6 @@ public class LessonChainMoveService {
         List<LocalDate> dates = CellForLessonFactory.getAllCells().stream()
                 .map(CellForLesson::getDate).distinct().sorted().toList();
 
-        // Счётчик полных проверок размещения: в отличие от одиночного переноса здесь нет
-        // дешёвого каскада isFree — на каждую (дата × старт × звено) идёт findPlacementOption
-        // с подбором аудитории. Хотим увидеть, во что это обходится.
-        int probes = 0;
         List<MoveOptionDto> options = new ArrayList<>();
         for (LocalDate date : dates) {
             for (int start = 0; start + n <= slots.length; start++) {
@@ -91,20 +85,11 @@ public class LessonChainMoveService {
                         && slots[start] == currentStart.getTimeSlotPair()) {
                     continue; // цепочка уже здесь
                 }
-                probes += n;
                 if (chainFits(workspace, chain, date, slots, start)) {
                     options.add(new MoveOptionDto(date, slots[start]));
                 }
             }
         }
-        long tScan = System.nanoTime();
-
-        // Временный тайминг (диагностика скорости подсветки). Убрать после замера.
-        log.info("⏱ chain-options: звеньев={}, workspace={}мс, перебор={}мс (проверок≈{}, дат={}), "
-                        + "вариантов={}, ИТОГО={}мс",
-                n, (tWorkspace - t0) / 1_000_000, (tScan - tWorkspace) / 1_000_000, probes, dates.size(),
-                options.size(), (tScan - t0) / 1_000_000);
-
         return options;
     }
 
