@@ -73,6 +73,19 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   );
   const entityId = selectedEntityData?.id;
 
+  const rootEntityType: 'GROUP' | 'EDUCATOR' = viewMode === 'group' ? 'GROUP' : 'EDUCATOR';
+
+  // Кандидат на установку — со СТАБИЛЬНОЙ ссылкой. `AcademicGridSchedule` держит его в
+  // зависимостях эффекта подсветки, поэтому литерал объекта прямо в JSX (новая ссылка на
+  // каждый рендер) заставлял перезапрашивать те же ячейки после любого обновления состояния
+  // — на одну установку уходило два одинаковых запроса placement-options по ~140 мс.
+  const placementCandidate = useMemo(
+    () => (selectedUnplaced
+      ? { assignmentId: selectedUnplaced.assignmentId, rootEntityType, rootEntityId: entityId }
+      : null),
+    [selectedUnplaced, rootEntityType, entityId]
+  );
+
   // Следующее занятие в очереди той же сущности после успешной установки: сперва пробуем
   // продолжить ту же дисциплину (следующая позиция), иначе — первое из оставшихся.
   const pickNextUnplaced = useCallback((
@@ -178,10 +191,15 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
 
   // Доска: перезагружается при появлении сессии и при смене оси (viewMode) — reloadBoard
   // зависит от viewMode/courseIds.
+  //
+  // Зависимость — id сессии, а НЕ объект: после переноса хост переспрашивает сессию
+  // (`getSession().then(setSession)`), и подписка на объект давала вторую, лишнюю загрузку
+  // доски. Доска весит ~2.3 МБ, так что дубль стоил ~350 мс на каждый перенос.
+  const sessionId = session?.id;
   useEffect(() => {
-    if (!session) return;
-    reloadBoard(session.id).catch((e) => console.error('Не удалось загрузить доску раскладки:', e));
-  }, [session, reloadBoard]);
+    if (!sessionId) return;
+    reloadBoard(sessionId).catch((e) => console.error('Не удалось загрузить доску раскладки:', e));
+  }, [sessionId, reloadBoard]);
 
   const toggleExpand = (key: string) => {
     setExpanded((prev) => {
@@ -422,22 +440,19 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                 isEditMode
                 sessionId={session?.id}
                 currentVersion={session?.version || 0}
-                rootEntityType={viewMode === 'group' ? 'GROUP' : 'EDUCATOR'}
+                rootEntityType={rootEntityType}
                 rootEntityId={entityId}
                 educatorPriority={educatorPriority}
                 onMoveLesson={() => {
                   reloadSchedule();
                   if (session) reloadBoard(session.id).catch(() => {});
-                  // Версия сессии растёт при переносе (optimistic-lock) — освежаем,
-                  // иначе следующий перенос упрётся в устаревшую версию.
+                  // Версия сессии освежается на случай, если она изменилась (например,
+                  // генерацией в соседней вкладке). Эффект загрузки доски подписан на id
+                  // сессии, а не на объект, поэтому повторной загрузки доски это не вызовет.
                   if (session) CQRSService.getSession(session.id).then(setSession).catch(() => {});
                 }}
                 onToggleLock={handleToggleLock}
-                placementCandidate={selectedUnplaced ? {
-                  assignmentId: selectedUnplaced.assignmentId,
-                  rootEntityType: viewMode === 'group' ? 'GROUP' : 'EDUCATOR',
-                  rootEntityId: entityId,
-                } : null}
+                placementCandidate={placementCandidate}
                 studyPeriodId={period.id}
                 onPlace={handlePlace}
                 onExitPlacementCandidate={() => setSelectedUnplaced(null)}

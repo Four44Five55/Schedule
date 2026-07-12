@@ -65,7 +65,7 @@ public class WorkspaceRecreationService {
 
     @Transactional(readOnly = true)
     public RecreatedWorkspace recreateWorkspaceFromSession(UUID sessionId) {
-        log.info("🔄 Пересоздание workspace для session: {}", sessionId);
+        long t0 = System.nanoTime();
 
         List<LessonPlacement> placements = placementRepo.findBySessionId(sessionId);
 
@@ -73,23 +73,32 @@ public class WorkspaceRecreationService {
             log.warn("⚠️  Сессия не содержит placements");
             return new RecreatedWorkspace(createEmptyWorkspace(), Map.of());
         }
-
-        log.info("Загружено {} placements", placements.size());
+        long tPlacements = System.nanoTime();
 
         // 1. Определяем период из placements
         DateRange period = determinePeriod(placements);
 
         // 2. Создаём пустой workspace
         CellForLessonFactory.initializeCellCache(period.startDate, period.endDate);
+        long tCells = System.nanoTime();
+
+        List<Educator> allEducators = educatorService.getAllEntities();
+        List<Group> allGroups = groupService.getAllEntities();
+        List<Auditorium> allAuditoriums = auditoriumService.getAllEntities();
+        long tEntities = System.nanoTime();
+
+        AllConstraints allConstraints = constraintService.loadAllConstraints();
+        long tConstraints = System.nanoTime();
 
         ru.services.solver.ScheduleWorkspace workspace = new ru.services.solver.ScheduleWorkspace(
             period.startDate,
             period.endDate,
-            educatorService.getAllEntities(),
-            groupService.getAllEntities(),
-            auditoriumService.getAllEntities(),
-            constraintService.loadAllConstraints()
+            allEducators,
+            allGroups,
+            allAuditoriums,
+            allConstraints
         );
+        long tWorkspace = System.nanoTime();
 
         // 3. Восстанавливаем и размещаем занятия.
         //    Связку placementId → созданный Lesson сохраняем здесь — на границе
@@ -109,11 +118,22 @@ public class WorkspaceRecreationService {
                     placement.getId(), e.getMessage());
             }
         }
+        long tSeed = System.nanoTime();
 
-        log.info("✅ Workspace пересоздан: {} занятий из {} размещены",
-                placedCount, placements.size());
+        // Временный тайминг (диагностика скорости подсветки): из чего складывается
+        // пересоздание workspace. Убрать вместе с hibernate.generate_statistics.
+        log.info("⏱ workspace(session): placements({} шт)={}мс, ячейки={}мс, справочники={}мс, "
+                        + "ограничения={}мс, конструктор={}мс, посев({} шт)={}мс, ИТОГО={}мс",
+                placements.size(), ms(t0, tPlacements), ms(tPlacements, tCells), ms(tCells, tEntities),
+                ms(tEntities, tConstraints), ms(tConstraints, tWorkspace),
+                placedCount, ms(tWorkspace, tSeed), ms(t0, tSeed));
 
         return new RecreatedWorkspace(workspace, lessonByPlacementId);
+    }
+
+    /** Миллисекунды между двумя отметками {@code System.nanoTime()} (для временных ⏱-логов). */
+    private static long ms(long fromNanos, long toNanos) {
+        return (toNanos - fromNanos) / 1_000_000;
     }
 
     /**
@@ -132,18 +152,30 @@ public class WorkspaceRecreationService {
      */
     @Transactional(readOnly = true)
     public RecreatedWorkspace recreateWorkspaceForPeriod(UUID sessionId, LocalDate start, LocalDate end) {
+        long t0 = System.nanoTime();
         CellForLessonFactory.initializeCellCache(start, end);
+        long tCells = System.nanoTime();
+
+        List<Educator> allEducators = educatorService.getAllEntities();
+        List<Group> allGroups = groupService.getAllEntities();
+        List<Auditorium> allAuditoriums = auditoriumService.getAllEntities();
+        long tEntities = System.nanoTime();
+
+        AllConstraints allConstraints = constraintService.loadAllConstraints();
+        long tConstraints = System.nanoTime();
 
         ru.services.solver.ScheduleWorkspace workspace = new ru.services.solver.ScheduleWorkspace(
             start, end,
-            educatorService.getAllEntities(),
-            groupService.getAllEntities(),
-            auditoriumService.getAllEntities(),
-            constraintService.loadAllConstraints()
+            allEducators,
+            allGroups,
+            allAuditoriums,
+            allConstraints
         );
+        long tWorkspace = System.nanoTime();
 
         Map<UUID, Lesson> lessonByPlacementId = new HashMap<>();
-        for (LessonPlacement placement : placementRepo.findBySessionId(sessionId)) {
+        List<LessonPlacement> placements = placementRepo.findBySessionId(sessionId);
+        for (LessonPlacement placement : placements) {
             try {
                 Lesson lesson = placementSeeder.seedInto(workspace, placement);
                 if (lesson != null) {
@@ -153,6 +185,13 @@ public class WorkspaceRecreationService {
                 log.error("❌ Ошибка посева placementId={}: {}", placement.getId(), e.getMessage());
             }
         }
+        long tSeed = System.nanoTime();
+
+        // Временный тайминг (диагностика скорости подсветки). Убрать после замера.
+        log.info("⏱ workspace(period): ячейки={}мс, справочники={}мс, ограничения={}мс, "
+                        + "конструктор={}мс, посев({} шт)={}мс, ИТОГО={}мс",
+                ms(t0, tCells), ms(tCells, tEntities), ms(tEntities, tConstraints),
+                ms(tConstraints, tWorkspace), placements.size(), ms(tWorkspace, tSeed), ms(t0, tSeed));
 
         return new RecreatedWorkspace(workspace, lessonByPlacementId);
     }

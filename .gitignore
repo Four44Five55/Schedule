@@ -64,3 +64,8 @@ RESTRICTORING*
 /frontend/.env.production.local
 /frontend/coverage/
 /frontend/.nyc_output/
+
+# Собранный фронт, запекаемый в бэкенд для офлайн-jar (scripts/build-offline-jar.sh).
+# Это артефакт сборки, а не исходник: в репозитории он молча устаревал, и Spring на :8080
+# продолжал раздавать давно собранный UI, из-за чего правки фронта «не появлялись».
+/backend/src/main/resources/static/

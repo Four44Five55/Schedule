@@ -10,7 +10,11 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**") // Разрешить для всех URL
-                .allowedOrigins("http://localhost:5173") // Адрес React-приложения
+                .allowedOrigins(
+                        "http://localhost:5173", // Vite dev server (scripts/start-dev.sh)
+                        "http://localhost:5174", // Vite dev server, запасной порт (если 5173 занят)
+                        "http://localhost:4173"  // Vite preview — прод-сборка (scripts/start-prod.sh)
+                )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);

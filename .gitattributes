@@ -1,0 +1,13 @@
+# Нормализация переводов строк.
+#
+# Shell-скрипты ДОЛЖНЫ иметь LF даже на Windows: с CRLF bash спотыкается о `\r`
+# («bad interpreter», «command not found»). Скрипты запуска гоняются через Git Bash/IDEA,
+# поэтому фиксируем LF явно, иначе core.autocrlf сконвертирует их при checkout.
+*.sh text eol=lf
+
+# .bat, наоборот, исполняется cmd.exe — ему нужны CRLF.
+*.bat text eol=crlf
+
+# Дампы БД и бинарники не трогать.
+*.dump binary
+*.xlsx binary
