@@ -332,10 +332,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
               bodyClassName="px-4 pb-4 pt-1"
               headerActions={
                 <HelpTip text={
-                  'Штраф = окна + 2·одиночные дни + лишние дни (меньше — плотнее; суббота в штраф не входит). '
-                  + 'Цель — 2–3 пары в учебный день без окон.\n\n'
+                  'Штраф = окна + 2·одиночные дни + лишние дни (меньше — плотнее; суббота и 4-я пара '
+                  + 'в штраф не входят). Цель — 2–3 пары в учебный день без окон.\n\n'
                   + 'Штраф и подсветка — только для преподавателей с требованием компактности (отмечены точкой), '
-                  + 'худшие сверху; для остальных метрики справочные и штрафом не считаются.'
+                  + 'худшие сверху; для остальных метрики справочные и штрафом не считаются.\n\n'
+                  + '«В 4-й» — сколько дней у преподавателя занята 4-я (последняя) пара: она нежелательна, '
+                  + 'и полезно видеть, на кого свалилась. Считается у всех.'
                 } />
               }
             >
@@ -355,6 +357,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                         <th className="text-right font-bold px-2">Пар/день</th>
                         <th className="text-right font-bold px-2">Одиноч.</th>
                         <th className="text-right font-bold px-2">Окна</th>
+                        <th className="text-right font-bold px-2">В 4-й</th>
                         <th className="text-right font-bold px-2">Суббот</th>
                         <th className="text-right font-bold px-2">± ср.</th>
                         <th className="text-right font-bold pl-2">Штраф</th>
@@ -385,6 +388,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                             <td className={cn('text-right px-2 tabular-nums font-bold',
                               !tracked ? 'text-slate-300' : e.windowSlots > 0 ? 'text-red-600' : 'text-slate-300')}>
                               {e.windowSlots}
+                            </td>
+                            {/* 4-я пара — не про компактность, поэтому в штраф не входит и
+                                подсвечивается у всех, а не только у «компактных». */}
+                            <td className={cn('text-right px-2 tabular-nums font-bold',
+                              e.fourthPairs > 0 ? 'text-amber-600' : 'text-slate-300')}>
+                              {e.fourthPairs}
                             </td>
                             <td className="text-right px-2 tabular-nums text-slate-500">{e.saturdayPairs}</td>
                             <td className={cn('text-right px-2 tabular-nums font-bold',

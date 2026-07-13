@@ -39,6 +39,10 @@ interface AcademicGridScheduleProps {
     assignmentId: number;
     rootEntityType: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
     rootEntityId?: number;
+    // Дисциплина выбранного из палитры занятия — чтобы штриховка нарушений порядка сузилась
+    // до неё (см. orderDiscipline ниже). Занятия в сетке дисциплину несут сами, а кандидат
+    // из очереди — нет, поэтому её передаёт хост.
+    disciplineName?: string;
   } | null;
   studyPeriodId?: number;
   onPlace?: (assignmentId: number, date: string, slot: TimeSlotPair) => void | Promise<void>;
@@ -495,6 +499,18 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     [referenceLesson]
   );
 
+  // Дисциплина, к которой сужается штриховка нарушений порядка изучения.
+  //
+  // Когда диспетчер занят конкретным занятием (выбрал его в сетке для переноса или взял из
+  // очереди в палитре), он работает с ОДНОЙ дисциплиной — нарушения по всем остальным только
+  // мешают читать сетку. Ничего не выбрано → видно все нарушения расписания.
+  //
+  // Наведение (hover) сюда НЕ входит намеренно: оно меняется на каждое движение мыши, и
+  // штриховка мигала бы. Порядок — подсказка, а не индикатор наведения.
+  const orderDiscipline = selectedLesson?.disciplineName
+      ?? placementCandidate?.disciplineName
+      ?? null;
+
   // Сцепки слотов (SlotChain) — пары соседних слотов, идущих единой цепочкой.
   // Храним как множество канонических ключей "minId-maxId" для O(1)-проверки.
   const [chainPairs, setChainPairs] = useState<Set<string>>(new Set());
@@ -765,7 +781,11 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         || !!lesson?.groupNames.some((n) => activeGroupNames.has(n));
     const isDisciplineMatch = !!lesson?.disciplineName
         && lesson.disciplineName === activeDiscipline && sharesGroup;
-    const orderFinding = lesson?.placementId ? orderViolations?.get(lesson.placementId) : undefined;
+    // Нарушение порядка показываем, только если оно относится к дисциплине, которой диспетчер
+    // сейчас занят (или если он не занят ничем — тогда видно всё). См. orderDiscipline.
+    const orderVisible = !!lesson?.placementId
+        && (!orderDiscipline || lesson.disciplineName === orderDiscipline);
+    const orderFinding = orderVisible ? orderViolations?.get(lesson!.placementId!) : undefined;
 
     // Сцепка с соседними по времени парами того же дня (для «скобы» и кнопки размыкания).
     const lessonAbove = slotIdx > 0

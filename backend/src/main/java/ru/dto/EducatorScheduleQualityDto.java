@@ -25,6 +25,9 @@ package ru.dto;
  * @param windowSlots      суммарно окон-слотов (ось внутридневная)
  * @param excessDays       «лишние» дни сверх идеала {@code teachingDays - ceil(totalPairs/3)} (≥0)
  * @param penalty          сводный штраф компактности (меньше = лучше)
+ * @param fourthPairs      пар в 4-й (последней) паре дня — как у групп: 4-я пара нежелательна,
+ *                         и полезно видеть, на кого она свалилась. В {@code penalty} НЕ входит
+ *                         (это не про компактность, а про время дня)
  * @param saturdayPairs    пар в субботы за период
  * @param saturdayDeviation отклонение субботних пар от среднего по преподавателям (+ выше)
  */
@@ -40,6 +43,7 @@ public record EducatorScheduleQualityDto(
         int windowSlots,
         int excessDays,
         int penalty,
+        int fourthPairs,
         int saturdayPairs,
         double saturdayDeviation
 ) {}

@@ -52,9 +52,13 @@ public class EducatorScheduleReportService {
     private final StudyPeriodService studyPeriodService;
     private final LessonPlacementRepository placementRepository;
 
+    /** Индекс 4-й пары в {@code TimeSlotPair} (FIRST..FOURTH → 0..3). */
+    private static final int FOURTH_SLOT_INDEX = 3;
+
     /** Сырые счётчики одного преподавателя до нормировки (субботнее отклонение считается по всем). */
     private record Raw(Integer id, String name, boolean compact, int teachingDays, int totalPairs,
-                       int singlePairDays, int windowDays, int windowSlots, int saturdayPairs) {}
+                       int singlePairDays, int windowDays, int windowSlots,
+                       int fourthPairs, int saturdayPairs) {}
 
     @Transactional(readOnly = true)
     public PeriodScheduleQualityDto compute(Integer periodId) {
@@ -108,7 +112,8 @@ public class EducatorScheduleReportService {
             String name = educator != null ? educator.getName() : ("#" + educatorId);
             boolean compact = educator != null && educator.isCompactSchedule();
 
-            int teachingDays = 0, totalPairs = 0, singlePairDays = 0, windowDays = 0, windowSlots = 0, saturdayPairs = 0;
+            int teachingDays = 0, totalPairs = 0, singlePairDays = 0, windowDays = 0, windowSlots = 0,
+                    fourthPairs = 0, saturdayPairs = 0;
             for (Map.Entry<LocalDate, Set<Integer>> day : entry.getValue().entrySet()) {
                 Set<Integer> slots = day.getValue();
                 int pairs = slots.size();
@@ -117,10 +122,12 @@ public class EducatorScheduleReportService {
                 totalPairs += pairs;
                 if (pairs == 1) singlePairDays++;
                 if (windows > 0) { windowDays++; windowSlots += windows; }
+                // 4-я пара в дне может быть только одна — считаем дни, где она занята.
+                if (slots.contains(FOURTH_SLOT_INDEX)) fourthPairs++;
                 if (day.getKey().getDayOfWeek() == DayOfWeek.SATURDAY) saturdayPairs += pairs;
             }
             raws.add(new Raw(educatorId, name, compact, teachingDays, totalPairs,
-                    singlePairDays, windowDays, windowSlots, saturdayPairs));
+                    singlePairDays, windowDays, windowSlots, fourthPairs, saturdayPairs));
         }
 
         // Базовое среднее субботних пар — по ВСЕМ ведущим (для отклонений).
@@ -137,7 +144,7 @@ public class EducatorScheduleReportService {
             return new EducatorScheduleQualityDto(
                     r.id(), r.name(), r.compact(), r.teachingDays(), r.totalPairs(), avgPairsPerDay,
                     r.singlePairDays(), r.windowDays(), r.windowSlots(), excessDays, penalty,
-                    r.saturdayPairs(), saturdayDeviation);
+                    r.fourthPairs(), r.saturdayPairs(), saturdayDeviation);
         }).collect(Collectors.toCollection(ArrayList::new));
 
         // Компактные — первыми, внутри — по убыванию штрафа (сначала «худшие»).

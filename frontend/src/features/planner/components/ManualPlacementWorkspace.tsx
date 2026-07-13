@@ -99,11 +99,29 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // зависимостях эффекта подсветки, поэтому литерал объекта прямо в JSX (новая ссылка на
   // каждый рендер) заставлял перезапрашивать те же ячейки после любого обновления состояния
   // — на одну установку уходило два одинаковых запроса placement-options по ~140 мс.
+  // Дисциплина занятия, взятого из очереди: сетка сузит по ней штриховку нарушений порядка
+  // (занятия в сетке дисциплину несут сами, а кандидат из палитры — нет). Ключ — courseId,
+  // а не аббревиатура: у разных дисциплин она может совпасть.
+  // Вынесено отдельным мемо, чтобы в зависимостях кандидата была СТРОКА, а не объект доски:
+  // доска пересоздаётся при каждой перезагрузке, и кандидат терял бы стабильность ссылки —
+  // именно из-за этого когда-то на одну установку уходило два запроса placement-options.
+  const candidateDiscipline = useMemo(
+    () => (selectedUnplaced
+      ? selectedEntityData?.disciplines.find((d) => d.courseId === selectedUnplaced.courseId)?.name
+      : undefined),
+    [selectedUnplaced, selectedEntityData]
+  );
+
   const placementCandidate = useMemo(
     () => (selectedUnplaced
-      ? { assignmentId: selectedUnplaced.assignmentId, rootEntityType, rootEntityId: entityId }
+      ? {
+          assignmentId: selectedUnplaced.assignmentId,
+          rootEntityType,
+          rootEntityId: entityId,
+          disciplineName: candidateDiscipline,
+        }
       : null),
-    [selectedUnplaced, rootEntityType, entityId]
+    [selectedUnplaced, rootEntityType, entityId, candidateDiscipline]
   );
 
   // Следующее занятие в очереди той же сущности после успешной установки: сперва пробуем
@@ -249,27 +267,6 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   const { constraints } = useEntityConstraints(viewMode, entityId);
   // Приоритеты преподавателя (дни/пары) — подсветка «замороженных» колонок в виде «преподаватель».
   const educatorPriority = useEducatorPriority(entityId, viewMode === 'educator');
-
-  // Находки порядка, которые реально показываем в сетке.
-  //
-  // Когда из палитры выбрано конкретное занятие, диспетчер работает с ОДНОЙ дисциплиной —
-  // штриховка нарушений по всем остальным только мешает читать сетку (её там может быть много,
-  // и к текущему решению она отношения не имеет). Поэтому на время выбора оставляем находки
-  // только по дисциплине выбранного занятия; сняли выбор — снова видно всё расписание.
-  // Это чисто presentational-фильтр: сами находки бэк считает по всей сессии.
-  const visibleOrderViolations = useMemo(() => {
-    if (!selectedUnplaced) return orderViolations;
-    // Ключ — ПОЛНОЕ имя дисциплины (уникально), а не аббревиатура: у разных дисциплин
-    // аббревиатуры могут совпасть, и подсветка перескочила бы на чужую.
-    const name = selectedEntityData?.disciplines
-      .find((d) => d.courseId === selectedUnplaced.courseId)?.name;
-    if (!name) return orderViolations;
-    const sameDiscipline = new Set(
-      lessons.filter((l) => l.disciplineName === name && l.placementId)
-        .map((l) => l.placementId as string)
-    );
-    return new Map([...orderViolations].filter(([placementId]) => sameDiscipline.has(placementId)));
-  }, [orderViolations, selectedUnplaced, selectedEntityData, lessons]);
 
   // «Размещено» выбранной сущности по дисциплинам — из доски (только занятия с placementId).
   const placedByDiscipline = useMemo(() => {
@@ -521,7 +518,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                   if (session) CQRSService.getSession(session.id).then(setSession).catch(() => {});
                 }}
                 onToggleLock={handleToggleLock}
-                orderViolations={visibleOrderViolations}
+                orderViolations={orderViolations}
                 placementCandidate={placementCandidate}
                 studyPeriodId={period.id}
                 onPlace={handlePlace}

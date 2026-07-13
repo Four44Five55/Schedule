@@ -497,6 +497,7 @@ export interface EducatorScheduleQualityDto {
   windowSlots: number;       // окна внутри дня (ось внутридневная)
   excessDays: number;        // «лишние» дни сверх идеала
   penalty: number;           // сводный штраф компактности (суббота НЕ входит)
+  fourthPairs: number;       // дней с занятой 4-й парой (в штраф НЕ входит — это про время дня)
   saturdayPairs: number;     // пар в субботы
   saturdayDeviation: number; // отклонение субботних пар от среднего по преподавателям
 }
