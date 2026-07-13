@@ -3,11 +3,14 @@ import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
 import { ScheduleService } from '../../../services/apiServices';
-import { PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto, ExportAxis } from '../../../types/api';
+import { CQRSService } from '../../../services/cqrsApiService';
+import {
+  PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto, ExportAxis, ProjectionHealthDto
+} from '../../../types/api';
 import { usePeriod } from '../../period/PeriodContext';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
-  AlertTriangle, CalendarClock, ArrowRight, Info, FileSpreadsheet
+  AlertTriangle, CalendarClock, ArrowRight, Info, FileSpreadsheet, RefreshCw
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -39,6 +42,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [exportAxis, setExportAxis] = useState<ExportAxis>('GROUP');
   const [exporting, setExporting] = useState(false);
+  // Здоровье проекции: сбой асинхронной синхронизации иначе виден только в логе,
+  // то есть не виден никому — занятие просто не появляется в сетке.
+  const [health, setHealth] = useState<ProjectionHealthDto | null>(null);
+  const [repairing, setRepairing] = useState(false);
 
   // Выгрузка расписания периода в Excel (все сущности выбранной оси). Бэк отдаёт файл,
   // ScheduleService сам запускает скачивание — здесь только состояние кнопки.
@@ -55,29 +62,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   };
 
   // Данные выбранного периода — перезагружаются при смене периода.
-  // Готовность + плотность групп (честная ёмкость с бэка) + качество преподавателей.
+  // Готовность + плотность групп (честная ёмкость с бэка) + качество преподавателей + сверка проекции.
   useEffect(() => {
-    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setLoading(false); return; }
+    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all([
       ScheduleService.getReadiness(period.id),
       ScheduleService.getEducatorQuality(period.id),
       ScheduleService.getGroupDensity(period.id),
+      ScheduleService.getProjectionHealth(period.id),
     ])
-      .then(([rd, q, dens]) => {
+      .then(([rd, q, dens, hp]) => {
         if (cancelled) return;
         setReadiness(rd);
         setQuality(q);
         setDensity(dens);
+        setHealth(hp);
       })
       .catch((e) => {
         console.error('Дашборд: не удалось загрузить данные периода:', e);
-        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); }
+        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [selectedPeriodId, period?.id]);
+
+  // Ремонт: пересобрать read-модель сессии из размещений (расписание не двигается) и пересверить.
+  const handleRepairProjection = async () => {
+    if (!period || !health?.sessionId) return;
+    setRepairing(true);
+    try {
+      await CQRSService.reproject(health.sessionId);
+      setHealth(await ScheduleService.getProjectionHealth(period.id));
+    } catch (e) {
+      console.error('Не удалось пересобрать read-модель:', e);
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const metrics = useMemo(() => {
     if (!period) return null;
@@ -183,6 +206,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         </div>
       ) : (
       <>
+      {/* Проекция отстала: часть занятий стоит на write-стороне, но не доехала до сетки.
+          Раньше это было видно только в логе — то есть не видно вовсе. Лечится перепроекцией
+          (расписание не двигается: даты, слоты и замки берутся из тех же размещений). */}
+      {health && health.missing > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <AlertTriangle size={18} className="text-amber-600 shrink-0" />
+          <div className="min-w-0 text-sm text-amber-900">
+            <span className="font-bold">Расписание отображается неполно:</span>{' '}
+            {health.missing} из {health.placements} занятий не доехало до сетки — синхронизация
+            отображения отстала или сорвалась. Сами занятия целы.
+          </div>
+          <button
+            onClick={handleRepairProjection}
+            disabled={repairing}
+            title="Пересобрать отображение из размещений. Расписание не меняется: даты, пары и замки те же."
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-60 shrink-0"
+          >
+            {repairing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Восстановить отображение
+          </button>
+        </div>
+      )}
+
       {/* KPI готовности расписания — «всего» из набора генерации бэка (не query-сторона) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi

@@ -450,11 +450,14 @@ if (options.length === 0) {
 
 ## 📚 Дополнительные ресурсы
 
-- [Backend CQRS Documentation](../../../../../CQRS_ARCHITECTURE.md)
-- [API Examples](../../../../../API_EXAMPLES.md)
-- [Testing Guide](../../../../../TESTING_GUIDE.md)
+- [Follow-ups / техдолг](../../../../docs/FOLLOWUPS.md) — живой документ
+- [Backend CQRS](../../../../docs/CQRS_ARCHITECTURE.md)
+- [API Examples](../../../../docs/API_EXAMPLES.md) — фактические контракты
 
 ---
+
+⚠️ **Документ давно не обновлялся (2024-09-13) и мог отстать от кода.** За фактическими контрактами
+идите в [API_EXAMPLES.md](../../../../docs/API_EXAMPLES.md) и в сами контроллеры.
 
 **Последнее обновление:** 2024-09-13
 **Версия:** 1.0.0

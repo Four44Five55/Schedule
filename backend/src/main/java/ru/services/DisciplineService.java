@@ -10,6 +10,8 @@ import ru.dto.discipline.DisciplineUpdateDto;
 import ru.entity.Discipline;
 import ru.mapper.DisciplineMapper;
 import ru.repository.DisciplineRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import java.util.Optional;
 public class DisciplineService {
     private final DisciplineRepository disciplineRepository;
     private final DisciplineMapper disciplineMapper;
+    private final ProjectionMaintenance projectionMaintenance;
 
     /**
      * Создает новую дисциплину.
@@ -87,6 +90,9 @@ public class DisciplineService {
         disciplineToUpdate.setAbbreviation(updateDto.abbreviation());
 
         Discipline updatedDiscipline = disciplineRepository.save(disciplineToUpdate);
+
+        // Название и аббревиатура дисциплины лежат в read-модели снимком (подпись занятия).
+        projectionMaintenance.announce(ProjectionSource.DISCIPLINE, id);
 
         // Загружаем сущность заново вместе с курсами для полного ответа
         return findDisciplineById(updatedDiscipline.getId()).orElseThrow();

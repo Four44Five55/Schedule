@@ -132,13 +132,13 @@ cd backend
 
 ## Documentation
 
+- [Follow-ups / tech debt](docs/FOLLOWUPS.md) — **the living doc**: open issues, decisions, and what was already done (incl. tests and dead code)
 - [API Examples](docs/API_EXAMPLES.md) — actual REST contracts
 - [Database schema](docs/DATABASE.md) — tables, fields, relations (Liquibase is the source of truth)
-- [CQRS Architecture](docs/CQRS_ARCHITECTURE.md)
+- [CQRS Architecture](docs/CQRS_ARCHITECTURE.md) — read/write split, where it leaks
 - [Development Context](docs/DEVELOPMENT_CONTEXT.md) — architecture and distribution algorithm
-- [Follow-ups / tech debt](docs/FOLLOWUPS.md) — open issues and what was already done
 - [Types & Swagger](docs/TYPES_AND_SWAGGER.md) — keeping Java DTOs and TS types in sync
-- [Testing Guide](docs/TESTING_GUIDE.md)
+- [Order highlight: rolled-back attempt](docs/ORDER_HIGHLIGHT_ROLLBACK.md) — why three rule formulations failed; read before revisiting
 
 ## Docker Deployment
 

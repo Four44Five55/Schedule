@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.dto.auditorium.AuditoriumCreateDto;
+import ru.dto.auditorium.AuditoriumDeletionImpactDto;
 import ru.dto.auditorium.AuditoriumDto;
 import ru.dto.auditorium.AuditoriumUpdateDto;
 import ru.services.AuditoriumService;
@@ -34,9 +35,24 @@ public class AuditoriumController {
         AuditoriumDto updated = auditoriumService.updateAuditorium(id, dto);
         return ResponseEntity.ok(updated);
     }
+    /**
+     * Предпросмотр последствий удаления: занятия останутся без комнаты (в т.ч. закреплённые),
+     * а если аудиторию требует учебный план — удалить её нельзя вовсе.
+     */
+    @GetMapping("/{id}/delete-impact")
+    public ResponseEntity<AuditoriumDeletionImpactDto> deleteImpact(@PathVariable Integer id) {
+        return ResponseEntity.ok(auditoriumService.deleteImpact(id));
+    }
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        auditoriumService.deleteAuditorium(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<?> delete(@PathVariable Integer id) {
+        try {
+            auditoriumService.deleteAuditorium(id);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            // Аудитория указана в учебном плане: БД её удалить не даст (FK без каскада).
+            // Отвечаем осмысленно, а не сырым 500 (глобального @ControllerAdvice в проекте нет).
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+        }
     }
 }

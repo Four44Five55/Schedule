@@ -47,7 +47,10 @@ import {
   GroupConstraintCreateDto,
   AuditoriumConstraintCreateDto,
   ScheduleResultDto,
+  AuditoriumDeletionImpactDto,
   PeriodReadinessDto,
+  ProjectionHealthDto,
+  SlotDeletionImpactDto,
   PeriodScheduleQualityDto,
   GroupDensityDto,
   ExportAxis,
@@ -81,6 +84,12 @@ export const ResourceService = {
   getAuditorium: (id: number) => api.get<AuditoriumDto>(`/auditoriums/${id}`).then((r) => r.data),
   createAuditorium: (data: AuditoriumCreateDto) => api.post<AuditoriumDto>('/auditoriums', data).then((r) => r.data),
   updateAuditorium: (id: number, data: AuditoriumUpdateDto) => api.put<AuditoriumDto>(`/auditoriums/${id}`, data).then((r) => r.data),
+  /**
+   * Цена удаления аудитории: сколько занятий останется без комнаты (и сколько из них закреплено),
+   * не запрещает ли удаление учебный план (slotsRequiringIt > 0 → нельзя).
+   */
+  getAuditoriumDeleteImpact: (id: number) =>
+      api.get<AuditoriumDeletionImpactDto>(`/auditoriums/${id}/delete-impact`).then((r) => r.data),
   deleteAuditorium: (id: number) => api.delete(`/auditoriums/${id}`).then(() => {}),
 
   getGroups: () => api.get<GroupDto[]>('/groups').then((r) => r.data).catch(() => []),
@@ -136,6 +145,12 @@ export const CurriculumService = {
   getSlot: (id: number) => api.get<CurriculumSlotDto>(`/curriculum-slots/${id}`).then((r) => r.data),
   createSlot: (data: CurriculumSlotCreateDto) => api.post<CurriculumSlotDto>('/curriculum-slots', data).then((r) => r.data),
   updateSlot: (id: number, data: CurriculumSlotUpdateDto) => api.put<CurriculumSlotDto>(`/curriculum-slots/${id}`, data).then((r) => r.data),
+  /**
+   * Цена удаления занятия плана: сколько назначений и уже размещённых занятий уйдёт каскадом
+   * и сколько из них закреплено вручную (потеря ручной раскладки).
+   */
+  getSlotDeleteImpact: (id: number) =>
+      api.get<SlotDeletionImpactDto>(`/curriculum-slots/${id}/delete-impact`).then((r) => r.data),
   deleteSlot: (id: number) => api.delete(`/curriculum-slots/${id}`).then(() => {}),
 
   getThemesByDiscipline: (disciplineId: number) => api.get<ThemeLessonDto[]>(`/theme-lessons/by-discipline/${disciplineId}`).then((r) => r.data),
@@ -194,6 +209,16 @@ export const ScheduleService = {
       api.get<PeriodReadinessDto>('/schedule/query/readiness', { params: { periodId } })
       .then((r) => r.data)
       .catch(() => ({ total: 0, placed: 0, unplaced: 0 })),
+
+  /**
+   * Здоровье проекции: сходится ли read-модель с write-стороной за период.
+   * missing > 0 → часть занятий не доехала до сетки (асинхронная проекция отстала или упала);
+   * лечится перепроекцией сессии (CQRSService.reproject).
+   */
+  getProjectionHealth: (periodId: number): Promise<ProjectionHealthDto | null> =>
+      api.get<ProjectionHealthDto>('/schedule/query/projection-health', { params: { periodId } })
+      .then((r) => r.data)
+      .catch(() => null),
 
   /** Качество расписания преподавателей за период: компактность + равномерность (суббота). */
   getEducatorQuality: (periodId: number): Promise<PeriodScheduleQualityDto | null> =>

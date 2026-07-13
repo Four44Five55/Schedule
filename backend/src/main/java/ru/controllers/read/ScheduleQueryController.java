@@ -45,6 +45,8 @@ public class ScheduleQueryController {
     private final ru.services.GroupDensityReportService groupDensityReportService;
     // Выгрузка расписания периода в Excel (Query Side → книга .xlsx).
     private final ru.services.exporting.ScheduleExportService scheduleExportService;
+    // Сверка Command Side ↔ Query Side: асинхронная проекция могла отстать или упасть.
+    private final ru.services.projection.ProjectionHealthService projectionHealthService;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -329,6 +331,23 @@ public class ScheduleQueryController {
             log.info("Readiness: период id={} без курсов, нули", periodId);
             return new PeriodReadinessDto(0, 0, 0);
         }
+    }
+
+    /**
+     * GET /api/schedule/query/projection-health?periodId=X
+     *
+     * <p>Сходится ли read-модель с write-стороной. Проекция асинхронна, и её сбой (упавший
+     * слушатель, гонка, неудачный перезапуск) проявлялся только строкой в логе — то есть
+     * не проявлялся вовсе: занятие молча не показывалось в сетке. Этот срез отдаёт расхождение
+     * числом, чтобы интерфейс мог показать предупреждение и предложить перепроекцию
+     * ({@code POST /api/schedule/command/sessions/{id}/reproject}).</p>
+     *
+     * @param periodId учебный период
+     * @return размещений / спроецировано / не спроецировано
+     */
+    @GetMapping("/projection-health")
+    public ru.dto.ProjectionHealthDto getProjectionHealth(@RequestParam Integer periodId) {
+        return projectionHealthService.check(periodId);
     }
 
     /**

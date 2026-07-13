@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuditoriumDto } from '../../../types/api';
+import { AuditoriumDeletionImpactDto, AuditoriumDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { AuditoriumFormModal } from './AuditoriumFormModal';
@@ -18,6 +18,9 @@ export const AuditoriumGrid: React.FC<AuditoriumGridProps> = ({
   const [editingAuditorium, setEditingAuditorium] = useState<AuditoriumDto | null>(null);
   const [deletingAuditorium, setDeletingAuditorium] = useState<AuditoriumDto | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Последствия удаления (с бэка): занятия без комнаты, замки, ссылки из учебного плана.
+  const [impact, setImpact] = useState<AuditoriumDeletionImpactDto | null>(null);
+  const [impactFailed, setImpactFailed] = useState(false);
 
   const handleCreate = () => {
     setEditingAuditorium(null);
@@ -40,22 +43,68 @@ export const AuditoriumGrid: React.FC<AuditoriumGridProps> = ({
     setEditingAuditorium(null);
   };
 
-  const handleDeleteRequest = (a: AuditoriumDto) => setDeletingAuditorium(a);
-  const handleDeleteCancel = () => setDeletingAuditorium(null);
+  // Цена удаления спрашивается у бэка: занятия в этой аудитории каскадом остаются БЕЗ комнаты
+  // (вернуть её автоматически нечем), а если аудиторию требует учебный план — удалить нельзя.
+  const handleDeleteRequest = async (a: AuditoriumDto) => {
+    setDeletingAuditorium(a);
+    setImpact(null);
+    setImpactFailed(false);
+    try {
+      setImpact(await ResourceService.getAuditoriumDeleteImpact(a.id));
+    } catch (e) {
+      // Проверка не удалась — не запрещаем удаление (бэк всё равно откажет, если нельзя),
+      // но и не притворяемся, что цена известна: диалог скажет об этом прямо.
+      console.error('Не удалось получить последствия удаления аудитории:', e);
+      setImpactFailed(true);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeletingAuditorium(null);
+    setImpact(null);
+    setImpactFailed(false);
+  };
 
   const handleDeleteConfirm = async () => {
     if (!deletingAuditorium) return;
     setIsDeleting(true);
     try {
       await ResourceService.deleteAuditorium(deletingAuditorium.id);
-      setDeletingAuditorium(null);
+      handleDeleteCancel();
       onAuditoriumsChange();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Ошибка удаления аудитории:', err);
-      alert('Не удалось удалить аудиторию. Возможно, она используется в расписании.');
+      alert(err?.response?.data || 'Не удалось удалить аудиторию.');
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // Можно ли удалять — решает бэк (`deletable`); фронт это не выводит, а показывает.
+  const blocked = !!impact && !impact.deletable;
+
+  const deleteMessage = (): string => {
+    const name = deletingAuditorium?.name ?? '';
+    if (impactFailed) {
+      return `Не удалось проверить, где используется «${name}». `
+        + 'Если аудитория занята в расписании, эти занятия останутся без комнаты. Удалить?';
+    }
+    if (!impact) return `Проверяем, где используется «${name}»…`;
+    if (blocked) {
+      return `«${name}» указана требуемой или приоритетной в ${impact.slotsRequiringIt} занятиях `
+        + 'учебного плана, поэтому удалить её нельзя. Сначала уберите аудиторию из плана.';
+    }
+    const parts: string[] = [];
+    if (impact.placedLessons > 0) {
+      parts.push(`${impact.placedLessons} занятий стоят в этой аудитории и останутся БЕЗ комнаты`
+        + (impact.lockedLessons > 0 ? `, из них ${impact.lockedLessons} закреплены вручную` : '')
+        + ' — подобрать новую можно только генерацией или переносом');
+    }
+    if (impact.groupsUsingAsBase > 0) {
+      parts.push(`у ${impact.groupsUsingAsBase} групп она указана домашней — эта связь обнулится`);
+    }
+    if (parts.length === 0) return `Удалить «${name}»? Аудитория нигде не используется.`;
+    return `Удалить «${name}»? ${parts.join('. ')}. Это действие нельзя отменить.`;
   };
 
   return (
@@ -194,13 +243,14 @@ export const AuditoriumGrid: React.FC<AuditoriumGridProps> = ({
         {/* Подтверждение удаления */}
         {deletingAuditorium && (
             <ConfirmDialog
-                title="Удалить аудиторию?"
-                message={`Вы уверены, что хотите удалить "${deletingAuditorium.name}"? Это действие нельзя отменить.`}
-                confirmLabel="Удалить"
+                title={blocked ? 'Удаление невозможно' : 'Удалить аудиторию?'}
+                message={deleteMessage()}
+                // Если аудиторию требует учебный план, кнопка не удаляет, а закрывает диалог.
+                confirmLabel={blocked ? 'Понятно' : 'Удалить'}
                 cancelLabel="Отмена"
-                variant="danger"
+                variant={blocked ? 'warning' : 'danger'}
                 isLoading={isDeleting}
-                onConfirm={handleDeleteConfirm}
+                onConfirm={blocked ? handleDeleteCancel : handleDeleteConfirm}
                 onCancel={handleDeleteCancel}
             />
         )}

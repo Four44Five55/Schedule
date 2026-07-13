@@ -2,7 +2,6 @@ package ru.services;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.dto.assignment.AssignmentCreateDto;
@@ -13,11 +12,11 @@ import ru.entity.Assignment;
 import ru.entity.Educator;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.StudyStream;
-import ru.events.AssignmentsChangedEvent;
 import ru.mapper.AssignmentMapper;
 import ru.repository.AssignmentRepository;
-import ru.repository.read.ScheduleViewRepository;
 import ru.repository.write.LessonPlacementRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -42,8 +40,7 @@ public class AssignmentService {
     private final EducatorService educatorService;
     private final AssignmentMapper assignmentMapper;
     private final LessonPlacementRepository placementRepository;
-    private final ScheduleViewRepository scheduleViewRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final ProjectionMaintenance projectionMaintenance;
 
     @Transactional
     public List<AssignmentDto> createAssignments(AssignmentCreateDto createDto) {
@@ -182,38 +179,34 @@ public class AssignmentService {
     }
 
     /**
-     * Удалить набор назначений, синхронно вычистив read-модель. Общий примитив для
-     * массового и точечного удаления, чтобы {@code schedule_view} не оставляла «призраков»
-     * (у неё нет FK на {@code lesson_placement}, поэтому FK-каскад БД её не трогает).
+     * Удалить набор назначений. Общий примитив для массового и точечного удаления.
+     *
+     * <p>Размещения уходят каскадом БД ({@code assignment → lesson_placement}), а вслед за ними
+     * — строки read-модели: {@code schedule_view} с миграции 017 имеет FK на
+     * {@code lesson_placement} с {@code ON DELETE CASCADE}. Руками проекцию здесь НЕ чистим:
+     * знание «у размещения есть проекция» принадлежит одному месту (схеме БД), а не каждому
+     * сервису, который что-то удаляет. Именно размазанность этого знания и оставляла
+     * строки-призраки на путях, где о ней забыли (удаление слота плана, дисциплины).</p>
      */
     private void purge(List<Assignment> assignments) {
         if (assignments.isEmpty()) {
             return;
         }
-        List<Integer> ids = assignments.stream().map(Assignment::getId).toList();
-        List<UUID> placementIds = placementRepository.findIdsByAssignmentIdIn(ids);
-        if (!placementIds.isEmpty()) {
-            scheduleViewRepository.deleteByPlacementIdIn(placementIds);
-        }
-        assignmentRepository.deleteAllById(ids);
+        assignmentRepository.deleteAllById(assignments.stream().map(Assignment::getId).toList());
     }
 
     /**
      * Объявить, что состав преподавателей и/или поток назначений изменился.
      *
      * <p>Сервис назначений не знает и не должен знать, как это отражается на расписании:
-     * подписчик ({@link ru.services.ScheduleSynchronizer}) сам найдёт уже стоящие размещения
-     * и перепроецирует read-модель — она несёт преподавателя снимком. Событие обрабатывается
-     * после коммита, поэтому проекция видит уже сохранённый состав.</p>
+     * он лишь сообщает об изменении своих данных, а перепроекцию делает владелец read-модели
+     * ({@link ru.services.ScheduleSynchronizer}) — она несёт преподавателя снимком.</p>
      *
      * @param changed назначения, у которых изменился состав преподавателей и/или поток
      */
     private void announceChanged(List<Assignment> changed) {
-        if (changed.isEmpty()) {
-            return;
-        }
-        eventPublisher.publishEvent(
-                new AssignmentsChangedEvent(changed.stream().map(Assignment::getId).toList()));
+        projectionMaintenance.announce(
+                ProjectionSource.ASSIGNMENT, changed.stream().map(Assignment::getId).toList());
     }
 
     /** Сборка сущности назначения из уже разрешённых связей (DRY для create/applyToCourse). */

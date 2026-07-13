@@ -10,6 +10,8 @@ import ru.dto.educator.EducatorUpdateDto;
 import ru.entity.Educator;
 import ru.mapper.EducatorMapper;
 import ru.repository.EducatorRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,6 +26,7 @@ public class EducatorService {
 
     private final EducatorRepository educatorRepository;
     private final EducatorMapper educatorMapper;
+    private final ProjectionMaintenance projectionMaintenance;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
@@ -60,7 +63,11 @@ public class EducatorService {
         educatorToUpdate.setPreferredTimeSlots(updateDto.preferredTimeSlots());
         educatorToUpdate.setCompactSchedule(updateDto.compactSchedule());
 
-        return educatorMapper.toDto(educatorRepository.save(educatorToUpdate));
+        EducatorDto updated = educatorMapper.toDto(educatorRepository.save(educatorToUpdate));
+        // Имя преподавателя лежит в read-модели снимком: без этого переименование не дошло бы
+        // до сетки, отчётов и Excel — там остался бы прежний.
+        projectionMaintenance.announce(ProjectionSource.EDUCATOR, educatorId);
+        return updated;
     }
 
     /**

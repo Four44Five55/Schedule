@@ -44,6 +44,17 @@ public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, 
     void decrementPositionsAfter(@Param("courseId") Integer courseId, @Param("startPosition") Integer startPosition);
 
 
+    /**
+     * Сколько слотов плана ссылается на аудиторию как на требуемую или приоритетную.
+     *
+     * <p>Эти ссылки идут <b>без каскада</b> ({@code required/priority_auditorium_id}), поэтому БД
+     * не даст удалить такую аудиторию — раньше это вылетало сырым 500. Считаем заранее, чтобы
+     * отказать осмысленно (см. {@code AuditoriumService.deleteImpact}).</p>
+     */
+    @Query("SELECT COUNT(cs) FROM CurriculumSlot cs " +
+            "WHERE cs.requiredAuditorium.id = :auditoriumId OR cs.priorityAuditorium.id = :auditoriumId")
+    long countReferencingAuditorium(@Param("auditoriumId") Integer auditoriumId);
+
     @Query("SELECT cs FROM CurriculumSlot cs " +
             "WHERE cs.disciplineCourse.id = :courseId " +
             "  AND cs.kindOfStudy = ru.enums.KindOfStudy.LECTURE " +

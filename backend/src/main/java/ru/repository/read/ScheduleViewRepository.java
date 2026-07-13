@@ -273,6 +273,19 @@ public interface ScheduleViewRepository extends org.springframework.data.jpa.rep
     void deleteByPeriod(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
     /**
+     * Какие из этих размещений реально доехали до read-модели.
+     *
+     * <p>Проекция асинхронна, и её сбой раньше был виден только в логе. Сравнение
+     * «размещения сессии» ↔ «спроецированные» превращает молчаливое расхождение в число
+     * для интерфейса (см. {@code ProjectionHealthService}).</p>
+     *
+     * @param placementIds id размещений (Command Side)
+     * @return подмножество, для которого есть хотя бы одна строка проекции
+     */
+    @Query("SELECT DISTINCT s.placementId FROM ScheduleView s WHERE s.placementId IN :placementIds")
+    List<UUID> findProjectedPlacementIds(@Param("placementIds") java.util.Collection<UUID> placementIds);
+
+    /**
      * Получить все занятия за период.
      * Используется для загрузки существующего расписания на фронтенд.
      *

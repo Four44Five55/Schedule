@@ -78,4 +78,10 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
      * @return количество {@link Assignment} курса.
      */
     long countByCurriculumSlot_DisciplineCourse_Id(Integer courseId);
+
+    /**
+     * Сколько назначений у слота плана — для предпросмотра последствий его удаления
+     * (они уйдут каскадом вместе с размещениями).
+     */
+    long countByCurriculumSlotId(Integer slotId);
 }

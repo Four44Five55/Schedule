@@ -1,4 +1,4 @@
-import { CurriculumSlotDto, KindOfStudy, SlotChainDto } from '../../types/api';
+import { CurriculumSlotDto, KindOfStudy, SlotChainDto, SlotDeletionImpactDto } from '../../types/api';
 import { CurriculumService } from '../../services/apiServices';
 
 /**
@@ -28,6 +28,13 @@ export interface CurriculumPlanSource {
   update(id: number, values: SlotFormValues): Promise<CurriculumSlotDto>;
   remove(id: number): Promise<void>;
 
+  /**
+   * Цена удаления слота: сколько назначений и уже РАЗМЕЩЁННЫХ занятий уйдёт каскадом
+   * (включая закреплённые вручную). Опционален: у будущего источника-шаблона слот в
+   * расписании не стоит, и терять там нечего — редактор просто не спросит.
+   */
+  removeImpact?(id: number): Promise<SlotDeletionImpactDto>;
+
   // Сцепки (неразрывность соседних занятий). Редактор фильтрует их по своим слотам.
   listChains(): Promise<SlotChainDto[]>;
   link(slotAId: number, slotBId: number): Promise<void>;
@@ -50,6 +57,7 @@ export const courseSlotSource = (courseId: number): CurriculumPlanSource => ({
     allowedAuditoriumPoolId: v.allowedAuditoriumPoolId,
   }),
   remove: (id) => CurriculumService.deleteSlot(id),
+  removeImpact: (id) => CurriculumService.getSlotDeleteImpact(id),
 
   // /slot-chains отдаёт все сцепки; редактор отфильтрует по слотам курса.
   listChains: () => CurriculumService.getSlotChains(),

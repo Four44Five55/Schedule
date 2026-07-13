@@ -441,6 +441,44 @@ export interface PeriodReadinessDto {
   unplaced: number;
 }
 
+// ============ ПРЕДПРОСМОТР ПОСЛЕДСТВИЙ УДАЛЕНИЯ ============
+// Каскады БД уносят размещения молча и про `locked` ничего не знают, поэтому цену удаления
+// (особенно потерю ручной раскладки) бэк называет ДО подтверждения.
+
+// Аудитория: занятия останутся БЕЗ комнаты (вернуть её автоматически нечем).
+// `deletable` — решение БЭКА (аудиторию, на которую ссылается учебный план, БД удалить не даст),
+// фронт его не выводит из чисел, а показывает; slotsRequiringIt нужен только для текста.
+export interface AuditoriumDeletionImpactDto {
+  auditoriumId: number;
+  name: string;
+  deletable: boolean;
+  placedLessons: number;
+  lockedLessons: number;
+  slotsRequiringIt: number;
+  groupsUsingAsBase: number;
+}
+
+// Занятие учебного плана: каскадом уйдут его назначения и размещения (включая закреплённые).
+export interface SlotDeletionImpactDto {
+  slotId: number;
+  position: number;
+  kindOfStudy: string | null;
+  assignments: number;
+  placedLessons: number;
+  lockedLessons: number;
+}
+
+// ============ ЗДОРОВЬЕ ПРОЕКЦИИ ============
+// Сходятся ли Command Side и Query Side. Проекция асинхронна, и её сбой раньше был виден
+// только в логе — то есть не виден никому: занятие просто не появлялось в сетке.
+// missing > 0 → расписание отображается неполно, лечится перепроекцией сессии.
+export interface ProjectionHealthDto {
+  sessionId: string | null;
+  placements: number;
+  projected: number;
+  missing: number;
+}
+
 // ============ КАЧЕСТВО РАСПИСАНИЯ ПРЕПОДАВАТЕЛЕЙ (дашборд) ============
 
 /**

@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.dto.curriculumSlot.CurriculumSlotCreateDto;
 import ru.dto.curriculumSlot.CurriculumSlotDto;
 import ru.dto.curriculumSlot.CurriculumSlotUpdateDto;
+import ru.dto.curriculumSlot.SlotDeletionImpactDto;
 import ru.entity.Auditorium;
 import ru.entity.Lesson;
 import ru.entity.logicSchema.AuditoriumPool;
@@ -14,7 +15,11 @@ import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.entity.logicSchema.ThemeLesson;
 import ru.mapper.CurriculumSlotMapper;
+import ru.repository.AssignmentRepository;
 import ru.repository.CurriculumSlotRepository;
+import ru.repository.write.LessonPlacementRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +35,11 @@ public class CurriculumSlotService {
     private final AuditoriumService auditoriumService;
     private final AuditoriumPoolService auditoriumPoolService;
     private final CurriculumSlotMapper curriculumSlotMapper;
+    private final ProjectionMaintenance projectionMaintenance;
+    // Только счётчики для предпросмотра последствий удаления (репозитории, а не сервисы:
+    // AssignmentService сам зависит от CurriculumSlotService — иначе цикл бинов).
+    private final AssignmentRepository assignmentRepository;
+    private final LessonPlacementRepository placementRepository;
 
     @Transactional(readOnly = true)
     public List<CurriculumSlotDto> findAll() {
@@ -116,7 +126,11 @@ public class CurriculumSlotService {
                         : null
         );
 
-        return curriculumSlotMapper.toDto(curriculumSlotRepository.save(slotToUpdate));
+        CurriculumSlotDto updated = curriculumSlotMapper.toDto(curriculumSlotRepository.save(slotToUpdate));
+        // Вид занятия и тема слота лежат в read-модели снимком: без перепроекции уже размещённое
+        // занятие продолжало бы показывать прежний вид/тему.
+        projectionMaintenance.announce(ProjectionSource.CURRICULUM_SLOT, slotId);
+        return updated;
     }
 
     /**
@@ -132,7 +146,31 @@ public class CurriculumSlotService {
     }
 
     /**
+     * Предпросмотр последствий удаления занятия плана: сколько назначений и уже размещённых
+     * занятий уйдёт каскадом и сколько из них закреплено вручную. Состояние не меняет.
+     *
+     * <p>Прецедент — {@code /assignments/{id}/delete-impact} и предпросмотр удаления курса.
+     * У слота такого предупреждения не было, хотя теряется ровно то же самое: каскад
+     * {@code curriculum_slot → assignment → lesson_placement} уносит и ручную раскладку.</p>
+     */
+    @Transactional(readOnly = true)
+    public SlotDeletionImpactDto deleteImpact(Integer id) {
+        CurriculumSlot slot = getEntityById(id);
+        return new SlotDeletionImpactDto(
+                slot.getId(),
+                slot.getPosition(),
+                slot.getKindOfStudy() != null ? slot.getKindOfStudy().name() : null,
+                assignmentRepository.countByCurriculumSlotId(id),
+                placementRepository.countBySlotId(id),
+                placementRepository.countLockedBySlotId(id));
+    }
+
+    /**
      * Удаляет слот по ID с корректировкой позиций остальных слотов.
+     *
+     * <p>Каскад БД уносит назначения слота и их размещения (включая закреплённые), а следом —
+     * строки read-модели (FK {@code schedule_view → lesson_placement}, миграция 017). Цена
+     * называется заранее в {@link #deleteImpact} и подтверждается в UI.</p>
      *
      * @param id ID удаляемого слота.
      * @throws EntityNotFoundException если слот не найден.

@@ -10,11 +10,7 @@ import ru.entity.logicSchema.DisciplineCourse;
 import ru.repository.AssignmentRepository;
 import ru.repository.CurriculumSlotRepository;
 import ru.repository.DisciplineCourseRepository;
-import ru.repository.read.ScheduleViewRepository;
 import ru.repository.write.LessonPlacementRepository;
-
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Глубокое каскадное удаление курса. Выделено в отдельный сервис (SRP) — это
@@ -25,13 +21,11 @@ import java.util.UUID;
  * join-таблицы, {@code slot_chain}) выполняет БД по {@code ON DELETE CASCADE} — при удалении
  * строки {@code discipline_course} граф сносится целиком.</p>
  *
- * <p><b>Read-модель</b> {@code schedule_view} не имеет FK на {@code lesson_placement}
- * (CQRS-развязка), поэтому FK-каскад её не трогает. Чистим её здесь <b>синхронно в той же
- * транзакции</b>: захватываем id размещений курса ДО удаления и массово удаляем строки view.
- * Это даёт атомарность (всё либо коммитится, либо откатывается) — критично для
- * многопользовательского режима: нет окна «призраков» и нет осиротевших read-строк.
- * Осознанно НЕ используем событийную async-очистку (как {@link ScheduleSynchronizer}):
- * для удаления важнее строгая консистентность.</p>
+ * <p><b>Read-модель</b> {@code schedule_view} уходит следом за размещениями тем же каскадом:
+ * с миграции 017 у неё есть FK на {@code lesson_placement} с {@code ON DELETE CASCADE}.
+ * Руками её здесь не чистим — иначе знание «у размещения есть проекция» пришлось бы повторять
+ * в каждом сервисе, который что-то удаляет (ровно так и появлялись строки-призраки на путях,
+ * где о нём забывали). Удаление остаётся атомарным: всё либо коммитится, либо откатывается.</p>
  */
 @Slf4j
 @Service
@@ -42,7 +36,6 @@ public class CourseDeletionService {
     private final CurriculumSlotRepository curriculumSlotRepository;
     private final AssignmentRepository assignmentRepository;
     private final LessonPlacementRepository placementRepository;
-    private final ScheduleViewRepository scheduleViewRepository;
 
     /**
      * Предпросмотр последствий удаления: сколько слотов/назначений/размещённых занятий
@@ -67,8 +60,8 @@ public class CourseDeletionService {
     }
 
     /**
-     * Каскадно удаляет курс: сначала синхронно чистит read-модель по размещениям курса,
-     * затем удаляет курс (FK-каскад БД сносит слоты, назначения, размещения и сцепки).
+     * Каскадно удаляет курс: FK-каскад БД сносит слоты, назначения, сцепки, размещения
+     * и — следом за размещениями — строки read-модели.
      *
      * @param courseId id курса
      * @throws EntityNotFoundException если курс не найден
@@ -79,14 +72,9 @@ public class CourseDeletionService {
             throw new EntityNotFoundException("Курс с id=" + courseId + " не найден.");
         }
 
-        // Захватываем id размещений ДО удаления — после FK-каскада их уже не будет.
-        List<UUID> placementIds = placementRepository.findIdsByCourseId(courseId);
-        if (!placementIds.isEmpty()) {
-            scheduleViewRepository.deleteByPlacementIdIn(placementIds);
-        }
-
+        long placements = placementRepository.countByCourseId(courseId);
         disciplineCourseRepository.deleteById(courseId);
 
-        log.info("Удалён курс id={}: снято размещений в read-модели={}", courseId, placementIds.size());
+        log.info("Удалён курс id={}: снято размещений={}", courseId, placements);
     }
 }

@@ -11,6 +11,8 @@ import ru.entity.Discipline;
 import ru.entity.logicSchema.ThemeLesson;
 import ru.mapper.ThemeLessonMapper;
 import ru.repository.ThemeLessonRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +28,7 @@ public class ThemeLessonService {
     private final ThemeLessonRepository themeLessonRepository;
     private final DisciplineService disciplineService;
     private final ThemeLessonMapper themeLessonMapper;
+    private final ProjectionMaintenance projectionMaintenance;
 
     /**
      * Создает новую тему для дисциплины.
@@ -103,7 +106,10 @@ public class ThemeLessonService {
         themeToUpdate.setThemeNumber(updateDto.themeNumber());
         themeToUpdate.setTitle(updateDto.title());
 
-        return themeLessonMapper.toDto(themeLessonRepository.save(themeToUpdate));
+        ThemeLessonDto updated = themeLessonMapper.toDto(themeLessonRepository.save(themeToUpdate));
+        // Номер и название темы read-модель хранит снимком (подпись занятия в сетке и в Excel).
+        projectionMaintenance.announce(ProjectionSource.THEME, id);
+        return updated;
     }
 
     /**

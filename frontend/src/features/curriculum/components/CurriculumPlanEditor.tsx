@@ -155,7 +155,26 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
   };
 
   const handleDelete = async (slot: CurriculumSlotDto) => {
-    if (!confirm('Удалить занятие?')) return;
+    // Цену удаления знает бэк: каскад curriculum_slot → assignment → lesson_placement уносит
+    // и уже размещённые занятия, ВКЛЮЧАЯ закреплённые вручную, — молча и безвозвратно.
+    // Источник-шаблон impact не отдаёт (там нечего терять) — тогда обычное подтверждение.
+    let question = 'Удалить занятие?';
+    try {
+      const impact = await sourceRef.current.removeImpact?.(slot.id);
+      if (impact && (impact.assignments > 0 || impact.placedLessons > 0)) {
+        const loss = [
+          impact.assignments > 0 ? `назначений: ${impact.assignments}` : null,
+          impact.placedLessons > 0 ? `занятий в расписании: ${impact.placedLessons}` : null,
+          impact.lockedLessons > 0 ? `из них закреплено вручную: ${impact.lockedLessons}` : null,
+        ].filter(Boolean).join(', ');
+        question = `Удалить занятие плана? Вместе с ним будет снесено — ${loss}.`
+          + (impact.lockedLessons > 0 ? '\n\nРучная раскладка этих занятий будет потеряна.' : '')
+          + '\n\nЭто действие нельзя отменить.';
+      }
+    } catch (e) {
+      console.error('Не удалось получить последствия удаления занятия плана:', e);
+    }
+    if (!confirm(question)) return;
     setDeletingSlot(slot.id);
     try {
       await sourceRef.current.remove(slot.id);

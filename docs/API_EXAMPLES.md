@@ -382,13 +382,86 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 
 ---
 
-### 6. Получить сессию / размещения / удалить
+### 6. Доска раскладки, счётчики, порядок изучения, ремонт проекции
+
+| Endpoint | Назначение |
+|---|---|
+| `GET /command/sessions/{id}/placement-board?courseIds=1,2,3&axis=GROUP\|EDUCATOR` | «Доска раскладки» → `PlacementBoardDto` (дерево сущность→дисциплина→занятие со счётчиками total/placed/unplaced на каждом уровне). Ось — стратегия `BoardAxis`. ⚠️ Тяжёлая: ~2.3 МБ, кандидат на расщепление (см. FOLLOWUPS) |
+| `GET /command/sessions/{id}/placement-counts?courseIds=1,2,3` | Лёгкие счётчики «распределено N/M» по каждому курсу → `List<CoursePlacementCountDto>` (вкладка «Генерация») |
+| `GET /command/sessions/{id}/order-violations` | **Порядок изучения** → `List<OrderViolationDto>` — занятия, стоящие раньше предшествующей им по плану лекции (`kind=BEFORE_LECTURE`) либо слишком далеко после неё (`kind=FAR_FROM_LECTURE`, `gapDays`; порог — property `schedule.order.max-lecture-gap-days`, дефолт 14). **Подсказка, а не запрет:** ячейки не фильтруются, перенос не блокируется. Одним запросом на всё расписание |
+| `POST /command/sessions/{id}/reproject` | Ремонтная пересборка read-модели (`schedule_view`) сессии → число перепроецированных строк |
+
+**Пример ответа `order-violations`:**
+```json
+[
+  {
+    "placementId": "550e8400-e29b-41d4-a716-446655440000",
+    "lecturePlacementId": "6f1c2d3e-...",
+    "groupId": 208,
+    "kind": "FAR_FROM_LECTURE",
+    "gapDays": 19
+  }
+]
+```
+> Контракт несёт только семантику (`kind`) — как её показывать, решает UI.
+
+---
+
+### 7. Получить сессию / размещения / удалить
 
 | Endpoint | Назначение |
 |---|---|
 | `GET /command/sessions/{sessionId}` | Сессия по ID → `ScheduleSessionDto` |
 | `GET /command/sessions/{sessionId}/placements` | Все размещения сессии → `List<LessonPlacementDto>` |
 | `DELETE /command/sessions/{sessionId}` | Удалить сессию (каскадно placements) |
+
+---
+
+## 🩺 ЗДОРОВЬЕ ПРОЕКЦИИ И ЦЕНА УДАЛЕНИЯ (2026-07-13)
+
+Инварианты read-модели и то, как они видны наружу — см. [CQRS_ARCHITECTURE.md](CQRS_ARCHITECTURE.md).
+
+### Сверка Command Side ↔ Query Side
+
+**`GET /api/schedule/query/projection-health?periodId=502`**
+
+```json
+{ "sessionId": "370b0350-…", "placements": 1693, "projected": 1693, "missing": 0 }
+```
+
+`missing > 0` — часть занятий не доехала до сетки (асинхронная проекция отстала или сорвалась;
+сами занятия целы). Дашборд показывает баннер и кнопку «Восстановить отображение» →
+`POST /api/schedule/command/sessions/{id}/reproject` (расписание не двигается: даты, пары и замки
+берутся из тех же размещений). Обратная поломка — строка без размещения — невозможна: её запрещает
+FK (миграция 017).
+
+### Цена удаления — до подтверждения
+
+Каскады БД уносят размещения **молча** и про `locked` ничего не знают, поэтому цену называет бэк.
+
+| Endpoint | Что отдаёт |
+|---|---|
+| `GET /api/assignments/{id}/delete-impact` | `RemoveAssignmentsImpactDto` — назначений / размещено / из них закреплено |
+| `GET /api/auditoriums/{id}/delete-impact` | `AuditoriumDeletionImpactDto` — см. ниже |
+| `GET /api/curriculum-slots/{id}/delete-impact` | `SlotDeletionImpactDto` — назначений / размещено / закреплено |
+
+**`GET /api/auditoriums/12/delete-impact`**
+```json
+{
+  "auditoriumId": 12,
+  "name": "204-3",
+  "deletable": false,
+  "placedLessons": 37,
+  "lockedLessons": 4,
+  "slotsRequiringIt": 2,
+  "groupsUsingAsBase": 1
+}
+```
+- `placedLessons` — столько занятий останется **без комнаты** (связь уходит каскадом; подобрать
+  новую можно только генерацией или переносом), `lockedLessons` — из них закреплено вручную.
+- `deletable` — **решение бэка**, а не вывод фронта: аудиторию, на которую ссылается учебный план
+  (`slotsRequiringIt > 0`), БД удалить не даст. `DELETE /api/auditoriums/{id}` в этом случае
+  отвечает **409** с текстом причины (раньше был сырой 500).
 
 ---
 

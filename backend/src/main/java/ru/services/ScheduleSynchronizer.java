@@ -12,8 +12,8 @@ import ru.entity.Assignment;
 import ru.entity.read.ScheduleView;
 import ru.entity.write.LessonPlacement;
 import ru.enums.TimeSlotPair;
-import ru.events.AssignmentsChangedEvent;
 import ru.events.PlacementChangedEvent;
+import ru.events.ProjectionStaleEvent;
 import ru.events.ScheduleGeneratedEvent;
 import ru.repository.read.ScheduleViewRepository;
 import ru.repository.write.LessonPlacementRepository;
@@ -30,6 +30,14 @@ import java.util.UUID;
  *
  * <p>Работает асинхронно, чтобы не блокировать запись.</p>
  * <p>Получает события из Command Side и обновляет {@link ScheduleView}.</p>
+ *
+ * <p><b>Единственный, кто ПИШЕТ в {@code schedule_view}.</b> Остальные её только читают
+ * (отчёты, экспорт, {@code ScheduleQueryController}). Держать это правилом важно: пока чистку
+ * проекции дублировали доменные сервисы удаления, о ней забывали на новых путях, и в сетке
+ * оставались занятия-призраки — строки без размещения, недостижимые ни одной командой.
+ * Само их существование теперь запрещено схемой: {@code schedule_view.placement_id} → FK на
+ * {@code lesson_placement} с {@code ON DELETE CASCADE} (миграция 017), поэтому любое удаление
+ * размещения — хоть каскадом БД, хоть кодом — уносит проекцию за собой.</p>
  *
  * <p><b>ВАРИАНТ 3 (Вариант с несколькими группами):</b></p>
  * <pre>
@@ -160,7 +168,10 @@ public class ScheduleSynchronizer {
 
         try {
             if (event.isDeleted()) {
-                // Удаляем view
+                // Идемпотентно: строки этого размещения БД уже снесла каскадом (FK
+                // schedule_view → lesson_placement, миграция 017). Оставлено как явный шаг
+                // проекции — на случай, если read-модель когда-нибудь переедет в отдельную БД,
+                // где FK не будет и снимать её придётся отсюда.
                 viewRepository.deleteByPlacementId(event.getPlacementId());
                 log.info("🗑️  Удалена ScheduleView для placementId={}", event.getPlacementId());
                 return;
@@ -187,28 +198,36 @@ public class ScheduleSynchronizer {
     }
 
     /**
-     * Синхронизация после правки назначений: перепроецирует уже стоящие занятия.
+     * Снимок устарел: master-данные изменились — переписываем строки затронутых размещений.
      *
-     * <p>{@link ScheduleView} денормализует преподавателя и группу СНИМКОМ, поэтому смена
-     * состава преподавателей или потока у {@link Assignment} сама по себе размещённые занятия
-     * не меняет — сетка, отчёты и экспорт продолжали бы показывать прежнего преподавателя.
-     * Расписание при этом не трогается: даты, слоты, аудитории и замки берутся из тех же
-     * {@link LessonPlacement}.</p>
+     * <p>{@link ScheduleView} денормализует преподавателя, группу, аудиторию, тему и вид занятия
+     * СНИМКОМ, поэтому правка самой сущности размещённые занятия не меняет: сетка, отчёты и
+     * экспорт продолжали бы показывать прежнее имя, а группа, убранная из потока, оставалась бы
+     * в расписании навсегда. Расписание при этом не трогается: даты, слоты, аудитории и замки
+     * берутся из тех же {@link LessonPlacement}.</p>
      *
-     * @param event Событие правки назначений
-     * @see AssignmentsChangedEvent
+     * <p>Размещения приходят уже разрешёнными (см. {@link ProjectionStaleEvent}); те, что успели
+     * исчезнуть между коммитом и обработкой, просто не найдутся — их строки унёс FK-каскад.</p>
+     *
+     * @param event Событие устаревания снимка
+     * @see ru.services.projection.ProjectionMaintenance
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onAssignmentsChanged(AssignmentsChangedEvent event) {
-        List<LessonPlacement> placements =
-                placementRepository.findByAssignmentIdIn(event.getAssignmentIds());
+    public void onProjectionStale(ProjectionStaleEvent event) {
+        // Без try/catch по размещению — намеренно. Слушатель работает в ОДНОЙ транзакции, и любая
+        // ошибка persistence (напр. нарушение FK) переводит её в rollback-only: «поймать и
+        // продолжить» дало бы лишь ложный счётчик, всё равно упав на коммите. Настоящая изоляция
+        // требует своей транзакции на каждое размещение — это отдельная задача (см. FOLLOWUPS).
+        // Страховка от тихой потери одна и она есть: недоехавшее покажет сверка проекции
+        // (ProjectionHealthService) баннером на дашборде.
+        List<LessonPlacement> placements = placementRepository.findAllById(event.getPlacementIds());
         for (LessonPlacement placement : placements) {
             syncPlacementViews(placement);
         }
-        log.info("🔄 Правка {} назначений: перепроецировано {} размещений",
-                event.getAssignmentIds().size(), placements.size());
+        log.info("🔄 Устарел снимок ({}): перепроецировано {} из {} размещений",
+                event.getSource(), placements.size(), event.getPlacementIds().size());
     }
 
     /**

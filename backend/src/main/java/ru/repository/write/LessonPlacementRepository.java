@@ -35,6 +35,15 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
     List<LessonPlacement> findBySessionId(UUID sessionId);
 
     /**
+     * Только id размещений сессии — для сверки с проекцией (грузить сущности незачем).
+     *
+     * @param sessionId сессия
+     * @return id размещений
+     */
+    @Query("SELECT lp.id FROM LessonPlacement lp WHERE lp.session.id = :sessionId")
+    List<UUID> findIdsBySessionId(@Param("sessionId") UUID sessionId);
+
+    /**
      * Найти placement по ID в рамках сессии.
      *
      * @param placementId ID размещения
@@ -123,6 +132,71 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
      */
     @Query("SELECT lp FROM LessonPlacement lp WHERE lp.assignment.id IN :assignmentIds")
     List<LessonPlacement> findByAssignmentIdIn(@Param("assignmentIds") java.util.Collection<Integer> assignmentIds);
+
+    // ========== Охваты устаревания снимка (ProjectionSource) ==========
+    // schedule_view хранит имена преподавателя/группы/аудитории, тему и вид занятия СНИМКОМ.
+    // При правке master-данных надо найти размещения, чей снимок протух, и перепроецировать их.
+    // Запросы живут здесь, а стратегия выбора — в ru.services.projection.ProjectionSource.
+
+    /** Размещения, которые ведут этих преподавателей (переименование → снимок протух). */
+    @Query("SELECT DISTINCT lp.id FROM LessonPlacement lp " +
+            "JOIN lp.assignment a JOIN a.educators e WHERE e.id IN :educatorIds")
+    List<UUID> findIdsByEducatorIdIn(@Param("educatorIds") java.util.Collection<Integer> educatorIds);
+
+    /** Размещения, в потоке которых есть эти группы (переименование/удаление группы). */
+    @Query("SELECT DISTINCT lp.id FROM LessonPlacement lp " +
+            "JOIN lp.assignment a JOIN a.studyStream s JOIN s.groups g WHERE g.id IN :groupIds")
+    List<UUID> findIdsByGroupIdIn(@Param("groupIds") java.util.Collection<Integer> groupIds);
+
+    /**
+     * Размещения назначений этих потоков. Охват для смены СОСТАВА потока: если группу из него
+     * убрали, по группе размещения уже не найти (связи нет) — поток находит их все.
+     */
+    @Query("SELECT lp.id FROM LessonPlacement lp WHERE lp.assignment.studyStream.id IN :streamIds")
+    List<UUID> findIdsByStreamIdIn(@Param("streamIds") java.util.Collection<Integer> streamIds);
+
+    /** Размещения в этих аудиториях (переименование/удаление комнаты). */
+    @Query("SELECT DISTINCT lp.id FROM LessonPlacement lp " +
+            "JOIN lp.assignedAuditoriums aud WHERE aud.id IN :auditoriumIds")
+    List<UUID> findIdsByAuditoriumIdIn(@Param("auditoriumIds") java.util.Collection<Integer> auditoriumIds);
+
+    /** Размещения этих дисциплин (сменилось название/аббревиатура). */
+    @Query("SELECT lp.id FROM LessonPlacement lp " +
+            "WHERE lp.assignment.curriculumSlot.disciplineCourse.discipline.id IN :disciplineIds")
+    List<UUID> findIdsByDisciplineIdIn(@Param("disciplineIds") java.util.Collection<Integer> disciplineIds);
+
+    /** Размещения занятий по этим темам (сменился номер/название темы). */
+    @Query("SELECT lp.id FROM LessonPlacement lp " +
+            "WHERE lp.assignment.curriculumSlot.themeLesson.id IN :themeIds")
+    List<UUID> findIdsByThemeIdIn(@Param("themeIds") java.util.Collection<Integer> themeIds);
+
+    /** Размещения этих слотов плана (сменился вид занятия или привязка темы). */
+    @Query("SELECT lp.id FROM LessonPlacement lp WHERE lp.assignment.curriculumSlot.id IN :slotIds")
+    List<UUID> findIdsBySlotIdIn(@Param("slotIds") java.util.Collection<Integer> slotIds);
+
+    // ========== Предпросмотр последствий удаления ==========
+    // Каскады БД уносят размещения молча и про `locked` ничего не знают, поэтому цену удаления
+    // (особенно потерю ручной раскладки) надо назвать ДО подтверждения. Прецедент —
+    // countLockedByAssignmentIdIn выше.
+
+    /** Занятий стоит в этой аудитории (при её удалении останутся без комнаты). */
+    @Query("SELECT COUNT(DISTINCT lp) FROM LessonPlacement lp " +
+            "JOIN lp.assignedAuditoriums aud WHERE aud.id = :auditoriumId")
+    long countByAuditoriumId(@Param("auditoriumId") Integer auditoriumId);
+
+    /** Из них закреплено вручную. */
+    @Query("SELECT COUNT(DISTINCT lp) FROM LessonPlacement lp " +
+            "JOIN lp.assignedAuditoriums aud WHERE aud.id = :auditoriumId AND lp.locked = true")
+    long countLockedByAuditoriumId(@Param("auditoriumId") Integer auditoriumId);
+
+    /** Размещений у слота плана (уйдут каскадом при его удалении). */
+    @Query("SELECT COUNT(lp) FROM LessonPlacement lp WHERE lp.assignment.curriculumSlot.id = :slotId")
+    long countBySlotId(@Param("slotId") Integer slotId);
+
+    /** Из них закреплено вручную. */
+    @Query("SELECT COUNT(lp) FROM LessonPlacement lp " +
+            "WHERE lp.assignment.curriculumSlot.id = :slotId AND lp.locked = true")
+    long countLockedBySlotId(@Param("slotId") Integer slotId);
 
     /**
      * Найти размещения по дате в рамках сессии.

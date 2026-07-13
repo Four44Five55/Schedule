@@ -11,6 +11,8 @@ import ru.entity.Auditorium;
 import ru.entity.Group;
 import ru.mapper.GroupMapper;
 import ru.repository.GroupRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +28,7 @@ public class GroupService {
     private final GroupRepository groupRepository;
     private final AuditoriumService auditoriumService;
     private final GroupMapper groupMapper;
+    private final ProjectionMaintenance projectionMaintenance;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
@@ -85,7 +88,11 @@ public class GroupService {
             groupToUpdate.setBaseAuditorium(null);
         }
 
-        return groupMapper.toDto(groupRepository.save(groupToUpdate));
+        GroupDto updated = groupMapper.toDto(groupRepository.save(groupToUpdate));
+        // Имя группы в read-модели — снимок: без перепроекции переименование не дошло бы
+        // до сетки, отчётов и Excel.
+        projectionMaintenance.announce(ProjectionSource.GROUP, groupId);
+        return updated;
     }
 
     @Transactional(readOnly = true)
@@ -106,6 +113,11 @@ public class GroupService {
             throw new EntityNotFoundException("Группа с id=" + groupId + " не найдена.");
         }
         // TODO: Добавить проверку, не используется ли группа в StudyStream, перед удалением.
+
+        // ОБЯЗАТЕЛЬНО до удаления: `stream_groups` уходит каскадом, и после коммита связь
+        // «группа → размещения» уже не найти. Сами занятия остаются (они у потока), но строка
+        // read-модели, выписанная на эту группу, стала бы вечным занятием-призраком.
+        projectionMaintenance.announce(ProjectionSource.GROUP, groupId);
         groupRepository.deleteById(groupId);
     }
 

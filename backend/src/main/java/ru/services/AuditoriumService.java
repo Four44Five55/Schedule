@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.dto.auditorium.AuditoriumCreateDto;
+import ru.dto.auditorium.AuditoriumDeletionImpactDto;
 import ru.dto.auditorium.AuditoriumDto;
 import ru.dto.auditorium.AuditoriumUpdateDto;
 import ru.entity.Auditorium;
@@ -13,6 +14,11 @@ import ru.entity.Building;
 import ru.entity.Feature;
 import ru.mapper.AuditoriumMapper;
 import ru.repository.AuditoriumRepository;
+import ru.repository.CurriculumSlotRepository;
+import ru.repository.GroupRepository;
+import ru.repository.write.LessonPlacementRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +37,12 @@ public class AuditoriumService {
     private final AuditoriumPurposeService purposeService;
     private final FeatureService featureService;
     private final AuditoriumMapper auditoriumMapper;
+    private final ProjectionMaintenance projectionMaintenance;
+    // Репозитории, а не сервисы: GroupService сам зависит от AuditoriumService — через сервисы
+    // получился бы цикл бинов. Здесь нужны только счётчики.
+    private final CurriculumSlotRepository curriculumSlotRepository;
+    private final GroupRepository groupRepository;
+    private final LessonPlacementRepository placementRepository;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
@@ -107,7 +119,10 @@ public class AuditoriumService {
             auditoriumToUpdate.getFeatures().addAll(newFeatures);
         }
 
-        return auditoriumMapper.toDto(auditoriumRepository.save(auditoriumToUpdate));
+        AuditoriumDto updated = auditoriumMapper.toDto(auditoriumRepository.save(auditoriumToUpdate));
+        // Название аудитории в read-модели — снимок (сетка, тултипы, Excel).
+        projectionMaintenance.announce(ProjectionSource.AUDITORIUM, id);
+        return updated;
     }
 
     /**
@@ -129,15 +144,50 @@ public class AuditoriumService {
     }
 
     /**
+     * Предпросмотр последствий удаления: сколько занятий останется без комнаты (и сколько из них
+     * закреплено вручную), не запрещает ли удаление учебный план, у скольких групп аудитория
+     * числится домашней. Состояние не меняет.
+     *
+     * @see AuditoriumDeletionImpactDto
+     */
+    @Transactional(readOnly = true)
+    public AuditoriumDeletionImpactDto deleteImpact(Integer id) {
+        Auditorium auditorium = getEntityById(id);
+        long referencedBySlots = curriculumSlotRepository.countReferencingAuditorium(id);
+        return new AuditoriumDeletionImpactDto(
+                auditorium.getId(),
+                auditorium.getName(),
+                referencedBySlots == 0, // deletable: правило считается ЗДЕСЬ, фронт его не выводит
+                placementRepository.countByAuditoriumId(id),
+                placementRepository.countLockedByAuditoriumId(id),
+                referencedBySlots,
+                groupRepository.countByBaseAuditoriumId(id));
+    }
+
+    /**
      * Удаляет аудиторию по ID.
+     *
+     * <p>Отказывает, если на аудиторию ссылается учебный план (требуемая/приоритетная в слоте):
+     * эти FK идут без каскада, БД удалить не даст, и раньше наружу летел сырой 500. Занятость в
+     * расписании удалению НЕ мешает — но занятия останутся без комнаты, поэтому цена названа в
+     * {@link #deleteImpact} и подтверждается в UI.</p>
      */
     @Transactional
     public void deleteAuditorium(Integer id) {
-        if (!auditoriumRepository.existsById(id)) {
-            throw new EntityNotFoundException("Аудитория с id=" + id + " не найдена.");
+        // Одно правило — один источник: и предпросмотр, и отказ смотрят на тот же deletable
+        // (иначе UI и бэк со временем разошлись бы в том, что считать «нельзя»).
+        AuditoriumDeletionImpactDto impact = deleteImpact(id); // бросит 404, если аудитории нет
+        if (!impact.deletable()) {
+            throw new IllegalStateException(
+                    "Аудиторию нельзя удалить: она указана требуемой или приоритетной в "
+                            + impact.slotsRequiringIt() + " занятиях учебного плана. "
+                            + "Сначала уберите её из плана.");
         }
-        // TODO: Добавить проверку, не используется ли аудитория в каких-либо
-        // постоянных требованиях (curriculum_slot) или пулах (auditorium_pool), перед удалением.
+
+        // ОБЯЗАТЕЛЬНО до удаления: `placement_auditoriums` уходит каскадом, и после коммита
+        // связь «аудитория → размещения» пропадёт. Занятия остаются (уже без комнаты) — и
+        // read-модель должна честно это показать, а не старое название удалённой аудитории.
+        projectionMaintenance.announce(ProjectionSource.AUDITORIUM, id);
         auditoriumRepository.deleteById(id);
     }
 

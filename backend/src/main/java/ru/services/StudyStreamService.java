@@ -11,6 +11,8 @@ import ru.entity.Group;
 import ru.entity.logicSchema.StudyStream;
 import ru.mapper.StudyStreamMapper;
 import ru.repository.StudyStreamRepository;
+import ru.services.projection.ProjectionMaintenance;
+import ru.services.projection.ProjectionSource;
 
 import java.util.HashSet;
 import java.util.List;
@@ -27,6 +29,7 @@ public class StudyStreamService {
     private final StudyStreamRepository studyStreamRepository;
     private final GroupService groupService;
     private final StudyStreamMapper studyStreamMapper;
+    private final ProjectionMaintenance projectionMaintenance;
 
     /**
      * Создает новый учебный поток.
@@ -72,6 +75,11 @@ public class StudyStreamService {
         streamToUpdate.setGroups(new HashSet<>(newGroups));
 
         StudyStream updatedStream = studyStreamRepository.save(streamToUpdate);
+        // Самый коварный случай: read-модель пишет строку НА КАЖДУЮ группу потока. Убрали группу
+        // из состава — её строки остались бы в расписании навсегда (занятие-призрак, снять которое
+        // нельзя, не снеся занятие у остальных групп). Перепроекция переписывает строки размещений
+        // под актуальный состав. Охват — по потоку: по выбывшей группе размещения уже не найти.
+        projectionMaintenance.announce(ProjectionSource.STUDY_STREAM, streamId);
         return studyStreamMapper.toDto(updatedStream);
     }
 

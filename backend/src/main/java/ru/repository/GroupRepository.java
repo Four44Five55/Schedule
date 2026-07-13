@@ -24,4 +24,11 @@ public interface GroupRepository extends JpaRepository<Group, Integer> {
      * уникальность при обновлении.
      */
     Optional<Group> findByName(String name);
+
+    /**
+     * Сколько групп числят эту аудиторию домашней. При удалении аудитории ссылка обнуляется
+     * ({@code base_auditorium_id ON DELETE SET NULL}) — не потеря данных, но пользователя
+     * стоит предупредить: базовая аудитория участвует в подборе комнаты при генерации.
+     */
+    long countByBaseAuditoriumId(Integer auditoriumId);
 }

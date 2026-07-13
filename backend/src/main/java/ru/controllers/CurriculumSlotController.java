@@ -7,8 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.dto.curriculumSlot.CurriculumSlotCreateDto;
 import ru.dto.curriculumSlot.CurriculumSlotDto;
 import ru.dto.curriculumSlot.CurriculumSlotUpdateDto;
-import ru.mapper.CurriculumSlotMapper;
-import ru.repository.CurriculumSlotRepository;
+import ru.dto.curriculumSlot.SlotDeletionImpactDto;
 import ru.services.CurriculumSlotService;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -46,6 +45,15 @@ public class CurriculumSlotController {
     public ResponseEntity<CurriculumSlotDto> update(@PathVariable Integer id, @Valid @RequestBody CurriculumSlotUpdateDto dto) {
         CurriculumSlotDto updated = curriculumSlotService.updateSlot(id, dto);
         return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Предпросмотр последствий удаления занятия плана: сколько назначений и уже размещённых
+     * занятий уйдёт каскадом и сколько из них закреплено вручную (потеря ручной раскладки).
+     */
+    @GetMapping("/{id}/delete-impact")
+    public ResponseEntity<SlotDeletionImpactDto> deleteImpact(@PathVariable Integer id) {
+        return ResponseEntity.ok(curriculumSlotService.deleteImpact(id));
     }
 
     @DeleteMapping("/{id}")
