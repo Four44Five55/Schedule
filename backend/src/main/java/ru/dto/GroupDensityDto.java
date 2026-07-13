@@ -12,18 +12,24 @@ package ru.dto;
  *       и групповых ограничений (командировки/сессии и т.п.), развёрнутых в ячейки.</li>
  * </ul>
  *
- * <p>«Занято» берётся из {@code schedule_view} по строкам этой группы (вариант 3: одна строка
- * на группу потока). {@code remaining} и {@code free13} — производные, но считаются на бэке,
- * чтобы фронт не повторял капасити-логику.</p>
+ * <p>«Занято» берётся из {@code schedule_view} — но считается по <b>уникальным размещениям</b>,
+ * а не по строкам: с миграции 016 одно занятие даёт строку на КАЖДОГО преподавателя (совместные
+ * занятия, напр. английский вдвоём). Подсчёт «в лоб» завышал занятость и уводил {@code free13}
+ * в минус при реально свободных парах.</p>
  *
- * @param groupId     id группы
- * @param groupName   название группы
- * @param demand      всего занятий к размещению для группы (набор генерации периода)
- * @param placed13    размещено в парах 1–3
- * @param inFourth    размещено в 4-й паре
- * @param remaining   осталось разместить {@code max(0, demand - placed13 - inFourth)}
- * @param capacity13  реально доступные ячейки пар 1–3 за период (с учётом закрытых пар и ограничений)
- * @param free13      свободная ёмкость 1–3 {@code capacity13 - placed13} (может быть &lt; 0 при перегрузе)
+ * <p>{@code remaining}, {@code free13} и {@code mustGoToFourth} — производные, но считаются на
+ * бэке, чтобы фронт не повторял капасити-логику.</p>
+ *
+ * @param groupId        id группы
+ * @param groupName      название группы
+ * @param demand         всего занятий к размещению для группы (набор генерации периода)
+ * @param placed13       размещено в парах 1–3 (уникальных занятий)
+ * @param inFourth       размещено в 4-й паре
+ * @param remaining      осталось разместить {@code max(0, demand - placed13 - inFourth)}
+ * @param capacity13     реально доступные ячейки пар 1–3 за период (закрытые пары и ограничения вычтены)
+ * @param free13         свободных пар 1–3 {@code max(0, capacity13 - placed13)}
+ * @param mustGoToFourth сколько из оставшихся занятий в пары 1–3 <b>не влезет</b>
+ *                       ({@code max(0, remaining - free13)}) — их придётся ставить в 4-ю пару
  */
 public record GroupDensityDto(
         Integer groupId,
@@ -33,5 +39,6 @@ public record GroupDensityDto(
         int inFourth,
         int remaining,
         int capacity13,
-        int free13
+        int free13,
+        int mustGoToFourth
 ) {}

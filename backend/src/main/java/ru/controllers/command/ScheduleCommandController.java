@@ -138,27 +138,31 @@ public class ScheduleCommandController {
      *
      * <p>Все существующие размещения сессии остаются неподвижными, раскладываются только
      * неразмещённые занятия курса «вокруг» них. Ничего уже стоящего не удаляется.</p>
+     *
+     * <p>Охват сужается опционально: по видам занятий и/или по преподавателям курса.</p>
      */
     @PostMapping("/sessions/{sessionId}/generate-course")
     public ResponseEntity<ScheduleSessionDto> generateCourse(
         @PathVariable UUID sessionId,
         @RequestBody ru.dto.command.GenerateCourseRequest request
     ) {
-        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}",
-                sessionId, request.studyPeriodId(), request.courseId(), request.kinds());
+        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}, educators={}",
+                sessionId, request.studyPeriodId(), request.courseId(), request.kinds(), request.educatorIds());
 
         ScheduleSession session = generationService.generateCourseAdditive(
-            sessionId, request.studyPeriodId(), request.courseId(), request.kinds(), "admin");
+            sessionId, request.studyPeriodId(), request.courseId(),
+            request.kinds(), request.educatorIds(), "admin");
 
         return ResponseEntity.ok(sessionMapper.toDto(session));
     }
 
     /**
-     * Очистка размещений сессии, КРОМЕ закреплённых. Охват — опционально по курсу и/или виду.
+     * Очистка размещений сессии, КРОМЕ закреплённых. Охват — опционально по курсу, виду
+     * и/или преподавателю (зеркально охвату генерации).
      *
      * <p>POST /api/schedule/command/sessions/{sessionId}/clear</p>
-     * <p>Тело: {@code { "courseId": 705, "kind": "PRACTICAL_WORK" }} (оба поля опциональны).
-     * Пусто оба → очистка всей сессии (кроме замков).</p>
+     * <p>Тело: {@code { "courseId": 705, "kinds": ["PRACTICAL_WORK"], "educatorIds": [317] }} —
+     * все поля опциональны. Пусто всё → очистка всей сессии (кроме замков).</p>
      *
      * @return количество удалённых размещений
      */
@@ -169,9 +173,11 @@ public class ScheduleCommandController {
     ) {
         Integer courseId = request != null ? request.courseId() : null;
         java.util.List<ru.enums.KindOfStudy> kinds = request != null ? request.kinds() : null;
-        log.info("Очистка размещений: sessionId={}, course={}, kinds={}", sessionId, courseId, kinds);
+        java.util.List<Integer> educatorIds = request != null ? request.educatorIds() : null;
+        log.info("Очистка размещений: sessionId={}, course={}, kinds={}, educators={}",
+                sessionId, courseId, kinds, educatorIds);
 
-        int removed = generationService.clearPlacements(sessionId, courseId, kinds, "admin");
+        int removed = generationService.clearPlacements(sessionId, courseId, kinds, educatorIds, "admin");
         return ResponseEntity.ok(removed);
     }
 

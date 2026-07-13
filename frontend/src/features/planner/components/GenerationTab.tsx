@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DisciplineCourseDto, StudyPeriodDto } from '../../../types/api';
-import { ScheduleSessionDto, CoursePlacementCountDto } from '../../../types/cqrs';
+import { ScheduleSessionDto, CoursePlacementCountDto, EducatorPlacementCountDto } from '../../../types/cqrs';
 import { CQRSService } from '../../../services/cqrsApiService';
 import { useEnums } from '../../../context/EnumContext';
-import { Calendar, Play, Loader2, Sparkles, Eraser, Info, RefreshCw } from 'lucide-react';
+import {
+  Calendar, Play, Loader2, Sparkles, Eraser, Info, RefreshCw,
+  ChevronDown, ChevronRight, UserSquare2,
+} from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
 type KindMode = 'all' | 'lectures' | 'nonLectures';
@@ -27,6 +30,8 @@ export const GenerationTab: React.FC<{
   const [message, setMessage] = useState<string | null>(null);
   // Счётчики «распределено N/M» по курсам (обновляются после генерации/очистки).
   const [counts, setCounts] = useState<Map<number, CoursePlacementCountDto>>(new Map());
+  // Раскрытые дисциплины: внутри — преподаватели с теми же генерацией и очисткой в своём охвате.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   // Сессия периода — для инкрементальных операций (та же, что в «Расписании» планировщика).
   useEffect(() => {
@@ -70,15 +75,39 @@ export const GenerationTab: React.FC<{
     mode === 'all' ? undefined : mode === 'lectures' ? ['LECTURE'] : nonLectureKinds;
   const modeLabel = (mode: KindMode) => (mode === 'all' ? 'всё' : mode === 'lectures' ? 'лекции' : 'практики');
 
-  const genCourse = (c: DisciplineCourseDto, mode: KindMode) => run(`gen-${c.id}`, async () => {
-    await CQRSService.generateCourse(session!.id, selectedPeriod!.id, c.id, kindsFor(mode));
-    setMessage(`✅ «${c.discipline.name}» · ${modeLabel(mode)}: разложено (аддитивно, вокруг стоящего)`);
-  });
+  // Ключ «занятости» строки: у дисциплины и у каждого её преподавателя он свой, чтобы спиннер
+  // и блокировка кнопок относились ровно к той строке, по которой кликнули.
+  const rowKey = (op: 'gen' | 'clr', courseId: number, educatorId?: number) =>
+    `${op}-${courseId}${educatorId != null ? `-e${educatorId}` : ''}`;
+  const rowBusyFor = (courseId: number, educatorId?: number) =>
+    busy === rowKey('gen', courseId, educatorId) || busy === rowKey('clr', courseId, educatorId);
 
-  const clearCourse = (c: DisciplineCourseDto, mode: KindMode) => run(`clr-${c.id}`, async () => {
-    const n = await CQRSService.clearPlacements(session!.id, { courseId: c.id, kinds: kindsFor(mode) });
-    setMessage(`🧹 «${c.discipline.name}» · ${modeLabel(mode)}: удалено ${n} (кроме замков)`);
-  });
+  const toggleExpanded = (courseId: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(courseId)) next.delete(courseId); else next.add(courseId);
+      return next;
+    });
+
+  // Генерация/очистка дисциплины. `educator` (опц.) сужает охват до одного преподавателя —
+  // те же две операции, что и на всей дисциплине, просто в его наборе занятий.
+  const genCourse = (c: DisciplineCourseDto, mode: KindMode, educator?: EducatorPlacementCountDto) =>
+    run(rowKey('gen', c.id, educator?.educatorId), async () => {
+      await CQRSService.generateCourse(
+        session!.id, selectedPeriod!.id, c.id, kindsFor(mode),
+        educator ? [educator.educatorId] : undefined);
+      setMessage(`✅ «${c.discipline.name}»${educator ? ` · ${educator.educatorName}` : ''} · ${modeLabel(mode)}: разложено (аддитивно, вокруг стоящего)`);
+    });
+
+  const clearCourse = (c: DisciplineCourseDto, mode: KindMode, educator?: EducatorPlacementCountDto) =>
+    run(rowKey('clr', c.id, educator?.educatorId), async () => {
+      const n = await CQRSService.clearPlacements(session!.id, {
+        courseId: c.id,
+        kinds: kindsFor(mode),
+        educatorIds: educator ? [educator.educatorId] : undefined,
+      });
+      setMessage(`🧹 «${c.discipline.name}»${educator ? ` · ${educator.educatorName}` : ''} · ${modeLabel(mode)}: удалено ${n} (кроме замков)`);
+    });
 
   const clearAll = () => run('clr-all', async () => {
     const n = await CQRSService.clearPlacements(session!.id, {});
@@ -140,6 +169,9 @@ export const GenerationTab: React.FC<{
           «всё» учитывает равномерность и интервалы между лекциями — рекомендуется. Очистка не трогает
           закреплённые (замок). Поток: сгенерировать всё → очистить практики → поправить лекции вручную →
           сгенерировать практики. Результат — во вкладке «Расписание».
+          {' '}Дисциплина раскрывается в список преподавателей — те же генерация и очистка доступны
+          в охвате одного из них. Но помните: чем уже охват, тем меньше «кругозор» распределителя —
+          равномерность он считает только по взятым занятиям, остальные для него неподвижны.
         </p>
 
         {!session && (
@@ -149,14 +181,25 @@ export const GenerationTab: React.FC<{
         )}
 
         {courses.map((c) => {
-          const genBusy = busy === `gen-${c.id}`;
-          const rowBusy = genBusy || busy === `clr-${c.id}`;
           const cnt = counts.get(c.id);
           const done = cnt && cnt.total > 0 && cnt.placed >= cnt.total;
+          const rowBusy = rowBusyFor(c.id);
+          const isOpen = expanded.has(c.id);
+          const educators = cnt?.educators ?? [];
           return (
             <div key={c.id} className="bg-white border border-slate-200 rounded-lg px-3 py-2 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-                {genBusy && <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />}
+              {/* Заголовок дисциплины: раскрывается в список преподавателей */}
+              <button
+                type="button"
+                onClick={() => toggleExpanded(c.id)}
+                disabled={educators.length === 0}
+                className="w-full flex items-center gap-1.5 text-sm font-semibold text-slate-800 text-left disabled:cursor-default"
+              >
+                {busy === rowKey('gen', c.id)
+                  ? <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />
+                  : educators.length > 0
+                    ? (isOpen ? <ChevronDown size={13} className="text-slate-400 shrink-0" /> : <ChevronRight size={13} className="text-slate-400 shrink-0" />)
+                    : <span className="w-[13px] shrink-0" />}
                 <span className="truncate">{c.discipline.name}</span>
                 <span className="text-slate-400 text-xs font-normal shrink-0">· сем. {c.semester}</span>
                 {cnt && (
@@ -167,18 +210,48 @@ export const GenerationTab: React.FC<{
                     распределено {cnt.placed}/{cnt.total}
                   </span>
                 )}
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-                <span className="text-slate-400 shrink-0">Сген:</span>
-                <ModeBtn label="всё" tone="blue" onClick={() => genCourse(c, 'all')} disabled={!session || rowBusy} />
-                <ModeBtn label="лекции" tone="blue" onClick={() => genCourse(c, 'lectures')} disabled={!session || rowBusy} />
-                <ModeBtn label="практики" tone="blue" onClick={() => genCourse(c, 'nonLectures')} disabled={!session || rowBusy} />
-                <span className="mx-0.5 text-slate-200 select-none">│</span>
-                <span className="text-slate-400 shrink-0">Очист:</span>
-                <ModeBtn label="всё" tone="red" onClick={() => clearCourse(c, 'all')} disabled={!session || rowBusy} />
-                <ModeBtn label="лекции" tone="red" onClick={() => clearCourse(c, 'lectures')} disabled={!session || rowBusy} />
-                <ModeBtn label="практики" tone="red" onClick={() => clearCourse(c, 'nonLectures')} disabled={!session || rowBusy} />
-              </div>
+              </button>
+
+              <ScopeActions
+                disabled={!session || rowBusy}
+                onGenerate={(mode) => genCourse(c, mode)}
+                onClear={(mode) => clearCourse(c, mode)}
+              />
+
+              {/* Преподаватели дисциплины: те же операции, но в охвате одного преподавателя.
+                  Совместное занятие двух преподавателей попадает в охват каждого — поэтому
+                  сумма по строкам может превышать счётчик дисциплины. */}
+              {isOpen && educators.length > 0 && (
+                <div className="pt-1 mt-1 border-t border-slate-100 space-y-1.5">
+                  {educators.map((e) => {
+                    const eBusy = rowBusyFor(c.id, e.educatorId);
+                    const eDone = e.total > 0 && e.placed >= e.total;
+                    return (
+                      <div key={e.educatorId} className="pl-4 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          {busy === rowKey('gen', c.id, e.educatorId) && (
+                            <Loader2 size={11} className="animate-spin text-blue-500 shrink-0" />
+                          )}
+                          <UserSquare2 size={11} className="text-slate-300 shrink-0" />
+                          <span className="truncate font-medium">{e.educatorName}</span>
+                          <span className={cn(
+                            'ml-auto shrink-0 text-[10px] font-bold tabular-nums',
+                            eDone ? 'text-emerald-600' : e.placed > 0 ? 'text-blue-600' : 'text-slate-400'
+                          )}>
+                            {e.placed}/{e.total}
+                          </span>
+                        </div>
+                        <ScopeActions
+                          compact
+                          disabled={!session || eBusy}
+                          onGenerate={(mode) => genCourse(c, mode, e)}
+                          onClear={(mode) => clearCourse(c, mode, e)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -207,6 +280,30 @@ export const GenerationTab: React.FC<{
     </div>
   );
 };
+
+/**
+ * Строка действий охвата: «Сген: всё / лекции / практики │ Очист: всё / лекции / практики».
+ * Один компонент на оба уровня (дисциплина и преподаватель внутри неё) — набор операций у них
+ * одинаков, меняется только охват, который знает вызывающий (DRY: раньше разметка была бы дублем).
+ */
+const ScopeActions: React.FC<{
+  disabled: boolean;
+  compact?: boolean;
+  onGenerate: (mode: KindMode) => void;
+  onClear: (mode: KindMode) => void;
+}> = ({ disabled, compact, onGenerate, onClear }) => (
+  <div className={cn('flex items-center gap-1.5 flex-wrap', compact ? 'text-[10px]' : 'text-[11px]')}>
+    <span className="text-slate-400 shrink-0">Сген:</span>
+    <ModeBtn label="всё" tone="blue" onClick={() => onGenerate('all')} disabled={disabled} />
+    <ModeBtn label="лекции" tone="blue" onClick={() => onGenerate('lectures')} disabled={disabled} />
+    <ModeBtn label="практики" tone="blue" onClick={() => onGenerate('nonLectures')} disabled={disabled} />
+    <span className="mx-0.5 text-slate-200 select-none">│</span>
+    <span className="text-slate-400 shrink-0">Очист:</span>
+    <ModeBtn label="всё" tone="red" onClick={() => onClear('all')} disabled={disabled} />
+    <ModeBtn label="лекции" tone="red" onClick={() => onClear('lectures')} disabled={disabled} />
+    <ModeBtn label="практики" tone="red" onClick={() => onClear('nonLectures')} disabled={disabled} />
+  </div>
+);
 
 const ModeBtn: React.FC<{ label: string; tone: 'blue' | 'red'; onClick: () => void; disabled?: boolean }> = ({ label, tone, onClick, disabled }) => (
   <button

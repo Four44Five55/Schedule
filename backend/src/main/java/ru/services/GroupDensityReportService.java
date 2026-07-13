@@ -50,12 +50,19 @@ public class GroupDensityReportService {
     private final ScheduleViewRepository viewRepository;
     private final ConstraintService constraintService;
 
-    /** Сырьё по одной группе до сборки DTO. */
+    /**
+     * Сырьё по одной группе до сборки DTO.
+     *
+     * <p>Занятость копится <b>множествами placementId</b>, а не счётчиками: одно занятие даёт в
+     * {@code schedule_view} строку на каждого преподавателя (совместные занятия — миграция 016),
+     * и подсчёт строк завышал «занято» — вплоть до отрицательного «свободно» при реально
+     * свободных парах.</p>
+     */
     private static final class Acc {
         final String name;
         int demand;
-        int placed13;
-        int inFourth;
+        final Set<UUID> placed13 = new HashSet<>();
+        final Set<UUID> inFourth = new HashSet<>();
         Acc(String name) { this.name = name; }
     }
 
@@ -91,9 +98,10 @@ public class GroupDensityReportService {
         LocalDate end = scope.period().getEndDate();
         for (ScheduleView v : viewRepository.findByPeriod(start, end)) {
             Acc acc = byGroup.get(v.getStudyStreamId());
-            if (acc == null || v.getTimeSlot() == null) continue;
-            if (v.getTimeSlot() == TimeSlotPair.FOURTH) acc.inFourth++;
-            else acc.placed13++; // FIRST/SECOND/THIRD
+            if (acc == null || v.getTimeSlot() == null || v.getPlacementId() == null) continue;
+            // Дедупликация по размещению: строк на занятие может быть несколько (по преподавателю).
+            if (v.getTimeSlot() == TimeSlotPair.FOURTH) acc.inFourth.add(v.getPlacementId());
+            else acc.placed13.add(v.getPlacementId()); // FIRST/SECOND/THIRD
         }
 
         // Доступные ячейки 1–3 за период (одинаково для всех групп; ограничения вычитаем персонально).
@@ -119,18 +127,27 @@ public class GroupDensityReportService {
                 }
                 blocked = blockedCells.size();
             }
+            int placed13 = acc.placed13.size();
+            int inFourth = acc.inFourth.size();
+
             int capacity13 = baseCapacity - blocked;
-            int free13 = capacity13 - acc.placed13;
-            int remaining = Math.max(0, acc.demand - acc.placed13 - acc.inFourth);
+            // Свободных пар не бывает меньше нуля: перегруз выражается не «минусом свободных»,
+            // а тем, что часть занятий не влезает (mustGoToFourth) — так это и читается человеком.
+            int free13 = Math.max(0, capacity13 - placed13);
+            int remaining = Math.max(0, acc.demand - placed13 - inFourth);
+            // Сколько из оставшегося придётся уводить в 4-ю пару: свободных пар 1–3 не хватит.
+            int mustGoToFourth = Math.max(0, remaining - free13);
 
             result.add(new GroupDensityDto(
-                    groupId, acc.name, acc.demand, acc.placed13, acc.inFourth,
-                    remaining, capacity13, free13));
+                    groupId, acc.name, acc.demand, placed13, inFourth,
+                    remaining, capacity13, free13, mustGoToFourth));
         }
 
-        // Самые «забитые» сверху (наименьший запас), при равенстве — по имени группы.
+        // Проблемные сверху: сначала те, кому не хватает пар 1–3 (придётся в 4-ю), затем
+        // по наименьшему запасу, при равенстве — по имени группы.
         result.sort(Comparator
-                .comparingInt(GroupDensityDto::free13)
+                .comparingInt(GroupDensityDto::mustGoToFourth).reversed()
+                .thenComparingInt(GroupDensityDto::free13)
                 .thenComparing(GroupDensityDto::groupName, Comparator.nullsLast(String::compareTo)));
 
         log.info("Group density: период id={}, групп={}, ёмкость 1–3 (база)={}",

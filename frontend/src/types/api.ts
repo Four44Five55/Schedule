@@ -526,12 +526,13 @@ export type ExportAxis = 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
 export interface GroupDensityDto {
   groupId: number;
   groupName: string;
-  demand: number;      // всего занятий к размещению (набор генерации)
-  placed13: number;    // размещено в парах 1–3
-  inFourth: number;    // размещено в 4-й паре
-  remaining: number;   // осталось разместить = max(0, demand - placed13 - inFourth)
-  capacity13: number;  // реально доступные ячейки 1–3 (закрытые пары + ограничения вычтены)
-  free13: number;      // свободная ёмкость 1–3 = capacity13 - placed13 (может быть < 0)
+  demand: number;         // всего занятий к размещению (набор генерации)
+  placed13: number;       // размещено в парах 1–3 (УНИКАЛЬНЫХ занятий, не строк проекции)
+  inFourth: number;       // размещено в 4-й паре
+  remaining: number;      // осталось разместить = max(0, demand - placed13 - inFourth)
+  capacity13: number;     // реально доступные пары 1–3 (закрытые пары + ограничения вычтены)
+  free13: number;         // свободных пар 1–3 = max(0, capacity13 - placed13)
+  mustGoToFourth: number; // из оставшихся столько НЕ влезет в 1–3 → придётся в 4-ю пару
 }
 
 // ============ SCHEDULE RESULT ============

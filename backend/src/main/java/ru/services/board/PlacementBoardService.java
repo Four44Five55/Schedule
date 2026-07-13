@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.dto.board.BoardLessonDto;
 import ru.dto.board.CoursePlacementCountDto;
 import ru.dto.board.DisciplinePlacementDto;
+import ru.dto.board.EducatorPlacementCountDto;
 import ru.dto.board.EntityPlacementDto;
 import ru.dto.board.PlacementBoardDto;
 import ru.entity.Assignment;
@@ -137,9 +138,56 @@ public class PlacementBoardService {
             int total = assignments.size();
             int placed = (int) assignments.stream()
                     .filter(a -> placedAssignmentIds.contains(a.getId())).count();
-            result.add(new CoursePlacementCountDto(courseId, total, placed));
+            result.add(new CoursePlacementCountDto(
+                    courseId, total, placed, educatorCounts(assignments, placedAssignmentIds)));
         }
         return result;
+    }
+
+    /**
+     * Разбивка счётчиков курса по преподавателям (для раскрытия дисциплины во вкладке
+     * «Генерация»). Совместное занятие двух преподавателей учитывается у каждого — так же,
+     * как работает охват «по преподавателю» в генерации и очистке.
+     */
+    private List<EducatorPlacementCountDto> educatorCounts(
+            List<Assignment> assignments, java.util.Set<Integer> placedAssignmentIds) {
+        Map<Integer, EducatorAgg> byEducator = new LinkedHashMap<>();
+        for (Assignment a : assignments) {
+            if (a.getEducators() == null) continue;
+            boolean isPlaced = placedAssignmentIds.contains(a.getId());
+            for (Educator e : a.getEducators()) {
+                byEducator.computeIfAbsent(e.getId(), k -> new EducatorAgg(e.getId(), e.getName()))
+                        .add(isPlaced);
+            }
+        }
+        return byEducator.values().stream()
+                .map(EducatorAgg::toDto)
+                .sorted(Comparator.comparing(
+                        EducatorPlacementCountDto::educatorName,
+                        Comparator.nullsLast(String::compareTo)))
+                .toList();
+    }
+
+    /** Накопитель счётчиков одного преподавателя (по образцу {@code EntityAgg} выше). */
+    private static final class EducatorAgg {
+        private final Integer id;
+        private final String name;
+        private int total;
+        private int placed;
+
+        EducatorAgg(Integer id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        void add(boolean isPlaced) {
+            total++;
+            if (isPlaced) placed++;
+        }
+
+        EducatorPlacementCountDto toDto() {
+            return new EducatorPlacementCountDto(id, name, total, placed);
+        }
     }
 
     private BoardLessonDto toLesson(Assignment a, Integer courseId, LessonPlacement placement) {

@@ -150,11 +150,24 @@ export interface PlacementBoardDto {
   entities: EntityPlacementDto[];
 }
 
-/** Лёгкий счётчик «распределено N/M» по курсу (вкладка генерации). */
+/** Счётчик «распределено N/M» по одному преподавателю внутри курса (раскрытие дисциплины). */
+export interface EducatorPlacementCountDto {
+  educatorId: number;
+  educatorName: string;
+  total: number;
+  placed: number;
+}
+
+/**
+ * Лёгкий счётчик «распределено N/M» по курсу (вкладка генерации) + разбивка по преподавателям
+ * для раскрывающегося списка (генерация/очистка доступны и в охвате одного преподавателя).
+ * Сумма по преподавателям может превышать `total`: совместное занятие считается у каждого.
+ */
 export interface CoursePlacementCountDto {
   courseId: number;
   total: number;
   placed: number;
+  educators: EducatorPlacementCountDto[];
 }
 
 /**

@@ -7,6 +7,7 @@ import {CQRSService} from '../../../services/cqrsApiService';
 import type {OrderFinding, OrderViolationKind} from '../../../types/cqrs';
 import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
+import {kindStyleOf} from '../kindStyles';
 
 /** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб). */
 const WEEKDAY_ID: Record<DayOfWeek, number> = {
@@ -81,8 +82,6 @@ interface ScheduleCellProps {
   isTeacherBusy: boolean;
   isSourceCell: boolean;
   isChainMember: boolean;
-  isExamOrCredit: boolean;
-  isQuiz: boolean;
   isTeacherBusyHidden: boolean;
   isDisciplineMatch: boolean;
   // Находка порядка изучения — примитивы, а не объект: ячейка обёрнута в React.memo с
@@ -110,7 +109,7 @@ interface ScheduleCellProps {
 
 const ScheduleCell = React.memo(({
   lesson, constraintFullName, constraintAbbr, hasConstraint, isConflict,
-  isMoveTarget, isTeacherBusy, isSourceCell, isChainMember, isExamOrCredit, isQuiz,
+  isMoveTarget, isTeacherBusy, isSourceCell, isChainMember,
   isTeacherBusyHidden, isDisciplineMatch, orderKind, orderGapDays, spineAbove, spineBelow, chainedBelow,
   detachedBelow, isChainedSpine, factor, dateStr, slotId, isEditMode, isEducatorView,
   pinningEnabled, selectionActive, onLessonClick, onCellMove, onToggleDetach,
@@ -140,20 +139,12 @@ const ScheduleCell = React.memo(({
   ].join('\n') : hasConstraint ? `ОГРАНИЧЕНИЕ: ${constraintFullName} (${constraintAbbr})` : '';
 
   // Фон занятой ячейки: жёлтый (скрытая занятость) → цвет по виду для активной
-  // дисциплины → нейтральный серый в покое.
-  const disciplineBg = isExamOrCredit
-      ? 'bg-violet-150 text-slate-900 hover:bg-violet-200'
-      : lesson?.kindOfStudy === 'LECTURE'
-          ? 'bg-rose-150 text-slate-900 hover:bg-rose-200'
-          : 'bg-sky-150 text-slate-900 hover:bg-sky-200';
-  const restingBg = isExamOrCredit
-      ? 'bg-slate-300 text-slate-900 hover:bg-slate-400'
-      : isQuiz
-          ? 'bg-slate-100 text-slate-900 hover:bg-slate-200'
-          : 'bg-white text-slate-900 hover:bg-slate-50';
+  // дисциплины → нейтральный в покое. Сами цвета — в едином источнике `kindStyles.ts`
+  // (тот же, что у палитры ручной раскладки), здесь только выбор режима.
+  const kindStyle = kindStyleOf(lesson?.kindOfStudy);
   const occupiedBg = isTeacherBusyHidden
       ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
-      : isDisciplineMatch ? disciplineBg : restingBg;
+      : isDisciplineMatch ? kindStyle.active : kindStyle.resting;
 
   return (
       <td
@@ -767,11 +758,6 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     const isSourceCell = !!lesson && isSelectedLesson(lesson);
     const isChainMember = !!lesson?.placementId
         && selectedChainIds.includes(lesson.placementId);
-    const isExamOrCredit = !!lesson &&
-        (lesson.kindOfStudy === 'EXAM' ||
-            lesson.kindOfStudy === 'CREDIT_WITH_GRADE' ||
-            lesson.kindOfStudy === 'CREDIT_WITHOUT_GRADE');
-    const isQuiz = lesson?.kindOfStudy === 'QUIZ';
     const isTeacherBusyHidden = !!selectedLesson && !!lesson && !isSourceCell &&
         teacherBusyCells.has(gridKey) &&
         !lesson.educatorIds.some((id) => selectedEducatorIds.has(id));
@@ -807,8 +793,6 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             isTeacherBusy={isTeacherBusy}
             isSourceCell={isSourceCell}
             isChainMember={isChainMember}
-            isExamOrCredit={isExamOrCredit}
-            isQuiz={isQuiz}
             isTeacherBusyHidden={isTeacherBusyHidden}
             isDisciplineMatch={isDisciplineMatch}
             orderKind={orderFinding?.kind}

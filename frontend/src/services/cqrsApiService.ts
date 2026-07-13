@@ -103,18 +103,28 @@ export const CQRSService = {
   /**
    * Аддитивная генерация одного курса (дисциплины): раскладывает только неразмещённые занятия
    * «вокруг» уже стоящих (инкрементальная сборка). Существующее не трогается.
+   *
+   * Охват сужается опционально: `kinds` (виды занятий) и `educatorIds` (преподаватели курса).
    */
-  generateCourse: (sessionId: string, studyPeriodId: number, courseId: number, kinds?: string[]): Promise<ScheduleSessionDto> => {
+  generateCourse: (
+    sessionId: string, studyPeriodId: number, courseId: number,
+    kinds?: string[], educatorIds?: number[]
+  ): Promise<ScheduleSessionDto> => {
     return api
-      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/generate-course`, { studyPeriodId, courseId, kinds })
+      .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/generate-course`,
+        { studyPeriodId, courseId, kinds, educatorIds })
       .then(r => r.data);
   },
 
   /**
-   * Очистка размещений сессии, КРОМЕ закреплённых. courseId/kinds опциональны (пусто → всё).
+   * Очистка размещений сессии, КРОМЕ закреплённых. Все поля охвата опциональны (пусто → всё):
+   * курс, виды занятий, преподаватели (зеркально охвату генерации).
    * @returns количество удалённых размещений
    */
-  clearPlacements: (sessionId: string, body: { courseId?: number; kinds?: string[] }): Promise<number> => {
+  clearPlacements: (
+    sessionId: string,
+    body: { courseId?: number; kinds?: string[]; educatorIds?: number[] }
+  ): Promise<number> => {
     return api
       .post<number>(`/schedule/command/sessions/${sessionId}/clear`, body)
       .then(r => r.data);

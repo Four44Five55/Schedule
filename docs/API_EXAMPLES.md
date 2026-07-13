@@ -417,6 +417,36 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 
 ---
 
+## 🎯 ОХВАТ ГЕНЕРАЦИИ И ОЧИСТКИ (2026-07-13)
+
+Обе операции сужаются одинаково: курс → виды занятий → преподаватели. Охват «по преподавателю»
+означает в них одно и то же (занятие берётся, если его ведёт кто-то из указанных; совместное
+занятие двух преподавателей попадает в охват каждого).
+
+```bash
+# Разложить только практики преподавателя 317 в рамках дисциплины 711
+curl -X POST "http://localhost:8080/api/schedule/command/sessions/{sessionId}/generate-course" \
+  -H "Content-Type: application/json" \
+  -d '{"studyPeriodId": 502, "courseId": 711, "kinds": ["PRACTICAL_WORK"], "educatorIds": [317]}'
+
+# Снять их же (кроме закреплённых)
+curl -X POST "http://localhost:8080/api/schedule/command/sessions/{sessionId}/clear" \
+  -H "Content-Type: application/json" \
+  -d '{"courseId": 711, "kinds": ["PRACTICAL_WORK"], "educatorIds": [317]}'
+```
+> ⚠️ Чем уже охват, тем меньше «кругозор» распределителя: равномерность и интервалы между лекциями
+> он считает только по взятым занятиям, остальные для него — неподвижные обстоятельства.
+
+**`GET /command/sessions/{id}/placement-counts?courseIds=711`** отдаёт счётчик курса **и разбивку
+по преподавателям** (для раскрытия дисциплины в UI):
+```json
+[{ "courseId": 711, "total": 84, "placed": 84,
+   "educators": [{ "educatorId": 317, "educatorName": "Барская В.М.", "total": 24, "placed": 24 }] }]
+```
+> Сумма по преподавателям может превышать `total` курса — совместное занятие считается у каждого.
+
+---
+
 ## 🩺 ЗДОРОВЬЕ ПРОЕКЦИИ И ЦЕНА УДАЛЕНИЯ (2026-07-13)
 
 Инварианты read-модели и то, как они видны наружу — см. [CQRS_ARCHITECTURE.md](CQRS_ARCHITECTURE.md).

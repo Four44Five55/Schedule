@@ -6,6 +6,7 @@ import { ScheduleService } from '../../../services/apiServices';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
 import { useEducatorPriority } from '../../schedule/useEducatorPriority';
 import { AcademicGridSchedule } from '../../schedule/components/AcademicGridSchedule';
+import { kindStyleOf, KIND_STYLES } from '../../schedule/kindStyles';
 import { Users, UserSquare2, ChevronRight, ChevronDown, Loader2, Lock, X, Trash2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
@@ -249,6 +250,27 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // Приоритеты преподавателя (дни/пары) — подсветка «замороженных» колонок в виде «преподаватель».
   const educatorPriority = useEducatorPriority(entityId, viewMode === 'educator');
 
+  // Находки порядка, которые реально показываем в сетке.
+  //
+  // Когда из палитры выбрано конкретное занятие, диспетчер работает с ОДНОЙ дисциплиной —
+  // штриховка нарушений по всем остальным только мешает читать сетку (её там может быть много,
+  // и к текущему решению она отношения не имеет). Поэтому на время выбора оставляем находки
+  // только по дисциплине выбранного занятия; сняли выбор — снова видно всё расписание.
+  // Это чисто presentational-фильтр: сами находки бэк считает по всей сессии.
+  const visibleOrderViolations = useMemo(() => {
+    if (!selectedUnplaced) return orderViolations;
+    // Ключ — ПОЛНОЕ имя дисциплины (уникально), а не аббревиатура: у разных дисциплин
+    // аббревиатуры могут совпасть, и подсветка перескочила бы на чужую.
+    const name = selectedEntityData?.disciplines
+      .find((d) => d.courseId === selectedUnplaced.courseId)?.name;
+    if (!name) return orderViolations;
+    const sameDiscipline = new Set(
+      lessons.filter((l) => l.disciplineName === name && l.placementId)
+        .map((l) => l.placementId as string)
+    );
+    return new Map([...orderViolations].filter(([placementId]) => sameDiscipline.has(placementId)));
+  }, [orderViolations, selectedUnplaced, selectedEntityData, lessons]);
+
   // «Размещено» выбранной сущности по дисциплинам — из доски (только занятия с placementId).
   const placedByDiscipline = useMemo(() => {
     if (!selectedEntityData) return [];
@@ -270,6 +292,15 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
         <div className="flex bg-slate-50 border border-slate-200 rounded-lg p-0.5">
           <ModeBtn active={viewMode === 'group'} onClick={() => switchMode('group')} icon={Users} label="Группы" />
           <ModeBtn active={viewMode === 'educator'} onClick={() => switchMode('educator')} icon={UserSquare2} label="Преподаватели" />
+        </div>
+        {/* Легенда видов занятий — из единого источника подсветки (kindStyles), тот же, что у сетки. */}
+        <div className="flex items-center gap-2 text-[10px] text-slate-400">
+          {Object.entries(KIND_STYLES).map(([group, s]) => (
+            <span key={group} className="flex items-center gap-1">
+              <span className={cn('w-2 h-2 rounded-full', s.dot)} />
+              {s.label}
+            </span>
+          ))}
         </div>
         <div className="text-xs text-slate-500 flex items-center gap-2">
           <span>Всего: <span className="font-bold text-slate-700">{board?.total ?? 0}</span></span>
@@ -341,6 +372,9 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                                 ) : (
                                   unplacedItems.map((u) => {
                                     const isPicked = selectedUnplaced?.assignmentId === u.assignmentId;
+                                    // Подсветка вида занятия — из того же источника, что и сетка
+                                    // (`kindStyles.ts`): лекцию видно в очереди так же, как в расписании.
+                                    const ks = kindStyleOf(u.kindOfStudy);
                                     return (
                                       <button
                                         key={u.assignmentId}
@@ -361,7 +395,12 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                                         )}
                                       >
                                         <div className="flex items-center gap-1.5 w-full">
-                                          <span className="font-bold opacity-70">{u.kindOfStudyAbbr}/{u.position}</span>
+                                          <span className={cn(
+                                            'shrink-0 px-1 py-px rounded font-bold',
+                                            isPicked ? 'bg-white/70 text-emerald-800' : ks.chip
+                                          )}>
+                                            {u.kindOfStudyAbbr}/{u.position}
+                                          </span>
                                           <span className="truncate">Т.{u.themeNumber || '—'}</span>
                                         </div>
                                         {/* Группы-участники занятия (важно в виде преподавателя и для потоков). */}
@@ -426,7 +465,10 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                       {/* Занятия дисциплины (аббревиатура — в заголовке выше) */}
                       {placedOpen && list.map((l) => (
                         <div key={l.placementId} className="flex items-center gap-1.5 pl-4 pr-2 py-1 text-[11px] text-slate-500">
-                          <span className="truncate">{l.kindOfStudyAbbr}/Т.{l.themeNumber || '—'}</span>
+                          <span className={cn('shrink-0 px-1 py-px rounded font-bold', kindStyleOf(l.kindOfStudy).chip)}>
+                            {l.kindOfStudyAbbr}
+                          </span>
+                          <span className="truncate">Т.{l.themeNumber || '—'}</span>
                           <span className="ml-auto text-[10px] text-amber-600">{l.date}</span>
                           <button
                             type="button"
@@ -479,7 +521,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                   if (session) CQRSService.getSession(session.id).then(setSession).catch(() => {});
                 }}
                 onToggleLock={handleToggleLock}
-                orderViolations={orderViolations}
+                orderViolations={visibleOrderViolations}
                 placementCandidate={placementCandidate}
                 studyPeriodId={period.id}
                 onPlace={handlePlace}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { eachDayOfInterval, getDay, parseISO } from 'date-fns';
 import { cn } from '../../../utils/cn';
 import { Card } from '../../../components/ui/Card';
+import { HelpTip } from '../../../components/ui/HelpTip';
 import { ScheduleService } from '../../../services/apiServices';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
@@ -10,7 +11,7 @@ import {
 import { usePeriod } from '../../period/PeriodContext';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
-  AlertTriangle, CalendarClock, ArrowRight, Info, FileSpreadsheet, RefreshCw
+  AlertTriangle, CalendarClock, ArrowRight, FileSpreadsheet, RefreshCw
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -253,57 +254,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         />
       ) : (
         <div className="space-y-6">
-          {/* Плотность групп 1–3 */}
-          <Card title="Плотность групп (пары 1–3)">
-            <div className="space-y-3">
-              <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
-                <Info size={13} className="shrink-0 mt-0.5" />
-                «Всего» — сколько занятий нужно разместить группе; «Осталось» — ещё не размещено.
-                Ёмкость 1–3 считается на бэке честно: закрытые пары (Вс, Сб-4) и групповые
-                ограничения уже вычтены. «Своб. 1–3» может стать отрицательной при перегрузе.
-              </p>
-              <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] uppercase tracking-wide text-slate-400">
-                    <tr className="border-b border-slate-100">
-                      <th className="text-left font-bold py-1.5">Группа</th>
-                      <th className="text-right font-bold px-2">Всего</th>
-                      <th className="text-right font-bold px-2">Осталось</th>
-                      <th className="text-right font-bold px-2">Своб. 1–3</th>
-                      <th className="text-right font-bold px-2">Занято 1–3</th>
-                      <th className="text-right font-bold pl-2">В 4-й</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {density.map((g) => {
-                      const tight = g.free13 <= 0;
-                      return (
-                        <tr key={g.groupId} className={cn('transition-colors', tight && 'bg-red-50/60')}>
-                          <td className="py-1.5 font-bold text-slate-700 truncate max-w-[120px]">{g.groupName}</td>
-                          <td className="text-right px-2 tabular-nums text-slate-500">{g.demand}</td>
-                          <td className={cn('text-right px-2 tabular-nums font-bold', g.remaining > 0 ? 'text-blue-600' : 'text-emerald-600')}>
-                            {g.remaining}
-                          </td>
-                          <td className={cn('text-right px-2 font-black tabular-nums', tight ? 'text-red-600' : 'text-emerald-600')}>
-                            {g.free13}
-                          </td>
-                          <td className="text-right px-2 tabular-nums text-slate-500">{g.placed13}</td>
-                          <td className={cn('text-right pl-2 tabular-nums font-bold', g.inFourth > 0 ? 'text-amber-600' : 'text-slate-300')}>
-                            {g.inFourth}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          {/* Плотность групп 1–3: слева — сколько пар есть, справа — сколько занятий в них ставить */}
+          <Card
+            title="Плотность групп (пары 1–3)"
+            bodyClassName="px-4 pb-4 pt-1"
+            headerActions={
+              <HelpTip text={
+                'Слоты — учебные пары 1–3 за период: ёмкость считается на бэке честно (закрытые пары '
+                + 'Вс и Сб-4, а также групповые ограничения уже вычтены), свободно = ёмкость минус занятое.\n\n'
+                + 'Занятия — что нужно разместить группе: всего по учебному плану, уже стоит в 1–3, '
+                + 'стоит в 4-й паре, осталось разместить.\n\n'
+                + '«Не влезет в 1–3» — из оставшихся занятий столько не поместится в свободные пары 1–3, '
+                + 'их придётся ставить в 4-ю пару. Эти группы показаны сверху и подсвечены.'
+              } />
+            }
+          >
+            <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
+              <table className="w-full text-xs">
+                <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                  {/* Две группы столбцов: ресурс (пары) и потребность (занятия) — их легко спутать */}
+                  <tr className="border-b border-slate-100">
+                    <th className="py-1" />
+                    <th colSpan={2} className="text-center font-black text-slate-400 pb-1 border-l border-slate-100">
+                      Слоты 1–3
+                    </th>
+                    <th colSpan={4} className="text-center font-black text-slate-400 pb-1 border-l border-slate-100">
+                      Занятия
+                    </th>
+                    <th className="py-1 border-l border-slate-100" />
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left font-bold py-1.5">Группа</th>
+                    <th className="text-right font-bold px-2 border-l border-slate-100">Ёмкость</th>
+                    <th className="text-right font-bold px-2">Свободно</th>
+                    <th className="text-right font-bold px-2 border-l border-slate-100">Всего</th>
+                    <th className="text-right font-bold px-2">В 1–3</th>
+                    <th className="text-right font-bold px-2">В 4-й</th>
+                    <th className="text-right font-bold px-2">Осталось</th>
+                    <th className="text-right font-bold px-2 border-l border-slate-100">Не влезет в 1–3</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {density.map((g) => {
+                    // Проблема — не «мало свободных пар», а «занятия не помещаются».
+                    const overflow = g.mustGoToFourth > 0;
+                    return (
+                      <tr key={g.groupId} className={cn('transition-colors', overflow && 'bg-red-50/60')}>
+                        <td className="py-1.5 font-bold text-slate-700 truncate max-w-[120px]">{g.groupName}</td>
+                        <td className="text-right px-2 tabular-nums text-slate-400 border-l border-slate-100">{g.capacity13}</td>
+                        <td className={cn('text-right px-2 tabular-nums font-bold', g.free13 > 0 ? 'text-emerald-600' : 'text-red-600')}>
+                          {g.free13}
+                        </td>
+                        <td className="text-right px-2 tabular-nums text-slate-500 border-l border-slate-100">{g.demand}</td>
+                        <td className="text-right px-2 tabular-nums text-slate-500">{g.placed13}</td>
+                        <td className={cn('text-right px-2 tabular-nums font-bold', g.inFourth > 0 ? 'text-amber-600' : 'text-slate-300')}>
+                          {g.inFourth}
+                        </td>
+                        <td className={cn('text-right px-2 tabular-nums font-bold', g.remaining > 0 ? 'text-blue-600' : 'text-emerald-600')}>
+                          {g.remaining}
+                        </td>
+                        <td className={cn('text-right px-2 font-black tabular-nums border-l border-slate-100',
+                          overflow ? 'text-red-600' : 'text-slate-300')}>
+                          {g.mustGoToFourth}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </Card>
 
           {/* Преподаватели: компактность + равномерность (единый отчёт с бэка) */}
           {educators.length > 0 && (
-            <Card title="Преподаватели: компактность и нагрузка">
-              <div className="space-y-3">
+            <Card
+              title="Преподаватели: компактность и нагрузка"
+              bodyClassName="px-4 pb-4 pt-1"
+              headerActions={
+                <HelpTip text={
+                  'Штраф = окна + 2·одиночные дни + лишние дни (меньше — плотнее; суббота в штраф не входит). '
+                  + 'Цель — 2–3 пары в учебный день без окон.\n\n'
+                  + 'Штраф и подсветка — только для преподавателей с требованием компактности (отмечены точкой), '
+                  + 'худшие сверху; для остальных метрики справочные и штрафом не считаются.'
+                } />
+              }
+            >
+              <div className="space-y-2">
                 <div className="flex flex-wrap gap-2 text-[11px]">
                   <Chip label="Плотно уложены" value={`${quality!.wellPacked}/${quality!.compactEducators}`} tone="emerald" />
                   <Chip label="Ср. штраф" value={quality!.avgPenalty} tone="slate" />
@@ -311,13 +347,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                   <Chip label="Окон" value={quality!.totalWindowSlots} tone="red" />
                   <Chip label="Ср. суббота" value={quality!.avgSaturday.toFixed(1)} tone="slate" />
                 </div>
-                <p className="text-[11px] text-slate-400 flex items-start gap-1.5">
-                  <Info size={13} className="shrink-0 mt-0.5" />
-                  Штраф = окна + 2·одиночные дни + лишние дни (меньше — плотнее; суббота в штраф не входит).
-                  Цель — 2–3 пары в учебный день без окон. Штраф и подсветка — только для преподавателей
-                  с требованием компактности (отмечены точкой), худшие сверху; для остальных метрики
-                  справочные и штрафом не считаются.
-                </p>
                 <div className="max-h-[360px] overflow-auto custom-scrollbar -mx-1 px-1">
                   <table className="w-full text-xs">
                     <thead className="text-[10px] uppercase tracking-wide text-slate-400">

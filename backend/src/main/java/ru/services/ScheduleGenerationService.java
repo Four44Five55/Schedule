@@ -211,15 +211,20 @@ public class ScheduleGenerationService {
      * @param courseId      курс (дисциплина в периоде)
      * @param kinds         опциональный фильтр по видам (напр. только {@code LECTURE}, или
      *                      «практики» = все виды кроме лекций); {@code null}/пусто — вся дисциплина
+     * @param educatorIds   опциональный фильтр по преподавателям: раскладываются только занятия,
+     *                      которые ведёт кто-то из них; {@code null}/пусто — все преподаватели курса.
+     *                      ⚠️ Сужая охват, вы сужаете и «кругозор» распределителя: равномерность и
+     *                      интервалы считаются только по взятым занятиям, остальные для него —
+     *                      неподвижные обстоятельства (они засеяны как есть)
      * @param user          автор
      * @return сессия с добавленными размещениями
      */
     @Transactional
     public ru.entity.write.ScheduleSession generateCourseAdditive(
             java.util.UUID sessionId, Integer studyPeriodId, Integer courseId,
-            java.util.List<ru.enums.KindOfStudy> kinds, String user) {
-        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}",
-                sessionId, studyPeriodId, courseId, kinds);
+            java.util.List<ru.enums.KindOfStudy> kinds, java.util.List<Integer> educatorIds, String user) {
+        log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}, educators={}",
+                sessionId, studyPeriodId, courseId, kinds, educatorIds);
 
         ru.entity.write.ScheduleSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Сессия не найдена: " + sessionId));
@@ -230,11 +235,13 @@ public class ScheduleGenerationService {
                 .map(ScheduleGenerationService::keyOf)
                 .collect(java.util.stream.Collectors.toSet());
 
-        // Область = один курс. Опциональный фильтр по видам (лекции/практики) — иначе вся дисциплина.
+        // Область = один курс. Опциональные фильтры (вид занятия, преподаватель) сужают ЦЕЛЕВОЙ
+        // набор, но не засев: всё остальное всё равно стоит на местах и учитывается как занятое.
         GenerationScope scope = scopeResolver.resolve(studyPeriodId, java.util.List.of(courseId));
-        List<Lesson> target = (kinds == null || kinds.isEmpty())
-                ? scope.lessons()
-                : scope.lessons().stream().filter(l -> kinds.contains(l.getKindOfStudy())).toList();
+        List<Lesson> target = scope.lessons().stream()
+                .filter(l -> kinds == null || kinds.isEmpty() || kinds.contains(l.getKindOfStudy()))
+                .filter(l -> matchesEducators(l, educatorIds))
+                .toList();
 
         // Workspace с засевом ВСЕХ существующих; distribute разложит только неразмещённые
         // занятия целевого набора (уже стоящие пропускаются — они засеяны).
@@ -260,6 +267,19 @@ public class ScheduleGenerationService {
         log.info("✅ Аддитивно добавлено {} размещений курса {} (засеяно существующих: {})",
                 created.size(), courseId, existing.size());
         return session;
+    }
+
+    /**
+     * Ведёт ли занятие кто-то из указанных преподавателей. Пустой/{@code null} список — фильтра
+     * нет (все). Общий предикат для генерации и очистки, чтобы охват «по преподавателю» означал
+     * в обеих операциях одно и то же.
+     */
+    private static boolean matchesEducators(Lesson lesson, java.util.List<Integer> educatorIds) {
+        if (educatorIds == null || educatorIds.isEmpty()) {
+            return true;
+        }
+        return lesson.getEducators() != null && lesson.getEducators().stream()
+                .anyMatch(e -> educatorIds.contains(e.getId()));
     }
 
     /**
@@ -306,23 +326,31 @@ public class ScheduleGenerationService {
      * <p>Ключ потока: генерация — аддитивная, поэтому «переделать» = очистить → сгенерировать
      * заново. Очистка по виду («удалить только практики курса») даёт гранулярность лекции/практики.</p>
      *
-     * @param sessionId сессия
-     * @param courseId  курс (дисциплина) или {@code null} — все курсы
-     * @param kinds     виды занятий к удалению или {@code null}/пусто — все виды (напр.
-     *                  «кроме лекций» = все виды, кроме {@code LECTURE}; «только лекции» = {@code [LECTURE]})
-     * @param user      автор (для логов)
+     * @param sessionId   сессия
+     * @param courseId    курс (дисциплина) или {@code null} — все курсы
+     * @param kinds       виды занятий к удалению или {@code null}/пусто — все виды (напр.
+     *                    «кроме лекций» = все виды, кроме {@code LECTURE}; «только лекции» = {@code [LECTURE]})
+     * @param educatorIds преподаватели или {@code null}/пусто — все: удаляются только занятия,
+     *                    которые ведёт кто-то из них (зеркально охвату генерации)
+     * @param user        автор (для логов)
      * @return сколько размещений удалено
      */
     @Transactional
     public int clearPlacements(java.util.UUID sessionId, Integer courseId,
-                               java.util.List<ru.enums.KindOfStudy> kinds, String user) {
+                               java.util.List<ru.enums.KindOfStudy> kinds,
+                               java.util.List<Integer> educatorIds, String user) {
         boolean allKinds = kinds == null || kinds.isEmpty();
+        boolean allEducators = educatorIds == null || educatorIds.isEmpty();
         List<ru.entity.write.LessonPlacement> toDelete = placementRepo.findBySessionId(sessionId).stream()
                 .filter(p -> !p.isLocked()) // замки не трогаем
                 .filter(p -> courseId == null
                         || p.getAssignment().getCurriculumSlot().getDisciplineCourse().getId().equals(courseId))
                 .filter(p -> allKinds
                         || kinds.contains(p.getAssignment().getCurriculumSlot().getKindOfStudy()))
+                // Охват по преподавателю — по составу НАЗНАЧЕНИЯ (совместное занятие двух
+                // преподавателей попадает под охват каждого из них).
+                .filter(p -> allEducators || p.getAssignment().getEducators().stream()
+                        .anyMatch(e -> educatorIds.contains(e.getId())))
                 .toList();
 
         List<java.util.UUID> ids = toDelete.stream().map(ru.entity.write.LessonPlacement::getId).toList();
@@ -331,8 +359,9 @@ public class ScheduleGenerationService {
         for (java.util.UUID id : ids) {
             eventPublisher.publishEvent(new ru.events.PlacementChangedEvent(sessionId, id));
         }
-        log.info("🧹 Очистка сессии {}: удалено {} размещений (course={}, kinds={}, кроме замков)",
-                sessionId, ids.size(), courseId, allKinds ? "все" : kinds);
+        log.info("🧹 Очистка сессии {}: удалено {} размещений (course={}, kinds={}, educators={}, кроме замков)",
+                sessionId, ids.size(), courseId, allKinds ? "все" : kinds,
+                allEducators ? "все" : educatorIds);
         return ids.size();
     }
 
