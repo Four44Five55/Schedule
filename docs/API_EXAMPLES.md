@@ -324,7 +324,18 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 > ⚠️ Аудитории подбираются **на бэке** (`LessonMoveService` пересоздаёт workspace и валидирует слот
 > через `findPlacementOption`). Поле `newAuditoriumIds` в контракте осталось мёртвым — не используется.
 
-**Ответ (SUCCESS):** `ScheduleSessionDto` с `version: 6`.
+**Ответ (SUCCESS):** `MoveLessonResponse` — сессия с новой `version` + флаги пересортировки:
+```json
+{
+  "session": { "id": "…", "version": 6, "status": "READY_FOR_EDIT" },
+  "problems": [ { "placementId": "…", "reason": "CHAIN_BROKEN" } ]
+}
+```
+> **Пересортировка трека входит в команду** (одна транзакция): перенесённое занятие «пузырьком»
+> встаёт на плановое место, соседи сдвигаются. Отдельного `POST /placements/{id}/reorder`
+> **больше нет** — раньше его звал фронт вторым запросом, и между двумя транзакциями оставалось
+> окно, в котором расписание побывало «перенесено, но не пересортировано» (а сверить версию в
+> `reorder` было нельзя: её только что сдвинул сам перенос).
 
 **Ответ (CONFLICT, HTTP 409, тело `ConflictResponse`):**
 ```json
@@ -371,14 +382,22 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 
 ### 5. Ручная раскладка (Фаза B) и пины
 
+> 🔒 **Все мутирующие команды несут `version`** (optimistic lock, с 2026-07-14). Устаревшая версия →
+> **409** `ConflictResponse {error: "CONFLICT", currentVersion}`. Клиент обязан подхватить
+> `currentVersion` из тела, перечитать данные и повторить — иначе вкладка залипнет на старой версии
+> (push-уведомлений пока нет, о чужих правках она узнаёт только через отказ).
+> Сверка — в одном месте на бэке: `ScheduleSessionGate` (см. CQRS_ARCHITECTURE.md).
+
 | Endpoint | Назначение |
 |---|---|
 | `GET /command/sessions/{id}/unplaced?courseIds=1,2,3` | Неразмещённые занятия курсов (палитра) → `List<UnplacedLessonDto>` |
 | `POST /command/sessions/{id}/placement-options` | Куда можно поставить занятие (подсветка ячеек); тело `PlacementOptionsRequest {assignmentId, rootEntityType, rootEntityId, studyPeriodId}` → `List<MoveOptionDto>` |
-| `POST /command/sessions/{id}/placements` | Ручная установка (создаёт `MANUAL`/`locked` размещение); тело `ManualPlacementRequest {assignmentId, date, slot, studyPeriodId}` → `ScheduleSessionDto` или `409` |
-| `DELETE /command/placements/{placementId}` | Снять размещение (вернуть в палитру) |
-| `PATCH /command/placements/{placementId}/lock` | Закрепить/открепить (пин); тело `LockPlacementRequest {locked, placementIds?}` — закрепляет цепочку (или её подмножество) |
-| `POST /command/placements/{placementId}/reorder` | Пересортировать трек в порядок плана после переноса → `ReorderResponse {session, problems[]}` |
+| `POST /command/sessions/{id}/placements` | Ручная установка (создаёт `MANUAL`/`locked` размещение); тело `ManualPlacementRequest {assignmentId, date, slot, studyPeriodId, version}` → `ScheduleSessionDto` или `409` |
+| `DELETE /command/placements/{placementId}?version=N` | Снять размещение (вернуть в палитру). Версия — **query-параметром**: у DELETE тело не принято |
+| `PATCH /command/placements/{placementId}/lock` | Закрепить/открепить (пин); тело `LockPlacementRequest {locked, placementIds?, version}` — закрепляет цепочку (или её подмножество) |
+
+> ~~`POST /command/placements/{placementId}/reorder`~~ — **удалён.** Пересортировка трека в порядок
+> плана теперь выполняется внутри команды переноса (см. выше), в той же транзакции.
 
 ---
 

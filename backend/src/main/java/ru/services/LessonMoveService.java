@@ -15,6 +15,7 @@ import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.factories.CellForLessonFactory;
+import ru.services.session.ScheduleSessionGate;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -45,7 +46,17 @@ public class LessonMoveService {
 
     private final WorkspaceRecreationService workspaceRecreationService;
     private final LessonPlacementRepository placementRepo;
+    private final ScheduleSessionGate sessionGate;
+    private final TrackReorderService trackReorderService;
     private final ApplicationEventPublisher eventPublisher;
+
+    /**
+     * Итог переноса: сессия (с новой версией) + флаги распавшихся сцепок из пересортировки.
+     *
+     * @param session  сессия-владелец
+     * @param problems размещения, у которых пересортировка разорвала сцепку
+     */
+    public record MoveResult(ScheduleSession session, java.util.List<ru.services.reindex.ReorderProblem> problems) {}
 
     /**
      * Перенести занятие в новый слот с повторной валидацией всех участников.
@@ -61,7 +72,7 @@ public class LessonMoveService {
      *                                                 преподаватель/группа/аудитория заняты
      */
     @Transactional
-    public ScheduleSession moveLesson(
+    public MoveResult moveLesson(
             UUID placementId,
             LocalDate newDate,
             String newSlot,
@@ -73,12 +84,11 @@ public class LessonMoveService {
         //    sessionId может указывать на другую).
         LessonPlacement placement = placementRepo.findById(placementId)
                 .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
-        ScheduleSession session = placement.getSession();
 
-        // 2. Optimistic lock по версии сессии-владельца.
-        if (!session.getVersion().equals(expectedVersion)) {
-            throw new ObjectOptimisticLockingFailureException(ScheduleSession.class, session.getId());
-        }
+        // 2. Сессия — через единую дверь: сверка версии + подъём поколения на коммите.
+        //    Раньше здесь была голая сверка getVersion(), а версия при этом не росла (менялся
+        //    lesson_placement, а не строка сессии) — то есть проверка не срабатывала никогда.
+        ScheduleSession session = sessionGate.forWriteOf(placement, expectedVersion);
 
         // 3. Пересоздаём workspace из сессии. Побочный эффект — инициализация кэша ячеек на
         //    период сессии, поэтому целевую ячейку резолвим строго ПОСЛЕ этого шага.
@@ -118,6 +128,12 @@ public class LessonMoveService {
         log.info("✅ Занятие перенесено: placementId={}, newDate={}, newSlot={}, аудиторий={}",
                 placementId, newDate, newSlot, option.assignedAuditoriums().size());
 
-        return session;
+        // 9. Пересортировка трека в порядок плана — ЧАСТЬ переноса, а не отдельная команда.
+        //    Раньше её вторым HTTP-запросом звал фронт: бизнес-правило жило на клиенте, между
+        //    двумя транзакциями зияло окно для конкурента, а сверить версию в reorder было
+        //    невозможно (её уже сдвинул сам перенос). Теперь это одна транзакция и одно поколение.
+        var reorder = trackReorderService.resort(placementId, user);
+
+        return new MoveResult(session, reorder.problems());
     }
 }

@@ -3,6 +3,7 @@ import { ScheduledLessonDto, StudyPeriodDto } from '../../../types/api';
 import { ScheduleSessionDto, PlacementBoardDto, BoardLessonDto, OrderFinding } from '../../../types/cqrs';
 import { CQRSService, dateUtils } from '../../../services/cqrsApiService';
 import { ScheduleService } from '../../../services/apiServices';
+import { useScheduleStream } from '../../../hooks/useScheduleStream';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
 import { useEducatorPriority } from '../../schedule/useEducatorPriority';
 import { AcademicGridSchedule } from '../../schedule/components/AcademicGridSchedule';
@@ -95,6 +96,37 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
 
   const rootEntityType: 'GROUP' | 'EDUCATOR' = viewMode === 'group' ? 'GROUP' : 'EDUCATOR';
 
+  // Живой канал изменений (SSE). Звонок приходит ПОСЛЕ записи read-модели, поэтому:
+  //  1) чужие правки (соседняя вкладка, другой диспетчер) видны сразу, а не через 409;
+  //  2) свои — тоже: перечитываем ровно тогда, когда данные готовы, вместо слепой паузы.
+  const streamConnected = useScheduleStream(session?.id, (e) => {
+    if (e.version != null) setSession((s) => (s ? { ...s, version: e.version! } : s));
+    reloadSchedule();
+    if (e.sessionId) reloadBoard(e.sessionId).catch(() => {});
+  });
+
+  // Перечитать после своей команды. Если поток жив — не делаем ничего: звонок придёт сам, ровно
+  // когда проекция записана. Если оборван (перезапуск бэка, таймаут) — возвращаемся к прежней
+  // фиксированной паузе: она неточна, но лучше, чем не обновиться совсем.
+  const reloadAfterCommand = useCallback(() => {
+    if (streamConnected.current) return;
+    setTimeout(() => { reloadSchedule(); }, 1000);
+  }, [streamConnected, reloadSchedule]);
+
+  // Восстановление после 409 «устаревшая версия»: подхватить актуальную версию из тела ответа и
+  // перечитать данные. Без этого окно, чьё расписание изменили параллельно (другой пользователь
+  // или соседняя вкладка — push-уведомлений пока нет), залипает на старой версии, и КАЖДАЯ его
+  // следующая команда обречена на 409 до ручного F5.
+  // Отличаем от RESOURCE_CONFLICT (слот занят) по коду ошибки: там версия ни при чём.
+  const recoverIfStale = useCallback((e: any) => {
+    const body = e?.response?.data;
+    if (e?.response?.status !== 409 || body?.error !== 'CONFLICT') return;
+    if (body.currentVersion != null) {
+      setSession((s) => (s ? { ...s, version: body.currentVersion } : s));
+    }
+    reloadSchedule(); // расписание уже другое — показываем актуальное
+  }, [reloadSchedule]);
+
   // Кандидат на установку — со СТАБИЛЬНОЙ ссылкой. `AcademicGridSchedule` держит его в
   // зависимостях эффекта подсветки, поэтому литерал объекта прямо в JSX (новая ссылка на
   // каждый рендер) заставлял перезапрашивать те же ячейки после любого обновления состояния
@@ -148,22 +180,27 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
     setPlaceError(null);
     const justPlaced = selectedUnplaced;
     try {
-      await CQRSService.createPlacement(session.id, {
-        assignmentId, date, slot, studyPeriodId: period.id,
+      // Ответ несёт сессию с новой версией — подхватываем её, иначе следующая команда уйдёт
+      // с устаревшей и получит 409 (установка тоже поднимает поколение агрегата).
+      const updated = await CQRSService.createPlacement(session.id, {
+        assignmentId, date, slot, studyPeriodId: period.id, version: session.version,
       });
+      setSession(updated);
       const freshBoard = await reloadBoard(session.id);
       // Продолжаем очередь: сразу выбираем следующее занятие, не заставляя лишний раз кликать в палитру.
       const next = (selectedEntity && justPlaced) ? pickNextUnplaced(selectedEntity, justPlaced, freshBoard) : null;
       setSelectedUnplaced(next);
-      // Query Side (schedule_view) синхронизируется асинхронно — как и у переноса
-      // (см. AcademicGridSchedule.handleCellMove), даём ему секунду перед перезагрузкой сетки,
-      // иначе только что размещённое занятие не появится в сетке до следующего действия.
-      setTimeout(() => { reloadSchedule(); }, 1000);
+      reloadAfterCommand();
     } catch (e: any) {
-      // Конфликт слота (409) — не сбрасываем выбор, чтобы можно было попробовать другую ячейку.
+      // 409 бывает двух видов, и лечатся они по-разному:
+      //   RESOURCE_CONFLICT — слот занят: выбор НЕ сбрасываем, пусть кликнет другую ячейку;
+      //   CONFLICT — устаревшая версия (расписание изменили параллельно): подхватываем актуальную
+      //   версию из тела и перечитываем данные, иначе окно залипнет на старой версии навсегда.
       setPlaceError(e?.response?.data?.message || 'Не удалось разместить занятие: слот занят.');
+      recoverIfStale(e);
     }
-  }, [session, period.id, reloadBoard, reloadSchedule, selectedEntity, selectedUnplaced, pickNextUnplaced]);
+  }, [session, period.id, reloadBoard, reloadAfterCommand, selectedEntity, selectedUnplaced,
+      pickNextUnplaced, recoverIfStale]);
 
   // Закрепить/открепить занятие (пин). chainPlacementIds — эффективная цепочка с учётом
   // временного разрыва (detachedBoundaries) на сетке; см. AcademicGridSchedule.buildChain.
@@ -182,24 +219,32 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
       return next;
     });
     try {
-      await CQRSService.setLock(lesson.placementId, newLocked, chainPlacementIds);
+      const updated = await CQRSService.setLock(
+        lesson.placementId, newLocked, chainPlacementIds, session?.version);
+      setSession(updated); // пин тоже поднимает версию — подхватываем
       // НЕ перезагружаем сетку: setLock уже персистит (ответ 200), а проекция в schedule_view
       // асинхронна (@Async, AFTER_COMMIT) и НЕ успевает за фикс. паузу → перезагрузка затёрла бы
       // оптимистичный флип устаревшим значением (эффект «сработало на секунду и откатилось»).
     } catch (e) {
       console.error('Не удалось изменить закрепление:', e);
-      reloadSchedule(); // откат к состоянию сервера
+      recoverIfStale(e);   // 409 по версии — подхватить актуальную
+      reloadSchedule();    // откат оптимистичного флипа к состоянию сервера
     }
-  }, [reloadSchedule]);
+  }, [session, reloadSchedule, recoverIfStale]);
 
   // Снять размещение (вернуть занятие в палитру).
   const handleRemove = useCallback(async (placementId: string) => {
     if (!session) return;
-    await CQRSService.deletePlacement(placementId);
-    await reloadBoard(session.id);
-    // Та же асинхронная задержка Query Side, что и при установке/переносе.
-    setTimeout(() => { reloadSchedule(); }, 1000);
-  }, [session, reloadBoard, reloadSchedule]);
+    try {
+      // Ответ несёт новую версию — подхватываем.
+      setSession(await CQRSService.deletePlacement(placementId, session.version));
+      await reloadBoard(session.id);
+      reloadAfterCommand();
+    } catch (e) {
+      console.error('Не удалось снять размещение:', e);
+      recoverIfStale(e);
+    }
+  }, [session, reloadBoard, reloadAfterCommand, recoverIfStale]);
 
   // Массовое снятие: убрать все размещения выбранной дисциплины (вернуть в очередь).
   // Bulk-версия крестика — отдельного эндпоинта нет, снимаем через тот же deletePlacement
@@ -207,10 +252,25 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   const handleRemoveMany = useCallback(async (placementIds: string[]) => {
     if (!session || placementIds.length === 0) return;
     const unique = Array.from(new Set(placementIds));
-    await Promise.all(unique.map((id) => CQRSService.deletePlacement(id)));
+    // ПОСЛЕДОВАТЕЛЬНО, а не Promise.all: каждое снятие поднимает версию ОДНОЙ И ТОЙ ЖЕ сессии,
+    // и параллельные запросы конфликтовали бы друг с другом (409 на всех, кроме первого).
+    // Раньше версия не росла, и гонка была не видна — но размещения они всё равно правили
+    // наперегонки. Версию для каждого следующего запроса берём из ответа предыдущего.
+    let latest = session;
+    try {
+      for (const id of unique) {
+        latest = await CQRSService.deletePlacement(id, latest.version);
+      }
+    } catch (e) {
+      console.error('Массовое снятие прервано:', e);
+      recoverIfStale(e);
+      return;
+    } finally {
+      setSession(latest);
+    }
     await reloadBoard(session.id);
-    setTimeout(() => { reloadSchedule(); }, 1000);
-  }, [session, reloadBoard, reloadSchedule]);
+    reloadAfterCommand();
+  }, [session, reloadBoard, reloadAfterCommand, recoverIfStale]);
 
   // Бутстрап: сессия периода → сетка (доску грузит отдельный эффект по session/оси).
   useEffect(() => {
@@ -505,18 +565,19 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                 endDate={dateUtils.parseDate(period.endDate)}
                 isEditMode
                 sessionId={session?.id}
-                currentVersion={session?.version || 0}
+                currentVersion={session?.version}
                 rootEntityType={rootEntityType}
                 rootEntityId={entityId}
                 educatorPriority={educatorPriority}
                 onMoveLesson={() => {
-                  reloadSchedule();
+                  // Доску можно перечитать сразу (она с Command Side, синхронна), а сетку —
+                  // когда проекция будет готова: об этом сообщит поток (или запасная пауза).
                   if (session) reloadBoard(session.id).catch(() => {});
-                  // Версия сессии освежается на случай, если она изменилась (например,
-                  // генерацией в соседней вкладке). Эффект загрузки доски подписан на id
-                  // сессии, а не на объект, поэтому повторной загрузки доски это не вызовет.
-                  if (session) CQRSService.getSession(session.id).then(setSession).catch(() => {});
+                  reloadAfterCommand();
                 }}
+                // Версия приезжает в ответе самой команды (последней в цепочке move → reorder),
+                // поэтому отдельный getSession() больше не нужен.
+                onVersionChanged={(version) => setSession((s) => (s ? { ...s, version } : s))}
                 onToggleLock={handleToggleLock}
                 orderViolations={orderViolations}
                 placementCandidate={placementCandidate}

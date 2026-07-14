@@ -19,7 +19,9 @@ import {
   UnplacedLessonDto,
   PlacementBoardDto,
   CoursePlacementCountDto,
-  OrderViolationDto
+  OrderViolationDto,
+  ClearPlacementsResponse,
+  MoveLessonResponse
 } from '../types/cqrs';
 
 /**
@@ -92,11 +94,15 @@ export const CQRSService = {
    *   разрыв сцепки на фронте через detachedBoundaries/buildChain в AcademicGridSchedule).
    *   Бэк проверяет, что каждый id реально принадлежит цепочке якоря — просто игнорирует
    *   остальное; если не передано — старое поведение (вся цепочка).
+   * @param version - ожидаемая версия сессии (optimistic lock): устаревшая → 409
    * @returns сессия-владелец (с актуальной version)
    */
-  setLock: (placementId: string, locked: boolean, placementIds?: string[]): Promise<ScheduleSessionDto> => {
+  setLock: (
+    placementId: string, locked: boolean, placementIds?: string[], version?: number
+  ): Promise<ScheduleSessionDto> => {
     return api
-      .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/lock`, { locked, placementIds })
+      .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/lock`,
+        { locked, placementIds, version })
       .then(r => r.data);
   },
 
@@ -108,25 +114,29 @@ export const CQRSService = {
    */
   generateCourse: (
     sessionId: string, studyPeriodId: number, courseId: number,
-    kinds?: string[], educatorIds?: number[]
+    kinds?: string[], educatorIds?: number[], version?: number
   ): Promise<ScheduleSessionDto> => {
     return api
       .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/generate-course`,
-        { studyPeriodId, courseId, kinds, educatorIds })
+        { studyPeriodId, courseId, kinds, educatorIds, version })
       .then(r => r.data);
   },
 
   /**
    * Очистка размещений сессии, КРОМЕ закреплённых. Все поля охвата опциональны (пусто → всё):
    * курс, виды занятий, преподаватели (зеркально охвату генерации).
-   * @returns количество удалённых размещений
+   *
+   * Раньше отдавала голое число. Теперь очистка поднимает версию сессии (она тоже мутирует
+   * размещения), поэтому в ответе едет и сессия — хост обязан подхватить новую версию.
+   *
+   * @returns сколько снято + сессия с актуальной version
    */
   clearPlacements: (
     sessionId: string,
-    body: { courseId?: number; kinds?: string[]; educatorIds?: number[] }
-  ): Promise<number> => {
+    body: { courseId?: number; kinds?: string[]; educatorIds?: number[]; version?: number }
+  ): Promise<ClearPlacementsResponse> => {
     return api
-      .post<number>(`/schedule/command/sessions/${sessionId}/clear`, body)
+      .post<ClearPlacementsResponse>(`/schedule/command/sessions/${sessionId}/clear`, body)
       .then(r => r.data);
   },
 
@@ -165,6 +175,7 @@ export const CQRSService = {
     date: string;
     slot: string;
     studyPeriodId: number;
+    version?: number;   // optimistic lock: устаревшая версия → 409
   }): Promise<ScheduleSessionDto> => {
     return api
       .post<ScheduleSessionDto>(`/schedule/command/sessions/${sessionId}/placements`, request)
@@ -173,10 +184,13 @@ export const CQRSService = {
 
   /**
    * Снять размещение (вернуть занятие в палитру неразмещённых).
+   *
+   * Версия — query-параметром: у DELETE тело не принято.
    */
-  deletePlacement: (placementId: string): Promise<ScheduleSessionDto> => {
+  deletePlacement: (placementId: string, version?: number): Promise<ScheduleSessionDto> => {
     return api
-      .delete<ScheduleSessionDto>(`/schedule/command/placements/${placementId}`)
+      .delete<ScheduleSessionDto>(`/schedule/command/placements/${placementId}`,
+        { params: { version } })
       .then(r => r.data);
   },
 
@@ -273,10 +287,15 @@ export const CQRSService = {
    *
    * ВАЖНО: Всегда передавайте актуальную версию (session.version)
    *
+   * Пересортировка трека в порядок плана входит В САМУ КОМАНДУ (одна транзакция на бэке):
+   * отдельного вызова /reorder больше нет — раньше фронт делал его вторым запросом, и между
+   * двумя транзакциями оставалось окно, в котором расписание побывало в состоянии
+   * «перенесли, но не пересортировали».
+   *
    * @param sessionId - ID сессии
    * @param request - данные для переноса с версией
    * @returns результат операции:
-   *   - success: true, newVersion: N - успешный перенос
+   *   - success: true, newVersion: N, problems: [...] - успешный перенос (+ распавшиеся сцепки)
    *   - success: false, conflict: ConflictResponse - конфликт версий
    */
   moveLesson: async (
@@ -284,15 +303,19 @@ export const CQRSService = {
     request: MoveLessonRequest
   ): Promise<MoveLessonResult> => {
     try {
-      // Бэкенд возвращает ScheduleSessionDto (с актуальной version), а НЕ {success}.
+      // Бэкенд возвращает MoveLessonResponse {session, problems}, а НЕ {success}.
       // Переводим успешный 2xx-ответ в контракт MoveLessonResult здесь, в сервисном
       // слое — иначе result.success === undefined и UI не узнаёт об успехе переноса.
-      const response = await api.post<ScheduleSessionDto>(
+      const response = await api.post<MoveLessonResponse>(
         `/schedule/command/sessions/${sessionId}/move-lesson`,
         request
       );
 
-      return { success: true, newVersion: response.data.version };
+      return {
+        success: true,
+        newVersion: response.data.session.version,
+        problems: response.data.problems,
+      };
     } catch (error: any) {
       // Обработка HTTP 409 Conflict
       if (error.response?.status === 409) {
@@ -303,25 +326,6 @@ export const CQRSService = {
       }
       throw error;
     }
-  },
-
-  /**
-   * Пересортировка трека в порядок плана — вызывается ПОСЛЕ переноса. Занятия класса
-   * якорного размещения (тот же курс+поток+преподаватели) возвращаются в порядок изучения:
-   * перенесённое «пузырьком» встаёт на плановое место, соседи сдвигаются на ячейку. Меняются
-   * только даты — тема едет с занятием.
-   *
-   * @param placementId - только что перенесённое размещение (определяет класс)
-   * @returns сессия (с актуальной version) и список распавшихся сцепок (problems)
-   */
-  reorder: (
-    placementId: string
-  ): Promise<{ session: ScheduleSessionDto; problems: { placementId: string; reason: string }[] }> => {
-    return api
-      .post<{ session: ScheduleSessionDto; problems: { placementId: string; reason: string }[] }>(
-        `/schedule/command/placements/${placementId}/reorder`
-      )
-      .then(r => r.data);
   },
 
   /**
@@ -447,11 +451,16 @@ export const CQRSService = {
     request: MoveChainRequest
   ): Promise<MoveLessonResult> => {
     try {
-      const response = await api.post<ScheduleSessionDto>(
+      // Как и одиночный перенос: пересортировка входит в команду, problems приезжают с ней же.
+      const response = await api.post<MoveLessonResponse>(
         `/schedule/command/sessions/${sessionId}/move-chain`,
         request
       );
-      return { success: true, newVersion: response.data.version };
+      return {
+        success: true,
+        newVersion: response.data.session.version,
+        problems: response.data.problems,
+      };
     } catch (error: any) {
       if (error.response?.status === 409) {
         return { success: false, conflict: error.response.data as ConflictResponse };

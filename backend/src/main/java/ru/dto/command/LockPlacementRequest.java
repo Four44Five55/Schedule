@@ -12,9 +12,11 @@ import java.util.UUID;
  *                     {@code AcademicGridSchedule}). Бэк проверяет принадлежность каждого id
  *                     реальной цепочке якоря — лишнее игнорируется. {@code null}/пусто —
  *                     старое поведение (закрепляется вся цепочка).
+ * @param version      ожидаемая версия сессии (optimistic lock)
  */
 public record LockPlacementRequest(
         boolean locked,
-        List<UUID> placementIds
+        List<UUID> placementIds,
+        Long version
 ) {
 }

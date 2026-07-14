@@ -12,9 +12,12 @@ import java.util.List;
  *                    (напр. «кроме лекций» = все виды, кроме {@code LECTURE})
  * @param educatorIds преподаватели или {@code null}/пусто — все (зеркально охвату генерации:
  *                    удаляются только занятия, которые ведёт кто-то из них)
+ * @param version     ожидаемая версия сессии (optimistic lock). Очистка сносит расписание пачкой,
+ *                    поэтому «затереть чужую работу молча» тут дороже всего
  */
 public record ClearPlacementsRequest(
         Integer courseId,
         List<KindOfStudy> kinds,
-        List<Integer> educatorIds
+        List<Integer> educatorIds,
+        Long version
 ) {}

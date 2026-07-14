@@ -67,7 +67,21 @@ export const GenerationTab: React.FC<{
     if (!session || busy) return;
     setBusy(key); setMessage(null);
     try { await fn(); await loadCounts(); }
-    catch (e) { console.error(e); setMessage('❌ Ошибка операции'); }
+    catch (e: any) {
+      console.error(e);
+      // 409 «устаревшая версия»: расписание изменили параллельно (соседняя вкладка/другой
+      // пользователь). Подхватываем актуальную версию из тела — иначе вкладка залипнет на старой
+      // и каждая следующая генерация/очистка будет отвергнута до F5.
+      const body = e?.response?.data;
+      if (e?.response?.status === 409 && body?.error === 'CONFLICT') {
+        if (body.currentVersion != null) {
+          setSession((s) => (s ? { ...s, version: body.currentVersion } : s));
+        }
+        setMessage('⚠️ Расписание изменено параллельно. Данные обновлены — повторите операцию.');
+      } else {
+        setMessage('❌ Ошибка операции');
+      }
+    }
     finally { setBusy(null); }
   };
 
@@ -91,27 +105,34 @@ export const GenerationTab: React.FC<{
 
   // Генерация/очистка дисциплины. `educator` (опц.) сужает охват до одного преподавателя —
   // те же две операции, что и на всей дисциплине, просто в его наборе занятий.
+  // Генерация и очистка поднимают версию сессии — подхватываем её из ответа. Вкладка держит
+  // сессию в своём состоянии и раньше не освежала её никогда: пока версия не росла, хватало id.
   const genCourse = (c: DisciplineCourseDto, mode: KindMode, educator?: EducatorPlacementCountDto) =>
     run(rowKey('gen', c.id, educator?.educatorId), async () => {
-      await CQRSService.generateCourse(
+      setSession(await CQRSService.generateCourse(
         session!.id, selectedPeriod!.id, c.id, kindsFor(mode),
-        educator ? [educator.educatorId] : undefined);
+        educator ? [educator.educatorId] : undefined, session!.version));
       setMessage(`✅ «${c.discipline.name}»${educator ? ` · ${educator.educatorName}` : ''} · ${modeLabel(mode)}: разложено (аддитивно, вокруг стоящего)`);
     });
 
   const clearCourse = (c: DisciplineCourseDto, mode: KindMode, educator?: EducatorPlacementCountDto) =>
     run(rowKey('clr', c.id, educator?.educatorId), async () => {
-      const n = await CQRSService.clearPlacements(session!.id, {
+      const { removed, session: updated } = await CQRSService.clearPlacements(session!.id, {
         courseId: c.id,
         kinds: kindsFor(mode),
         educatorIds: educator ? [educator.educatorId] : undefined,
+        version: session!.version,
       });
-      setMessage(`🧹 «${c.discipline.name}»${educator ? ` · ${educator.educatorName}` : ''} · ${modeLabel(mode)}: удалено ${n} (кроме замков)`);
+      setSession(updated);
+      setMessage(`🧹 «${c.discipline.name}»${educator ? ` · ${educator.educatorName}` : ''} · ${modeLabel(mode)}: удалено ${removed} (кроме замков)`);
     });
 
   const clearAll = () => run('clr-all', async () => {
-    const n = await CQRSService.clearPlacements(session!.id, {});
-    setMessage(`🧹 Очищено всё расписание: удалено ${n} (кроме замков)`);
+    const { removed, session: updated } = await CQRSService.clearPlacements(session!.id, {
+      version: session!.version,
+    });
+    setSession(updated);
+    setMessage(`🧹 Очищено всё расписание: удалено ${removed} (кроме замков)`);
   });
 
   // Ремонт отображения: переписывает преподавателя/группу/тему в сетке из текущих назначений,

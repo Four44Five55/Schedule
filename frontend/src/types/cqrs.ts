@@ -210,13 +210,42 @@ export interface MoveLessonRequest {
   version: number;                // Оптимистичная блокировка
 }
 
+/** Распавшаяся сцепка после пересортировки (предупреждение, а не отказ). */
+export interface ReorderProblemDto {
+  placementId: string;
+  reason: string;
+}
+
+/**
+ * Ответ переноса: сессия с новой версией + флаги пересортировки.
+ *
+ * Пересортировка трека в порядок плана выполняется ВНУТРИ команды переноса (одна транзакция),
+ * поэтому отдельного запроса /reorder больше нет.
+ */
+export interface MoveLessonResponse {
+  session: ScheduleSessionDto;
+  problems: ReorderProblemDto[];
+}
+
 /**
  * Результат операции переноса
  */
 export interface MoveLessonResult {
   success: boolean;
   newVersion?: number;
+  problems?: ReorderProblemDto[];
   conflict?: ConflictResponse;
+}
+
+/**
+ * Итог очистки размещений: сколько снято + сессия с АКТУАЛЬНОЙ версией.
+ *
+ * Очистка — тоже мутация размещений, она поднимает версию агрегата. Раньше эндпоинт отдавал
+ * голое число, и канала для версии не было: клиент оставался с устаревшей и словил бы 409.
+ */
+export interface ClearPlacementsResponse {
+  removed: number;
+  session: ScheduleSessionDto;
 }
 
 /**

@@ -79,6 +79,13 @@ public class ScheduleSynchronizer {
     private final LessonPlacementRepository placementRepository;
 
     /**
+     * Публикует {@link ru.events.ScheduleProjectedEvent} — «проекция записана, можно перечитывать».
+     * Синхронизатор не знает, кто это слушает (браузеры через SSE — забота
+     * {@code ru.services.stream}); он лишь объявляет факт (DIP).
+     */
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    /**
      * Синхронизация Query Side после генерации расписания.
      *
      * <p><b>ВАЖНО:</b> Этот метод выполняется АСИНХРОННО в фоне (@Async).</p>
@@ -149,6 +156,8 @@ public class ScheduleSynchronizer {
 
         log.info("✅ Синхронизация завершена: {} строк read-модели для {} placements",
                 syncedCount, event.getPlacementsCount());
+
+        announceProjected(event.getSessionId());
     }
 
     /**
@@ -174,6 +183,7 @@ public class ScheduleSynchronizer {
                 // где FK не будет и снимать её придётся отсюда.
                 viewRepository.deleteByPlacementId(event.getPlacementId());
                 log.info("🗑️  Удалена ScheduleView для placementId={}", event.getPlacementId());
+                announceProjected(event.getSessionId());
                 return;
             }
 
@@ -192,6 +202,7 @@ public class ScheduleSynchronizer {
             // (вариант 3). Обновляем/создаём каждую, как при генерации.
             syncPlacementViews(placement);
             log.info("🔄 Синхронизирована ScheduleView для placementId={}", event.getPlacementId());
+            announceProjected(event.getSessionId());
         } catch (Exception e) {
             log.error("❌ Ошибка синхронизации placementId={}: {}", event.getPlacementId(), e.getMessage(), e);
         }
@@ -228,6 +239,14 @@ public class ScheduleSynchronizer {
         }
         log.info("🔄 Устарел снимок ({}): перепроецировано {} из {} размещений",
                 event.getSource(), placements.size(), event.getPlacementIds().size());
+
+        // Сессию событие не несёт (оно про master-данные, а не про размещения) — берём её из самих
+        // затронутых размещений. Их может быть несколько: переименование преподавателя задевает
+        // расписания разных семестров.
+        placements.stream()
+                .map(p -> p.getSession().getId())
+                .distinct()
+                .forEach(this::announceProjected);
     }
 
     /**
@@ -248,7 +267,22 @@ public class ScheduleSynchronizer {
             syncPlacementViews(placement);
         }
         log.info("♻️  Read-модель пересобрана для сессии {}: {} размещений", sessionId, placements.size());
+        announceProjected(sessionId);
         return placements.size();
+    }
+
+    /**
+     * «Проекция сессии записана — можно перечитывать.»
+     *
+     * <p>Публикуется ПОСЛЕ записи {@code schedule_view}, и слушатель ждёт коммита этой транзакции
+     * ({@code AFTER_COMMIT}). Отправить раньше — значит позвать клиента читать старые данные: ровно
+     * от этой гонки во фронте жили фиксированные паузы {@code setTimeout(1000)}.</p>
+     *
+     * @param sessionId сессия, чья проекция обновлена ({@code null} — легаси-путь без сессии)
+     */
+    private void announceProjected(UUID sessionId) {
+        if (sessionId == null) return;
+        eventPublisher.publishEvent(new ru.events.ScheduleProjectedEvent(sessionId));
     }
 
     /**

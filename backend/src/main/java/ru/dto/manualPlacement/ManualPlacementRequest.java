@@ -9,11 +9,14 @@ import java.time.LocalDate;
  * @param date          дата (YYYY-MM-DD)
  * @param slot          пара (имя {@link ru.enums.TimeSlotPair}: FIRST…FOURTH)
  * @param studyPeriodId учебный период — рамки валидации/кэша ячеек
+ * @param version       ожидаемая версия сессии (optimistic lock). Если расписание изменили
+ *                      параллельно — 409 вместо тихого затирания
  */
 public record ManualPlacementRequest(
         Integer assignmentId,
         LocalDate date,
         String slot,
-        Integer studyPeriodId
+        Integer studyPeriodId,
+        Long version
 ) {
 }

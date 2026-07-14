@@ -16,6 +16,7 @@ import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.factories.CellForLessonFactory;
+import ru.services.session.ScheduleSessionGate;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -48,6 +49,8 @@ public class LessonChainMoveService {
 
     private final WorkspaceRecreationService workspaceRecreationService;
     private final LessonPlacementRepository placementRepo;
+    private final ScheduleSessionGate sessionGate;
+    private final TrackReorderService trackReorderService;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -106,7 +109,7 @@ public class LessonChainMoveService {
      * @throws LessonMoveConflictException             если цепочка не помещается или ресурс занят
      */
     @Transactional
-    public ScheduleSession moveChain(
+    public LessonMoveService.MoveResult moveChain(
             List<UUID> placementIds,
             LocalDate newStartDate,
             String newStartSlot,
@@ -123,11 +126,8 @@ public class LessonChainMoveService {
             placements.add(placementRepo.findById(id)
                     .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + id)));
         }
-        ScheduleSession session = placements.get(0).getSession();
-
-        if (!session.getVersion().equals(expectedVersion)) {
-            throw new ObjectOptimisticLockingFailureException(ScheduleSession.class, session.getId());
-        }
+        // Сессия — через единую дверь: сверка версии + подъём поколения на коммите.
+        ScheduleSession session = sessionGate.forWriteOf(placements.get(0), expectedVersion);
 
         var recreated = workspaceRecreationService.recreateWorkspaceFromSession(session.getId());
         ScheduleWorkspace workspace = recreated.workspace();
@@ -174,7 +174,11 @@ public class LessonChainMoveService {
         log.info("✅ Цепочка перенесена: {} звеньев, newStartDate={}, newStartSlot={}",
                 n, newStartDate, newStartSlot);
 
-        return session;
+        // Пересортировка трека — часть переноса (см. LessonMoveService, шаг 9). Якорь — голова
+        // цепочки: класс однородности у всех звеньев один и тот же.
+        var reorder = trackReorderService.resort(placementIds.get(0), user);
+
+        return new LessonMoveService.MoveResult(session, reorder.problems());
     }
 
     /**

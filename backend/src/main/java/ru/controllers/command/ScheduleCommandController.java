@@ -9,8 +9,8 @@ import ru.dto.command.LessonPlacementDto;
 import ru.dto.command.LockPlacementRequest;
 import ru.dto.command.MoveChainRequest;
 import ru.dto.command.MoveLessonRequest;
+import ru.dto.command.MoveLessonResponse;
 import ru.dto.command.ReorderProblemDto;
-import ru.dto.command.ReorderResponse;
 import ru.dto.command.ScheduleSessionDto;
 import ru.dto.board.PlacementBoardDto;
 import ru.dto.manualPlacement.ManualPlacementRequest;
@@ -23,7 +23,6 @@ import ru.services.board.PlacementBoardService;
 import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 import ru.enums.SessionStatus;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import ru.exceptions.LessonMoveConflictException;
 import ru.mapper.command.LessonPlacementMapper;
 import ru.mapper.command.ScheduleSessionMapper;
@@ -34,7 +33,6 @@ import ru.services.LessonPinService;
 import ru.services.ManualPlacementService;
 import ru.services.ScheduleGenerationService;
 import ru.services.ScheduleSynchronizer;
-import ru.services.TrackReorderService;
 
 import java.util.List;
 import java.util.UUID;
@@ -62,7 +60,6 @@ public class ScheduleCommandController {
     private final LessonPinService lessonPinService;
     private final ManualPlacementService manualPlacementService;
     private final PlacementBoardService placementBoardService;
-    private final TrackReorderService trackReorderService;
     private final LessonOrderService lessonOrderService;
     private final ScheduleSynchronizer scheduleSynchronizer;
     private final ScheduleSessionMapper sessionMapper;
@@ -151,7 +148,7 @@ public class ScheduleCommandController {
 
         ScheduleSession session = generationService.generateCourseAdditive(
             sessionId, request.studyPeriodId(), request.courseId(),
-            request.kinds(), request.educatorIds(), "admin");
+            request.kinds(), request.educatorIds(), request.version(), "admin");
 
         return ResponseEntity.ok(sessionMapper.toDto(session));
     }
@@ -164,21 +161,25 @@ public class ScheduleCommandController {
      * <p>Тело: {@code { "courseId": 705, "kinds": ["PRACTICAL_WORK"], "educatorIds": [317] }} —
      * все поля опциональны. Пусто всё → очистка всей сессии (кроме замков).</p>
      *
-     * @return количество удалённых размещений
+     * @return количество удалённых размещений + сессия с новой версией
      */
     @PostMapping("/sessions/{sessionId}/clear")
-    public ResponseEntity<Integer> clearPlacements(
+    public ResponseEntity<ru.dto.command.ClearPlacementsResponse> clearPlacements(
         @PathVariable UUID sessionId,
         @RequestBody(required = false) ru.dto.command.ClearPlacementsRequest request
     ) {
         Integer courseId = request != null ? request.courseId() : null;
         java.util.List<ru.enums.KindOfStudy> kinds = request != null ? request.kinds() : null;
         java.util.List<Integer> educatorIds = request != null ? request.educatorIds() : null;
-        log.info("Очистка размещений: sessionId={}, course={}, kinds={}, educators={}",
-                sessionId, courseId, kinds, educatorIds);
+        Long version = request != null ? request.version() : null;
+        log.info("Очистка размещений: sessionId={}, course={}, kinds={}, educators={}, version={}",
+                sessionId, courseId, kinds, educatorIds, version);
 
-        int removed = generationService.clearPlacements(sessionId, courseId, kinds, educatorIds, "admin");
-        return ResponseEntity.ok(removed);
+        ScheduleGenerationService.ClearResult result =
+                generationService.clearPlacements(sessionId, courseId, kinds, educatorIds, version, "admin");
+
+        return ResponseEntity.ok(new ru.dto.command.ClearPlacementsResponse(
+                result.removed(), sessionMapper.toDto(result.session())));
     }
 
     /**
@@ -277,7 +278,9 @@ public class ScheduleCommandController {
         try {
             // Аудитории подбираются на бэке (см. LessonMoveService) —
             // request.newAuditoriumIds() намеренно не используется.
-            ScheduleSession session = lessonMoveService.moveLesson(
+            // Пересортировка трека входит в саму команду (одна транзакция) — отдельного вызова
+            // /reorder с фронта больше нет.
+            LessonMoveService.MoveResult result = lessonMoveService.moveLesson(
                 request.placementId(),
                 request.newDate(),
                 request.newSlot(),
@@ -285,18 +288,10 @@ public class ScheduleCommandController {
                 "user"
             );
 
-            return ResponseEntity.ok(sessionMapper.toDto(session));
+            return ResponseEntity.ok(moveResponse(result));
 
-        } catch (ObjectOptimisticLockingFailureException e) {
-            log.warn("❌ Optimistic lock conflict: {}", e.getMessage());
-
-            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
-                .body(new ConflictResponse(
-                    "CONFLICT",
-                    "Расписание было изменено другим пользователем. Обновите страницу.",
-                    currentVersionOf(sessionId)
-                ));
-
+        // Конфликт версий (optimistic lock) ловит CommandExceptionHandler: он срабатывает на
+        // КОММИТЕ транзакции и одинаков для всех команд — здесь ему делать нечего.
         } catch (LessonMoveConflictException e) {
             log.warn("❌ Resource conflict при переносе: {}", e.getMessage());
 
@@ -326,7 +321,7 @@ public class ScheduleCommandController {
 
         try {
             // Аудитории подбираются на бэке — в запросе их нет.
-            ScheduleSession session = lessonChainMoveService.moveChain(
+            LessonMoveService.MoveResult result = lessonChainMoveService.moveChain(
                 request.placementIds(),
                 request.newStartDate(),
                 request.newStartSlot(),
@@ -334,18 +329,9 @@ public class ScheduleCommandController {
                 "user"
             );
 
-            return ResponseEntity.ok(sessionMapper.toDto(session));
+            return ResponseEntity.ok(moveResponse(result));
 
-        } catch (ObjectOptimisticLockingFailureException e) {
-            log.warn("❌ Optimistic lock conflict (цепочка): {}", e.getMessage());
-
-            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
-                .body(new ConflictResponse(
-                    "CONFLICT",
-                    "Расписание было изменено другим пользователем. Обновите страницу.",
-                    currentVersionOf(sessionId)
-                ));
-
+        // Конфликт версий — в CommandExceptionHandler (см. выше).
         } catch (LessonMoveConflictException e) {
             log.warn("❌ Resource conflict при переносе цепочки: {}", e.getMessage());
 
@@ -439,7 +425,7 @@ public class ScheduleCommandController {
         try {
             ScheduleSession session = manualPlacementService.place(
                 sessionId, request.assignmentId(), request.date(), request.slot(),
-                request.studyPeriodId(), "user");
+                request.studyPeriodId(), request.version(), "user");
             return ResponseEntity.ok(sessionMapper.toDto(session));
         } catch (LessonMoveConflictException e) {
             log.warn("❌ Конфликт ручной установки: {}", e.getMessage());
@@ -454,11 +440,17 @@ public class ScheduleCommandController {
     /**
      * Снять размещение (вернуть занятие в палитру неразмещённых).
      *
-     * DELETE /api/schedule/command/placements/{placementId}
+     * <p>DELETE /api/schedule/command/placements/{placementId}?version=N</p>
+     *
+     * <p>Версия — query-параметром, а не телом: у DELETE тело не принято (и не всеми прокси/
+     * клиентами поддерживается). Семантика та же, что у остальных команд: устаревшая версия → 409.</p>
      */
     @DeleteMapping("/placements/{placementId}")
-    public ResponseEntity<ScheduleSessionDto> removePlacement(@PathVariable UUID placementId) {
-        ScheduleSession session = manualPlacementService.remove(placementId, "user");
+    public ResponseEntity<ScheduleSessionDto> removePlacement(
+        @PathVariable UUID placementId,
+        @RequestParam(required = false) Long version
+    ) {
+        ScheduleSession session = manualPlacementService.remove(placementId, version, "user");
         return ResponseEntity.ok(sessionMapper.toDto(session));
     }
 
@@ -477,30 +469,23 @@ public class ScheduleCommandController {
                 request.placementIds() != null ? request.placementIds().size() : "все");
 
         ScheduleSession session = lessonPinService.setLock(
-                placementId, request.locked(), "user", request.placementIds());
+                placementId, request.locked(), "user", request.placementIds(), request.version());
         return ResponseEntity.ok(sessionMapper.toDto(session));
     }
 
     /**
-     * Пересортировка трека в порядок плана — вызывается ПОСЛЕ переноса.
+     * Ответ переноса: сессия (с новой версией) + флаги распавшихся сцепок.
      *
-     * <p>POST /api/schedule/command/placements/{placementId}/reorder</p>
-     *
-     * <p>Якорь — только что перенесённое размещение; занятия его класса (сессия + курс +
-     * поток + набор преподавателей) возвращаются в порядок изучения: перенесённое «пузырьком»
-     * встаёт на плановое место, соседи сдвигаются на ячейку. Меняются только даты — тема
-     * едет с занятием. Возвращает сессию (версия) и флаги распавшихся сцепок.</p>
+     * <p>Пересортировка трека выполняется ВНУТРИ команды переноса (одна транзакция), поэтому
+     * отдельного эндпоинта {@code /placements/{id}/reorder} больше нет — фронт его звал вторым
+     * запросом, и между двумя транзакциями оставалось окно для конкурента.</p>
      */
-    @PostMapping("/placements/{placementId}/reorder")
-    public ResponseEntity<ReorderResponse> reorder(@PathVariable UUID placementId) {
-        log.info("Пересортировка в план вокруг: placementId={}", placementId);
-
-        TrackReorderService.ReorderResult result = trackReorderService.resort(placementId, "user");
+    private MoveLessonResponse moveResponse(LessonMoveService.MoveResult result) {
         List<ReorderProblemDto> problems = result.problems().stream()
                 .map(p -> new ReorderProblemDto(p.placementId(), p.reason().name()))
                 .collect(Collectors.toList());
 
-        return ResponseEntity.ok(new ReorderResponse(sessionMapper.toDto(result.session()), problems));
+        return new MoveLessonResponse(sessionMapper.toDto(result.session()), problems);
     }
 
     /**

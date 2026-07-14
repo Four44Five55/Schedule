@@ -72,6 +72,28 @@ public interface ScheduleSessionRepository extends org.springframework.data.jpa.
     Optional<ScheduleSession> findByIdForEdit(@Param("id") UUID id);
 
     /**
+     * Найти сессию для МУТАЦИИ ЕЁ РАЗМЕЩЕНИЙ — с принудительным подъёмом версии.
+     *
+     * <p>{@link LockModeType#OPTIMISTIC_FORCE_INCREMENT} поднимает {@code @Version} на коммите,
+     * даже если сама строка {@code schedule_session} не менялась. Это и есть выражение инварианта
+     * «мутация размещения = новое поколение агрегата»: {@code ScheduleSession} — корень агрегата,
+     * {@code LessonPlacement} живёт внутри его границы, но Hibernate инкрементирует версию только
+     * при UPDATE строки корня. Без этого версия слепа к переносам, ручной раскладке и очистке.</p>
+     *
+     * <p>Обычный {@link LockModeType#OPTIMISTIC} ({@link #findByIdWithLock}) здесь НЕ подходит —
+     * он лишь проверяет версию на коммите, но не повышает её.</p>
+     *
+     * <p>⚠️ Звать только через {@link ru.services.session.ScheduleSessionGate} — единственную
+     * дверь «взять сессию на запись». Прямой вызов обходит сверку {@code expectedVersion}.</p>
+     *
+     * @param id ID сессии
+     * @return сессия, версия которой будет поднята при коммите
+     */
+    @Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
+    @Query("SELECT s FROM ScheduleSession s WHERE s.id = :id")
+    Optional<ScheduleSession> findByIdForWrite(@Param("id") UUID id);
+
+    /**
      * Найти все сессии с определённым статусом.
      *
      * @param status Статус

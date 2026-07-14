@@ -28,6 +28,11 @@ interface AcademicGridScheduleProps {
   rootEntityType?: 'GROUP' | 'EDUCATOR' | 'AUDITORIUM';
   rootEntityId?: number;
   onMoveLesson?: (placementId: string) => void;
+  // Новая версия сессии после команд сетки. Перенос — это ДВЕ команды подряд (move + reorder),
+  // и каждая поднимает версию агрегата, поэтому отдаём хосту версию из ОТВЕТА ПОСЛЕДНЕЙ из них.
+  // Взять версию из ответа move (как просится) нельзя: её тут же перебивает reorder, и следующая
+  // команда хоста ушла бы с устаревшей → 409 на ровном месте.
+  onVersionChanged?: (version: number) => void;
   // Закрепить/открепить занятие (пин, Фича 2). Передаётся текущее занятие + id размещений
   // эффективной цепочки (с учётом временного разрыва detachedBoundaries на этой сетке) —
   // хост дёргает API с этим подмножеством и перезагружает расписание.
@@ -321,10 +326,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             constraints = [],
                                                                             isEditMode = false,
                                                                             sessionId,
-                                                                            currentVersion = 0,
+                                                                            // Дефолта нет намеренно: версию нельзя ВЫДУМАТЬ. Раньше стояло `= 0`, и хост,
+                                                                            // у которого сессии ещё нет, отправлял бы команду с нулевой версией — ложь,
+                                                                            // которая при работающем optimistic lock даёт либо 409, либо (хуже)
+                                                                            // случайное совпадение с версией свежесозданной сессии.
+                                                                            currentVersion,
                                                                             rootEntityType,
                                                                             rootEntityId,
                                                                             onMoveLesson,
+                                                                            onVersionChanged,
                                                                             onToggleLock,
                                                                             placementCandidate,
                                                                             studyPeriodId,
@@ -382,7 +392,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // React.memo на ячейке не отсекал бы неизменные ячейки. buildChain подставляется ниже
   // (объявлен позже); снимок обновляется на каждый рендер сразу после его объявления.
   const latest = useRef({
-    isEditMode, sessionId, onMoveLesson, placementCandidate, onExitPlacementCandidate,
+    isEditMode, sessionId, onMoveLesson, onVersionChanged, placementCandidate, onExitPlacementCandidate,
     selectedLesson, moving, moveTargets, onPlace, selectedChainIds, currentVersion,
     onToggleLock, buildChain: (_l: ScheduledLessonDto): ScheduledLessonDto[] => [],
   });
@@ -583,7 +593,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // Обновляем снимок для стабильных колбэков на каждый рендер (дёшево, без аллокаций сверх
   // одного объекта). Здесь buildChain уже объявлен.
   latest.current = {
-    isEditMode, sessionId, onMoveLesson, placementCandidate, onExitPlacementCandidate,
+    isEditMode, sessionId, onMoveLesson, onVersionChanged, placementCandidate, onExitPlacementCandidate,
     selectedLesson, moving, moveTargets, onPlace, selectedChainIds, currentVersion,
     onToggleLock, buildChain,
   };
@@ -698,9 +708,13 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     // Клик мог прийтись на хвост следа цепочки — переносим по старту головы,
     // а не по кликнутой ячейке.
     if (!s.selectedLesson.placementId) return;
+    // Версии нет — команду не отправляем (раньше сюда уходил выдуманный 0).
+    if (s.currentVersion == null) {
+      console.error('Перенос отменён: версия сессии неизвестна.');
+      return;
+    }
 
     const movedId = String(s.selectedLesson.id);
-    const movedPlacementId = s.selectedLesson.placementId;
     setMoving(true);
     try {
       const result = s.selectedChainIds.length > 1
@@ -720,19 +734,34 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           });
       clearSelection();
       if (result.success) {
-        // После переноса — пересортировка класса в порядок плана («пузырёк»): перенесённое
-        // встаёт на своё плановое место, соседи сдвигаются на ячейку (меняются их даты,
-        // тема едет с занятием).
-        try {
-          const { problems } = await CQRSService.reorder(movedPlacementId);
-          if (problems && problems.length > 0) {
-            window.alert(`Готово. Сцепок распалось: ${problems.length} — пересоберите вручную.`);
-          }
-        } catch (err) {
-          console.error('Ошибка пересортировки в план:', err);
+        // Пересортировка трека в порядок плана («пузырёк») выполняется ВНУТРИ команды переноса —
+        // одной транзакцией на бэке. Второго запроса (/reorder) больше нет: он делал бизнес-правило
+        // клиентским и оставлял окно, в котором расписание побывало «перенесено, но не
+        // пересортировано». Флаги распавшихся сцепок приезжают тем же ответом.
+        if (result.problems && result.problems.length > 0) {
+          window.alert(`Готово. Сцепок распалось: ${result.problems.length} — пересоберите вручную.`);
         }
-        // Query Side обновляется асинхронно — даём ему мгновение, затем перезагружаем.
-        setTimeout(() => s.onMoveLesson?.(movedId), 1000);
+
+        // Отдаём хосту свежую версию: без этого его следующая команда уйдёт с устаревшей и
+        // получит 409 (раньше версия не росла вовсе, поэтому проблема не проявлялась).
+        if (result.newVersion != null) s.onVersionChanged?.(result.newVersion);
+
+        // КОГДА перечитывать — решает хост: у него есть живой поток изменений (SSE), который
+        // звонит ровно после записи read-модели. Здесь стояла слепая пауза в 1 секунду —
+        // сетка гадала, успела ли асинхронная проекция.
+        s.onMoveLesson?.(movedId);
+
+      } else if (result.conflict) {
+        // 409: расписание изменили параллельно (другой пользователь или соседняя вкладка —
+        // push-уведомлений пока нет, см. FOLLOWUPS «свежесть чтения»). Вкладка обязана
+        // ВОССТАНОВИТЬСЯ: подхватить актуальную версию из тела ответа и перечитать данные.
+        // Без этого она залипает на старой версии, и КАЖДЫЙ следующий перенос обречён на 409
+        // до ручного F5.
+        if (result.conflict.currentVersion != null) {
+          s.onVersionChanged?.(result.conflict.currentVersion);
+        }
+        s.onMoveLesson?.(movedId); // перечитать сетку — расписание уже другое
+        window.alert('Расписание было изменено параллельно. Данные обновлены — повторите перенос.');
       }
     } catch (e) {
       console.error('Ошибка переноса:', e);

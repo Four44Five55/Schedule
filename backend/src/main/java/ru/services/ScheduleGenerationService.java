@@ -33,6 +33,9 @@ public class ScheduleGenerationService {
     // ========== NEW DEPENDENCIES (Phase 3: CQRS Integration) ==========
     private final ru.repository.write.ScheduleSessionRepository sessionRepo;
     private final ru.repository.write.LessonPlacementRepository placementRepo;
+    // Генерационные пути версию и так поднимают (updateStatus делает строку сессии грязной),
+    // поэтому дверь нужна ровно там, где статус не меняется, — в clearPlacements.
+    private final ru.services.session.ScheduleSessionGate sessionGate;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
@@ -222,12 +225,15 @@ public class ScheduleGenerationService {
     @Transactional
     public ru.entity.write.ScheduleSession generateCourseAdditive(
             java.util.UUID sessionId, Integer studyPeriodId, Integer courseId,
-            java.util.List<ru.enums.KindOfStudy> kinds, java.util.List<Integer> educatorIds, String user) {
+            java.util.List<ru.enums.KindOfStudy> kinds, java.util.List<Integer> educatorIds,
+            Long expectedVersion, String user) {
         log.info("Аддитивная генерация курса: sessionId={}, period={}, course={}, kinds={}, educators={}",
                 sessionId, studyPeriodId, courseId, kinds, educatorIds);
 
-        ru.entity.write.ScheduleSession session = sessionRepo.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Сессия не найдена: " + sessionId));
+        // Дверь: сверка версии. Поколение здесь поднимется и без FORCE_INCREMENT (ниже есть
+        // updateStatus, он делает строку сессии грязной), но сверку версии нужно делать в одном
+        // месте — иначе она разъедется с остальными командами.
+        ru.entity.write.ScheduleSession session = sessionGate.forWrite(sessionId, expectedVersion);
 
         // Все существующие размещения — засев Фазы 0 (неподвижные обстоятельства).
         List<ru.entity.write.LessonPlacement> existing = placementRepo.findBySessionId(sessionId);
@@ -333,12 +339,17 @@ public class ScheduleGenerationService {
      * @param educatorIds преподаватели или {@code null}/пусто — все: удаляются только занятия,
      *                    которые ведёт кто-то из них (зеркально охвату генерации)
      * @param user        автор (для логов)
-     * @return сколько размещений удалено
+     * @return сколько размещений удалено + сессия с поднятой версией
      */
     @Transactional
-    public int clearPlacements(java.util.UUID sessionId, Integer courseId,
-                               java.util.List<ru.enums.KindOfStudy> kinds,
-                               java.util.List<Integer> educatorIds, String user) {
+    public ClearResult clearPlacements(java.util.UUID sessionId, Integer courseId,
+                                       java.util.List<ru.enums.KindOfStudy> kinds,
+                                       java.util.List<Integer> educatorIds,
+                                       Long expectedVersion, String user) {
+        // Дверь: сверка версии + подъём поколения. Очистка сносит расписание пачкой, поэтому
+        // «затереть чужую работу молча» тут дороже всего.
+        ru.entity.write.ScheduleSession session = sessionGate.forWrite(sessionId, expectedVersion);
+
         boolean allKinds = kinds == null || kinds.isEmpty();
         boolean allEducators = educatorIds == null || educatorIds.isEmpty();
         List<ru.entity.write.LessonPlacement> toDelete = placementRepo.findBySessionId(sessionId).stream()
@@ -362,8 +373,17 @@ public class ScheduleGenerationService {
         log.info("🧹 Очистка сессии {}: удалено {} размещений (course={}, kinds={}, educators={}, кроме замков)",
                 sessionId, ids.size(), courseId, allKinds ? "все" : kinds,
                 allEducators ? "все" : educatorIds);
-        return ids.size();
+        return new ClearResult(ids.size(), session);
     }
+
+    /**
+     * Итог очистки: сколько снято + сессия-владелец.
+     *
+     * <p>Сессия здесь не для красоты: её {@code version} растёт при очистке, и клиент обязан
+     * подхватить новую — иначе следующая его команда придёт с устаревшей версией и получит 409.
+     * Раньше эндпоинт отдавал голое число, и канала для версии просто не было.</p>
+     */
+    public record ClearResult(int removed, ru.entity.write.ScheduleSession session) {}
 
     /**
      * Ядро генерации: строит workspace (с засевом пинов, если есть), переписывает

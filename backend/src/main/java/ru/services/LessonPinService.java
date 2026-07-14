@@ -9,6 +9,7 @@ import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 import ru.events.PlacementChangedEvent;
 import ru.repository.write.LessonPlacementRepository;
+import ru.services.session.ScheduleSessionGate;
 
 import java.util.List;
 import java.util.UUID;
@@ -33,20 +34,8 @@ public class LessonPinService {
 
     private final LessonPlacementRepository placementRepo;
     private final SlotChainService slotChainService;
+    private final ScheduleSessionGate sessionGate;
     private final ApplicationEventPublisher eventPublisher;
-
-    /**
-     * Закрепить/открепить размещение вместе со всей его цепочкой.
-     *
-     * @param placementId якорное размещение
-     * @param locked      целевое состояние закрепления
-     * @param user        автор изменения (для аудита)
-     * @return сессия-владелец (с актуальными данными для ответа)
-     */
-    @Transactional
-    public ScheduleSession setLock(UUID placementId, boolean locked, String user) {
-        return setLock(placementId, locked, user, null);
-    }
 
     /**
      * Закрепить/открепить размещение — с опциональным сужением до подмножества цепочки
@@ -66,10 +55,10 @@ public class LessonPinService {
      */
     @Transactional
     public ScheduleSession setLock(UUID placementId, boolean locked, String user,
-                                    List<UUID> explicitPlacementIds) {
+                                    List<UUID> explicitPlacementIds, Long expectedVersion) {
         LessonPlacement anchor = placementRepo.findById(placementId)
                 .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
-        ScheduleSession session = anchor.getSession();
+        ScheduleSession session = sessionGate.forWriteOf(anchor, expectedVersion);
 
         List<LessonPlacement> fullChain = chainPlacements(anchor, session.getId());
         List<LessonPlacement> chain = (explicitPlacementIds == null || explicitPlacementIds.isEmpty())

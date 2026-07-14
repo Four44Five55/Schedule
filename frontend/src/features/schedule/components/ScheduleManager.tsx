@@ -5,6 +5,7 @@ import { ScheduledLessonDto, EducatorDto, GroupDto, AuditoriumDto } from '../../
 import { ResourceService, ScheduleService } from '../../../services/apiServices';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
 import { useEducatorPriority } from '../useEducatorPriority';
+import { useScheduleStream } from '../../../hooks/useScheduleStream';
 import { usePeriod } from '../../period/PeriodContext';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
@@ -158,6 +159,13 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
   // только в виде «преподаватель». Общий хук (тот же источник, что и в ручной раскладке).
   const educatorPriority = useEducatorPriority(rootEntityId, filterType === 'educator');
 
+  // Живой канал изменений (SSE): чужие правки видны сразу, свои — ровно когда проекция готова.
+  // Раздел «Расписание» раньше не узнавал ни о тех, ни о других иначе как по F5.
+  const streamConnected = useScheduleStream(currentSession?.id, (e) => {
+    if (e.version != null) setCurrentSession((s) => (s ? { ...s, version: e.version! } : s));
+    reloadPeriodSchedule();
+  });
+
   const handleGenerateSchedule = async () => {
     if (!currentSession) return;
     setLoadingAction(true);
@@ -175,9 +183,13 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
 
   const handleMoveLesson = async (_placementId: string) => {
     setActionMessage('✅ Занятие перенесено!');
-    // Перезагружаем расписание за текущий период, чтобы перенос отразился сразу.
-    // Query Side обновляется асинхронно, но диалог переноса уже выждал перед вызовом.
-    await reloadPeriodSchedule();
+    // Сетку перечитает поток изменений: его звонок приходит ПОСЛЕ записи read-модели, то есть
+    // ровно тогда, когда данные готовы. Перечитывать здесь и сейчас нельзя — проекция асинхронна,
+    // и мы увидели бы старое положение занятия (от этого и стояла слепая пауза в 1 секунду).
+    // Поток оборван (перезапуск бэка, таймаут) — возвращаемся к паузе.
+    if (!streamConnected.current) {
+      setTimeout(() => { reloadPeriodSchedule(); }, 1000);
+    }
     setTimeout(() => setActionMessage(null), 2000);
   };
 
@@ -196,12 +208,25 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
   const handleToggleLock = async (lesson: ScheduledLessonDto) => {
     if (!lesson.placementId) return;
     try {
-      await CQRSService.setLock(lesson.placementId, !lesson.locked);
+      // Пин поднимает версию сессии — подхватываем её из ответа, иначе следующая команда
+      // раздела уйдёт с устаревшей и получит 409.
+      setCurrentSession(await CQRSService.setLock(
+        lesson.placementId, !lesson.locked, undefined, currentSession?.version));
       setActionMessage(lesson.locked ? 'Откреплено' : '🔒 Закреплено');
       setTimeout(() => { reloadPeriodSchedule(); setActionMessage(null); }, 700);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Ошибка закрепления:', e);
-      setActionMessage('❌ Ошибка закрепления');
+      // 409 «устаревшая версия» — подхватить актуальную и перечитать, иначе раздел залипнет.
+      const body = e?.response?.data;
+      if (e?.response?.status === 409 && body?.error === 'CONFLICT') {
+        if (body.currentVersion != null) {
+          setCurrentSession((s) => (s ? { ...s, version: body.currentVersion } : s));
+        }
+        setActionMessage('⚠️ Расписание изменено параллельно — данные обновлены, повторите');
+        reloadPeriodSchedule();
+      } else {
+        setActionMessage('❌ Ошибка закрепления');
+      }
       setTimeout(() => setActionMessage(null), 3000);
     }
   };
@@ -382,11 +407,16 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
                 constraints={constraints}
                 isEditMode={isEditMode}
                 sessionId={currentSession?.id}
-                currentVersion={currentSession?.version || 0}
+                currentVersion={currentSession?.version}
                 rootEntityType={rootEntityType}
                 rootEntityId={rootEntityId}
                 educatorPriority={educatorPriority}
                 onMoveLesson={handleMoveLesson}
+                // Раздел «Расписание» сессию после переноса НЕ перечитывал (она кладётся только из
+                // пропа или getEditableSession при монтировании). Пока версия не росла, это сходило
+                // с рук; теперь без подхвата второй перенос подряд получал бы 409.
+                onVersionChanged={(version) =>
+                    setCurrentSession((s) => (s ? { ...s, version } : s))}
                 onToggleLock={pinningEnabled ? handleToggleLock : undefined}
                 chromeless
                 maxHeightClass="max-h-[calc(100vh_-_150px)]"

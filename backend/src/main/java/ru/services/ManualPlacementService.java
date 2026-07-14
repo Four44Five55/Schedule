@@ -27,6 +27,7 @@ import ru.exceptions.LessonMoveConflictException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.repository.write.ScheduleSessionRepository;
 import ru.services.factories.CellForLessonFactory;
+import ru.services.session.ScheduleSessionGate;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -55,6 +56,7 @@ public class ManualPlacementService {
     private final AssignmentService assignmentService;
     private final LessonPlacementRepository placementRepo;
     private final ScheduleSessionRepository sessionRepo;
+    private final ScheduleSessionGate sessionGate;
     private final StudyPeriodService studyPeriodService;
     private final WorkspaceRecreationService workspaceRecreationService;
     private final WorkspacePlacementSeeder placementSeeder;
@@ -132,9 +134,10 @@ public class ManualPlacementService {
      */
     @Transactional
     public ScheduleSession place(UUID sessionId, Integer assignmentId, LocalDate date,
-                                 String slotName, Integer studyPeriodId, String user) {
-        ScheduleSession session = sessionRepo.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Сессия не найдена: " + sessionId));
+                                 String slotName, Integer studyPeriodId, Long expectedVersion,
+                                 String user) {
+        // Сессия — через единую дверь: сверка версии + подъём поколения на коммите.
+        ScheduleSession session = sessionGate.forWrite(sessionId, expectedVersion);
 
         // Один assignment — одно размещение в сессии (идемпотентность палитры).
         boolean alreadyPlaced = placementRepo.findBySessionId(sessionId).stream()
@@ -187,10 +190,10 @@ public class ManualPlacementService {
      * @return сессия-владелец
      */
     @Transactional
-    public ScheduleSession remove(UUID placementId, String user) {
+    public ScheduleSession remove(UUID placementId, Long expectedVersion, String user) {
         LessonPlacement placement = placementRepo.findById(placementId)
                 .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
-        ScheduleSession session = placement.getSession();
+        ScheduleSession session = sessionGate.forWriteOf(placement, expectedVersion);
         UUID id = placement.getId();
 
         placementRepo.delete(placement);

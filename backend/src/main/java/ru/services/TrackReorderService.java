@@ -13,6 +13,7 @@ import ru.entity.write.ScheduleSession;
 import ru.events.PlacementChangedEvent;
 import ru.repository.SlotChainRepository;
 import ru.repository.write.LessonPlacementRepository;
+import ru.services.session.ScheduleSessionGate;
 import ru.services.reindex.CellMove;
 import ru.services.reindex.ReorderPlan;
 import ru.services.reindex.ReorderProblem;
@@ -52,6 +53,7 @@ public class TrackReorderService {
 
     private final LessonPlacementRepository placementRepo;
     private final SlotChainRepository slotChainRepo;
+    private final ScheduleSessionGate sessionGate;
     private final ApplicationEventPublisher eventPublisher;
 
     private final TrackReorderStrategy strategy = new TrackReorderStrategy();
@@ -119,6 +121,11 @@ public class TrackReorderService {
         }
 
         if (!changed.isEmpty()) {
+            // Дверь берём ТОЛЬКО когда что-то реально переехало: холостая пересортировка (а фронт
+            // зовёт её после каждого переноса) не должна поднимать поколение — иначе она зря
+            // сбрасывала бы кэш workspace и обесценивала версию у соседних вкладок.
+            session = sessionGate.forWriteOf(anchor, null);
+
             placementRepo.saveAll(changed);
             // Проекция в read-модель (schedule_view) — асинхронно через onPlacementChanged.
             for (LessonPlacement p : changed) {

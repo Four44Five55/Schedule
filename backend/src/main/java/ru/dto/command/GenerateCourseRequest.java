@@ -13,10 +13,12 @@ import java.util.List;
  *                      = все виды кроме лекций); {@code null}/пусто — вся дисциплина (все виды)
  * @param educatorIds   опциональный фильтр по преподавателям: раскладываются только занятия,
  *                      которые ведёт кто-то из них; {@code null}/пусто — все преподаватели курса
+ * @param version       ожидаемая версия сессии (optimistic lock)
  */
 public record GenerateCourseRequest(
         Integer studyPeriodId,
         Integer courseId,
         List<KindOfStudy> kinds,
-        List<Integer> educatorIds
+        List<Integer> educatorIds,
+        Long version
 ) {}
