@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.dto.location.LocationCreateDto;
+import ru.dto.location.LocationDeletionImpactDto;
 import ru.dto.location.LocationDto;
 import ru.dto.location.LocationUpdateDto;
 import ru.services.LocationService;
@@ -34,9 +35,23 @@ public class LocationController {
         LocationDto updated = locationService.updateLocation(id, dto);
         return ResponseEntity.ok(updated);
     }
+    /**
+     * Предпросмотр последствий удаления: сколько корпусов привязано к локации (они блокируют удаление).
+     */
+    @GetMapping("/{id}/delete-impact")
+    public ResponseEntity<LocationDeletionImpactDto> deleteImpact(@PathVariable Integer id) {
+        return ResponseEntity.ok(locationService.deleteImpact(id));
+    }
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        locationService.deleteLocation(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<?> delete(@PathVariable Integer id) {
+        try {
+            locationService.deleteLocation(id);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            // К локации привязаны корпуса: БД удалить не даст (FK RESTRICT).
+            // Отвечаем осмысленно, а не сырым 500 (глобального @ControllerAdvice в проекте нет).
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+        }
     }
 }

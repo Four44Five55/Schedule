@@ -40,11 +40,15 @@ export function useScheduleStream(
 
     const source = new EventSource(`/api/schedule/query/stream/${sessionId}`);
 
-    // Пачки событий СХЛОПЫВАЕМ. Массовые операции публикуют событие на КАЖДОЕ размещение:
-    // «очистить всё» — это сотни звонков, и без гашения хост столько же раз перечитал бы сетку
-    // (~1.35 МБ на запрос). Нас интересует только факт «что-то изменилось» и последняя версия,
-    // поэтому копим и дёргаем хост один раз, когда шквал утих.
-    let timer: number | undefined;
+    // Пачки событий СХЛОПЫВАЕМ, но с «передним фронтом»: первое событие уходит хосту СРАЗУ, а
+    // всё, что прилетело следом в окне COALESCE_MS, схлопывается в один хвостовой вызов.
+    //
+    // Почему не просто debounce: массовые операции публикуют событие на КАЖДОЕ размещение
+    // («очистить всё» — сотни звонков), и без гашения хост столько же раз перечитал бы сетку
+    // (~1.35 МБ). Но чистый debounce наказывал бы и обычное одиночное действие — добавлял бы
+    // задержку на ровном месте, а именно на неё жалуются после отказа от setTimeout(1000).
+    // Передний фронт даёт: одиночное действие → мгновенно; шквал → ровно два вызова.
+    let cooldown: number | undefined;
     let pending: ScheduleChangedEvent | null = null;
 
     source.onopen = () => { connected.current = true; };
@@ -54,20 +58,32 @@ export function useScheduleStream(
       connected.current = false;
     };
     source.addEventListener('schedule-changed', (e) => {
+      let event: ScheduleChangedEvent;
       try {
-        pending = JSON.parse((e as MessageEvent).data) as ScheduleChangedEvent;
+        event = JSON.parse((e as MessageEvent).data) as ScheduleChangedEvent;
       } catch {
         return; // битое тело: следующая команда всё равно сверится по версии (409)
       }
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        timer = undefined;
-        if (pending) handler.current(pending);
+
+      if (cooldown === undefined) {
+        handler.current(event);          // передний фронт — без задержки
+      } else {
+        pending = event;                 // идёт шквал — копим последнее
+      }
+
+      if (cooldown !== undefined) window.clearTimeout(cooldown);
+      cooldown = window.setTimeout(() => {
+        cooldown = undefined;
+        if (pending) {
+          const last = pending;
+          pending = null;
+          handler.current(last);         // хвост шквала: одна финальная перезагрузка
+        }
       }, COALESCE_MS);
     });
 
     return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
+      if (cooldown !== undefined) window.clearTimeout(cooldown);
       source.close();
       connected.current = false;
     };
@@ -77,7 +93,8 @@ export function useScheduleStream(
 }
 
 /**
- * Окно схлопывания пачки событий. Достаточно мало, чтобы обновление ощущалось мгновенным, и
- * достаточно велико, чтобы «очистить всё» (сотни событий подряд) вызвало ОДНУ перезагрузку.
+ * Окно схлопывания шквала событий. На одиночное действие НЕ влияет (оно проходит передним
+ * фронтом); нужно только чтобы массовые операции («очистить всё» — сотни событий) не вызывали
+ * сотни перезагрузок.
  */
-const COALESCE_MS = 300;
+const COALESCE_MS = 400;

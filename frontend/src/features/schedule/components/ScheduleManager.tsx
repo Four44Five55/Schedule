@@ -213,7 +213,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
       setCurrentSession(await CQRSService.setLock(
         lesson.placementId, !lesson.locked, undefined, currentSession?.version));
       setActionMessage(lesson.locked ? 'Откреплено' : '🔒 Закреплено');
-      setTimeout(() => { reloadPeriodSchedule(); setActionMessage(null); }, 700);
+      // Сетку перечитает звонок (он приходит после записи проекции). Слепая пауза оставлена
+      // только на случай оборванного потока — иначе это была бы вторая, лишняя загрузка.
+      if (!streamConnected.current) setTimeout(() => { reloadPeriodSchedule(); }, 700);
+      setTimeout(() => setActionMessage(null), 700);
     } catch (e: any) {
       console.error('Ошибка закрепления:', e);
       // 409 «устаревшая версия» — подхватить актуальную и перечитать, иначе раздел залипнет.

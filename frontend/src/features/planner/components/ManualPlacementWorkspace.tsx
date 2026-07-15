@@ -99,9 +99,20 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // Живой канал изменений (SSE). Звонок приходит ПОСЛЕ записи read-модели, поэтому:
   //  1) чужие правки (соседняя вкладка, другой диспетчер) видны сразу, а не через 409;
   //  2) свои — тоже: перечитываем ровно тогда, когда данные готовы, вместо слепой паузы.
+  //
+  // Своё изменение отличаем от чужого ПО ВЕРСИИ: после своей команды мы уже подхватили новую
+  // версию из ответа, значит звонок с тем же поколением — эхо собственного действия. Доску
+  // (2.3 МБ, Command Side, синхронна) мы в этом случае УЖЕ перечитали в самом обработчике команды,
+  // и трогать её второй раз — чистая потеря. А вот сетку перечитываем именно здесь: она приходит
+  // с Query Side, и до этого звонка проекция была не готова.
   const streamConnected = useScheduleStream(session?.id, (e) => {
-    if (e.version != null) setSession((s) => (s ? { ...s, version: e.version! } : s));
+    const isEcho = e.version != null && e.version === session?.version;
+
     reloadSchedule();
+    if (isEcho) return;
+
+    // Чужая правка: подхватываем поколение и обновляем палитру.
+    if (e.version != null) setSession((s) => (s ? { ...s, version: e.version! } : s));
     if (e.sessionId) reloadBoard(e.sessionId).catch(() => {});
   });
 

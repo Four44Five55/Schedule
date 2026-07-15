@@ -55,6 +55,15 @@ public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, 
             "WHERE cs.requiredAuditorium.id = :auditoriumId OR cs.priorityAuditorium.id = :auditoriumId")
     long countReferencingAuditorium(@Param("auditoriumId") Integer auditoriumId);
 
+    /**
+     * Сколько слотов плана ссылается (требуемой/приоритетной) на любую аудиторию из набора.
+     * Нужно для удаления КОРПУСА: его аудитории уходят каскадом, но эти FK — без каскада, и БД
+     * откажет, если хоть одна из них указана в плане. Считаем заранее, чтобы вернуть осмысленный 409.
+     */
+    @Query("SELECT COUNT(cs) FROM CurriculumSlot cs " +
+            "WHERE cs.requiredAuditorium.id IN :auditoriumIds OR cs.priorityAuditorium.id IN :auditoriumIds")
+    long countReferencingAuditoriumIn(@Param("auditoriumIds") java.util.Collection<Integer> auditoriumIds);
+
     @Query("SELECT cs FROM CurriculumSlot cs " +
             "WHERE cs.disciplineCourse.id = :courseId " +
             "  AND cs.kindOfStudy = ru.enums.KindOfStudy.LECTURE " +

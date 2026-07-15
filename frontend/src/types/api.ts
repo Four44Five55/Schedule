@@ -104,11 +104,43 @@ export interface LocationDto {
   buildings?: { id: number; name: string }[];
 }
 
+export interface LocationCreateDto {
+  name: string;
+  address?: string;
+}
+
+export type LocationUpdateDto = LocationCreateDto;
+
+export interface LocationDeletionImpactDto {
+  locationId: number;
+  name: string;
+  deletable: boolean;
+  buildingCount: number;
+}
+
 export interface BuildingDto {
   id: number;
   name: string;
   location: { id: number; name: string; address?: string };
   auditoriums?: { id: number; name: string; capacity: number }[];
+}
+
+export interface BuildingCreateDto {
+  name: string;
+  locationId: number;
+}
+
+export type BuildingUpdateDto = BuildingCreateDto;
+
+export interface BuildingDeletionImpactDto {
+  buildingId: number;
+  name: string;
+  deletable: boolean;
+  auditoriumCount: number;
+  placedLessons: number;
+  lockedLessons: number;
+  slotsRequiringIt: number;
+  groupsUsingAsBase: number;
 }
 
 export interface FeatureDto {

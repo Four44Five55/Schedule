@@ -118,7 +118,7 @@ public class ScheduleSynchronizer {
      * @param event Событие генерации расписания
      * @see ScheduleGeneratedEvent
      */
-    @Async
+    @Async("projectionExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onScheduleGenerated(ScheduleGeneratedEvent event) {
@@ -168,7 +168,7 @@ public class ScheduleSynchronizer {
      * @param event Событие изменения размещения
      * @see PlacementChangedEvent
      */
-    @Async
+    @Async("projectionExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPlacementChanged(PlacementChangedEvent event) {
@@ -223,7 +223,7 @@ public class ScheduleSynchronizer {
      * @param event Событие устаревания снимка
      * @see ru.services.projection.ProjectionMaintenance
      */
-    @Async
+    @Async("projectionExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onProjectionStale(ProjectionStaleEvent event) {

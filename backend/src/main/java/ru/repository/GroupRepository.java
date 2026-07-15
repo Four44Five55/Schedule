@@ -31,4 +31,10 @@ public interface GroupRepository extends JpaRepository<Group, Integer> {
      * стоит предупредить: базовая аудитория участвует в подборе комнаты при генерации.
      */
     long countByBaseAuditoriumId(Integer auditoriumId);
+
+    /**
+     * Сколько групп числят домашней любую аудиторию из набора. Для удаления КОРПУСА: его аудитории
+     * уходят каскадом, и у этих групп {@code base_auditorium_id} обнулится (SET NULL).
+     */
+    long countByBaseAuditoriumIdIn(java.util.Collection<Integer> auditoriumIds);
 }

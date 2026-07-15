@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Sidebar, TAB_IDS, type TabId } from './components/layout/Sidebar';
 import { Dashboard } from './features/dashboard/components/Dashboard';
 import { EducatorList } from './features/resources/components/EducatorList';
-import { AuditoriumGrid } from './features/resources/components/AuditoriumGrid';
+import { AuditoriumsSection } from './features/resources/components/AuditoriumsSection';
 import { GroupList } from './features/resources/components/GroupList';
 import { DisciplineList } from './features/curriculum/components/DisciplineList';
 import { StudyStreamList } from './features/resources/components/StudyStreamList';
@@ -162,7 +162,7 @@ function AppShell() {
       case 'educators':
         return <EducatorList educators={educators} onEducatorsChange={reloadEducators} />;
       case 'auditoriums':
-        return <AuditoriumGrid auditoriums={auditoriums} onAuditoriumsChange={reloadAuditoriums} />;
+        return <AuditoriumsSection auditoriums={auditoriums} onAuditoriumsChange={reloadAuditoriums} />;
       case 'groups':
         return <GroupList groups={groups} onGroupsChange={reloadGroups} />;
       case 'disciplines':

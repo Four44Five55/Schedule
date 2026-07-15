@@ -5,10 +5,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.dto.location.LocationCreateDto;
+import ru.dto.location.LocationDeletionImpactDto;
 import ru.dto.location.LocationDto;
 import ru.dto.location.LocationUpdateDto;
 import ru.entity.Location;
 import ru.mapper.LocationMapper;
+import ru.repository.BuildingRepository;
 import ru.repository.LocationRepository;
 
 import java.util.List;
@@ -21,6 +23,8 @@ public class LocationService {
 
     private final LocationRepository locationRepository;
     private final LocationMapper locationMapper;
+    // Только для счётчика цены удаления (корпуса блокируют удаление локации через FK RESTRICT).
+    private final BuildingRepository buildingRepository;
 
     @Transactional
     public LocationDto createLocation(LocationCreateDto createDto) {
@@ -48,12 +52,37 @@ public class LocationService {
         return locationMapper.toDto(locationRepository.save(location));
     }
 
+    /**
+     * Предпросмотр последствий удаления локации: сколько корпусов к ней привязано (они блокируют
+     * удаление через FK RESTRICT). Состояние не меняет.
+     *
+     * @see LocationDeletionImpactDto
+     */
+    @Transactional(readOnly = true)
+    public LocationDeletionImpactDto deleteImpact(Integer id) {
+        Location location = getEntityById(id);
+        long buildingCount = buildingRepository.countByLocationId(id);
+        return new LocationDeletionImpactDto(
+                location.getId(),
+                location.getName(),
+                buildingCount == 0, // deletable: правило считается ЗДЕСЬ, фронт его не выводит
+                buildingCount);
+    }
+
+    /**
+     * Удаляет локацию по ID.
+     *
+     * <p>Отказывает, если к локации привязаны корпуса ({@code building.location_id ON DELETE
+     * RESTRICT}) — БД удалить не даст, и раньше наружу летел сырой 500.</p>
+     */
     @Transactional
     public void deleteLocation(Integer id) {
-        // TODO: Добавить проверку, что у локации нет привязанных корпусов,
-        // так как у нас стоит ON DELETE RESTRICT
-        if (!locationRepository.existsById(id)) {
-            throw new EntityNotFoundException("Локация с id=" + id + " не найдена.");
+        // Одно правило — один источник: и предпросмотр, и отказ смотрят на тот же deletable.
+        LocationDeletionImpactDto impact = deleteImpact(id); // бросит 404, если локации нет
+        if (!impact.deletable()) {
+            throw new IllegalStateException(
+                    "Локацию нельзя удалить: к ней привязано " + impact.buildingCount()
+                            + " корпусов. Сначала перенесите или удалите их.");
         }
         locationRepository.deleteById(id);
     }

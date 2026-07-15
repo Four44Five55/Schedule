@@ -189,6 +189,16 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
             "JOIN lp.assignedAuditoriums aud WHERE aud.id = :auditoriumId AND lp.locked = true")
     long countLockedByAuditoriumId(@Param("auditoriumId") Integer auditoriumId);
 
+    /** Занятий стоит в аудиториях этого набора (удаление корпуса уносит их каскадом). */
+    @Query("SELECT COUNT(DISTINCT lp) FROM LessonPlacement lp " +
+            "JOIN lp.assignedAuditoriums aud WHERE aud.id IN :auditoriumIds")
+    long countByAuditoriumIdIn(@Param("auditoriumIds") java.util.Collection<Integer> auditoriumIds);
+
+    /** Из них закреплено вручную. */
+    @Query("SELECT COUNT(DISTINCT lp) FROM LessonPlacement lp " +
+            "JOIN lp.assignedAuditoriums aud WHERE aud.id IN :auditoriumIds AND lp.locked = true")
+    long countLockedByAuditoriumIdIn(@Param("auditoriumIds") java.util.Collection<Integer> auditoriumIds);
+
     /** Размещений у слота плана (уйдут каскадом при его удалении). */
     @Query("SELECT COUNT(lp) FROM LessonPlacement lp WHERE lp.assignment.curriculumSlot.id = :slotId")
     long countBySlotId(@Param("slotId") Integer slotId);

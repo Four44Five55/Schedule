@@ -9,9 +9,9 @@ import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
 import {kindStyleOf} from '../kindStyles';
 
-/** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб). */
+/** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб; воскресенье не планируется). */
 const WEEKDAY_ID: Record<DayOfWeek, number> = {
-  MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6, SUNDAY: 7,
+  MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6,
 };
 
 interface AcademicGridScheduleProps {
