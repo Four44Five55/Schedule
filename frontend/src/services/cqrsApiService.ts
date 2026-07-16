@@ -18,6 +18,7 @@ import {
   MoveChainRequest,
   UnplacedLessonDto,
   PlacementBoardDto,
+  AuditoriumOptionDto,
   CoursePlacementCountDto,
   OrderViolationDto,
   ClearPlacementsResponse,
@@ -103,6 +104,29 @@ export const CQRSService = {
     return api
       .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/lock`,
         { locked, placementIds, version })
+      .then(r => r.data);
+  },
+
+  /**
+   * Все комнаты со статусом для этого занятия — включая занятые (с именем занявшего).
+   * Фильтровать не надо: показать, ПОЧЕМУ нельзя, полезнее, чем скрыть строку.
+   */
+  getAuditoriumOptions: (placementId: string): Promise<AuditoriumOptionDto[]> =>
+    api
+      .get<AuditoriumOptionDto[]>(`/schedule/command/placements/${placementId}/auditorium-options`)
+      .then(r => r.data),
+
+  /**
+   * Сменить аудиторию у стоящего занятия. Набор комнат заменяет нынешние целиком —
+   * у занятия их может быть несколько (экзамен с рассадкой, деление на полупотоки).
+   * Занятая комната → 409 RESOURCE_CONFLICT.
+   */
+  changeAuditorium: (
+    placementId: string, auditoriumIds: number[], version?: number
+  ): Promise<ScheduleSessionDto> => {
+    return api
+      .patch<ScheduleSessionDto>(`/schedule/command/placements/${placementId}/auditorium`,
+        { auditoriumIds, version })
       .then(r => r.data);
   },
 

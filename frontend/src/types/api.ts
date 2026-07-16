@@ -511,6 +511,37 @@ export interface ProjectionHealthDto {
   missing: number;
 }
 
+// ============ ЗДОРОВЬЕ АУДИТОРИЙ ============
+// Не стоят ли двое в одной комнате и все ли помещаются. Оба состояния система создаёт сама и
+// не показывает: конфликт непредставим в модели занятости решателя (там ячейка → одно занятие),
+// а строки schedule_view друг о друге не знают. Расписание с конфликтами выглядит нормальным.
+
+/** Здоровье одной аудитории — строка разбивки. Причина обычно в самой комнате, отсюда разбивка. */
+export interface RoomHealthDto {
+  auditoriumId: number;
+  name: string | null;
+  capacity: number;
+  conflictingCells: number;  // в скольких ячейках комната занята дважды
+  doubleBooked: number;      // сколько занятий в этих ячейках стоит
+  overCapacity: number;      // сколько занятий не помещается
+  maxExcess: number;         // максимальный перебор по людям
+}
+
+/**
+ * Две метрики намеренно разной силы:
+ * doubleBooked — физика (две группы не войдут в одну дверь), допустимо только 0;
+ * overCapacity — суждение (перебор на пару человек — рабочая ситуация, на десятки — фикция),
+ * поэтому перебор отдаётся числом (maxExcess), а не флагом: границу проводит диспетчер.
+ */
+export interface AuditoriumHealthDto {
+  sessionId: string | null;
+  placements: number;
+  conflictingCells: number;
+  doubleBooked: number;
+  overCapacity: number;
+  rooms: RoomHealthDto[];
+}
+
 // ============ КАЧЕСТВО РАСПИСАНИЯ ПРЕПОДАВАТЕЛЕЙ (дашборд) ============
 
 /**

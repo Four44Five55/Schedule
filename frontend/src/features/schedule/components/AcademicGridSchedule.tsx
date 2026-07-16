@@ -2,7 +2,8 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ConstraintDto, DayOfWeek, ScheduledLessonDto, TimeSlotPair} from '../../../types/api';
 import {isWithinInterval, parseISO} from 'date-fns';
 import {cn} from '../../../utils/cn';
-import {AlertTriangle, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
+import {AlertTriangle, DoorOpen, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
+import {AuditoriumPickerModal} from './AuditoriumPickerModal';
 import {CQRSService} from '../../../services/cqrsApiService';
 import type {OrderFinding, OrderViolationKind} from '../../../types/cqrs';
 import {CurriculumService} from '../../../services/apiServices';
@@ -361,6 +362,10 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [moving, setMoving] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
+  // Занятие, которому меняем комнату. Отдельно от selectedLesson: выбор занятия подсвечивает
+  // ячейки для ПЕРЕНОСА, а смена комнаты — другая операция над тем же занятием, и она не должна
+  // ни сбрасывать выделение, ни притворяться переносом.
+  const [auditoriumTarget, setAuditoriumTarget] = useState<ScheduledLessonDto | null>(null);
   // Дисциплина, подсвеченная наведением (когда занятие ещё не выбрано).
   // Наведённое занятие (а не только имя дисциплины) — нужно, чтобы знать его группы
   // для сужения подсветки у ресурса (преподаватель/аудитория) до общих групп.
@@ -884,6 +889,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   }, [filterType, educatorPriority]);
 
   return (
+      <>
       <AcademicGridShell
           startDate={startDate}
           endDate={endDate}
@@ -912,6 +918,20 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                   : <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>)
                               : `Нет доступных слотов для «${selectedLesson.disciplineAbbreviation}»`}
                 </span>
+                {/*
+                  Смена комнаты живёт здесь, а не значком в ячейке: ячейка уже несёт замок, сцепку
+                  и признак конфликта, а комната — операция редкая и осознанная. Показываем только
+                  в режиме редактирования и только у занятия из БД (у него есть placementId).
+                */}
+                {isEditMode && selectedLesson.placementId && (
+                    <button
+                        onClick={() => setAuditoriumTarget(selectedLesson)}
+                        title={`Сменить аудиторию (сейчас: ${selectedLesson.auditoriumNames.join(', ') || '—'})`}
+                        className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
+                    >
+                      <DoorOpen size={12} /> Аудитория
+                    </button>
+                )}
                 <button
                     onClick={clearSelection}
                     className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
@@ -921,5 +941,20 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
               </div>
           )}
       />
+      {auditoriumTarget && (
+          <AuditoriumPickerModal
+              lesson={auditoriumTarget}
+              currentVersion={currentVersion}
+              onClose={() => setAuditoriumTarget(null)}
+              onChanged={(newVersion) => {
+                // Тот же путь, что у переноса: версию отдаём хосту, а расписание он перечитает
+                // сам через onMoveLesson. Своего канала доставки данных не заводим — второй
+                // неизбежно разошёлся бы с первым.
+                onVersionChanged?.(newVersion);
+                if (auditoriumTarget.placementId) onMoveLesson?.(auditoriumTarget.placementId);
+              }}
+          />
+      )}
+      </>
   );
 };

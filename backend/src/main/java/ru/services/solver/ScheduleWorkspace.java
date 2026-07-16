@@ -4,6 +4,7 @@ import lombok.Getter;
 import ru.entity.*;
 import ru.services.constraints.AllConstraints;
 import ru.services.solver.availability.ResourceAvailabilityManager;
+import ru.services.solver.model.AuditoriumResource;
 import ru.services.solver.model.SchedulableResource;
 import ru.services.solver.model.ScheduleGrid;
 
@@ -30,6 +31,13 @@ public final class ScheduleWorkspace {
     private final LocalDate startDate;
     @Getter
     private final LocalDate endDate;
+
+    /**
+     * Политика подбора комнаты. Без состояния — workspace держит занятость, селектор решает,
+     * какую из свободных взять. Раньше это решение было размазано по четырём {@code if} внутри
+     * самого workspace, из-за чего его нельзя было ни протестировать, ни переиспользовать.
+     */
+    private final AuditoriumSelector auditoriumSelector = new AuditoriumSelector();
 
     /**
      * Создает новое рабочее пространство для планирования.
@@ -209,58 +217,27 @@ public final class ScheduleWorkspace {
         return participants;
     }
 
+    /**
+     * Свободные комнаты, подходящие занятию в этой ячейке, — лучшие первыми.
+     *
+     * <p>Само решение («какая комната лучше») живёт в {@link AuditoriumSelector}: workspace — это
+     * состояние, а не политика. Здесь остаётся только подставить свои комнаты как ресурсы.</p>
+     *
+     * <p><b>Что было.</b> Цепочка из четырёх {@code if} (жёсткое → приоритет → пул → базовая
+     * аудитория группы), где каждая ветка проверяла что хотела: {@code isFree} спрашивали три из
+     * четырёх, вместимость — одна из четырёх, а резервная не спрашивала ничего и возвращала
+     * базовую аудиторию группы вслепую. Замер живой базы (2026-07-17): <b>179</b> ячеек с двойным
+     * бронированием и <b>366</b> занятий, не помещающихся в комнату, — все из резервной ветки.
+     * И ветка эта не экзотическая, а основная: у всех лекций {@code required/priority/pool} пусты.</p>
+     *
+     * @param lesson занятие (несёт требования плана и состав потока)
+     * @param cell   целевая ячейка
+     * @return свободные комнаты, лучшая первой; пусто — ставить некуда
+     */
     public List<Auditorium> findAvailableAuditoriumsFor(Lesson lesson, CellForLesson cell) {
-        // 1. Если есть жесткое требование
-        if (lesson.getRequiredAuditorium() != null) {
-            SchedulableResource audResource = resourceManager.getAuditoriumResource(lesson.getRequiredAuditorium().getId());
-            return audResource.isFree(cell) ? List.of(lesson.getRequiredAuditorium()) : Collections.emptyList();
-        }
-
-        // 2. Если есть приоритетное
-        if (lesson.getPriorityAuditorium() != null) {
-            SchedulableResource audResource = resourceManager.getAuditoriumResource(lesson.getPriorityAuditorium().getId());
-            if (audResource.isFree(cell)) {
-                // Если приоритетная свободна, возвращаем только ее
-                return List.of(lesson.getPriorityAuditorium());
-            }
-        }
-
-        // 3. Если есть пул
-        if (lesson.getAllowedAuditoriumPool() != null) {
-            List<Auditorium> available = lesson.getAllowedAuditoriumPool().getAuditoriums().stream()
-                    .filter(aud -> resourceManager.getAuditoriumResource(aud.getId()).isFree(cell))
-                    .filter(aud -> aud.getCapacity() >= lesson.getStudyStream().calculateTotalSize())
-                    .collect(Collectors.toList());
-
-            // ✅ ПРОВЕРКА: Если занятию уже назначены аудитории, нужно минимум столько же
-            int minRequired = lesson.getAssignedAuditoriums() != null && !lesson.getAssignedAuditoriums().isEmpty()
-                    ? lesson.getAssignedAuditoriums().size()
-                    : 1;
-
-            if (available.size() < minRequired) {
-                return Collections.emptyList(); // Недостаточно аудиторий!
-            }
-
-            return available;
-        }
-
-        // 4. Резервный вариант (нежелателен)
-        //TODO Преобразовать логику присвоения аудитории
-        Set<Group> groups = lesson.getStudyStream().getGroups();
-        if (groups == null || groups.isEmpty()) {
-            throw new IllegalArgumentException("Занятие должно содержать хотя бы одну группу.");
-        }
-        if (groups.size() == 1) {
-            return List.of(groups.stream()
-                    .findFirst()
-                    .map(Group::getBaseAuditorium)
-                    .orElseThrow(() -> new IllegalStateException("Не удалось получить группу из набора.")));
-        } else {
-            return List.of(groups.stream()
-                    .map(Group::getBaseAuditorium)
-                    .max(Comparator.comparing(Auditorium::getCapacity))
-                    .orElseThrow(() -> new IllegalStateException("Не удалось получить группу из набора.")));
-        }
+        return auditoriumSelector.select(lesson, cell, resourceManager.allAuditoriumResources()).stream()
+                .map(AuditoriumResource::auditorium)
+                .collect(Collectors.toList());
     }
 
     private int calculatePlacementScore(List<SchedulableResource> participants, CellForLesson cell) {

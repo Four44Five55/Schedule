@@ -6,9 +6,11 @@ import ru.entity.Group;
 import ru.entity.constraints.ConstraintData;
 import ru.inter.IMaterialEntity;
 import ru.services.constraints.AllConstraints;
+import ru.services.solver.model.AuditoriumResource;
 import ru.services.solver.model.EducatorResource;
 import ru.services.solver.model.SchedulableResource;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -25,7 +27,12 @@ public final class ResourceAvailabilityManager {
 
     private final Map<Integer, SchedulableResource> educators;
     private final Map<Integer, SchedulableResource> groups;
-    private final Map<Integer, SchedulableResource> auditoriums;
+    /**
+     * Тип уточнён до {@link AuditoriumResource}: комната знает свою вместимость, и подбору это
+     * нужно на каждом шаге. Раньше здесь лежал голый ресурс, вместимость спрашивать было не у
+     * кого — и три ветки подбора из четырёх её не проверяли.
+     */
+    private final Map<Integer, AuditoriumResource> auditoriums;
 
     /**
      * Создает и инициализирует менеджер ресурсов.
@@ -75,10 +82,10 @@ public final class ResourceAvailabilityManager {
     /**
      * Инициализирует ресурсы аудиторий.
      */
-    private Map<Integer, SchedulableResource> initializeAuditoriumResources(List<Auditorium> auditoriums, Map<Integer, List<ConstraintData>> constraintsMap) {
-        Map<Integer, SchedulableResource> resourceMap = new HashMap<>();
+    private Map<Integer, AuditoriumResource> initializeAuditoriumResources(List<Auditorium> auditoriums, Map<Integer, List<ConstraintData>> constraintsMap) {
+        Map<Integer, AuditoriumResource> resourceMap = new HashMap<>();
         for (Auditorium auditorium : auditoriums) {
-            SchedulableResource resource = new SchedulableResource(auditorium.getId(), auditorium.getName());
+            AuditoriumResource resource = new AuditoriumResource(auditorium);
             applyConstraints(resource, constraintsMap.getOrDefault(auditorium.getId(), Collections.emptyList()));
             resourceMap.put(auditorium.getId(), resource);
         }
@@ -137,8 +144,18 @@ public final class ResourceAvailabilityManager {
     /**
      * Возвращает "умную карточку" для аудитории по ее ID.
      */
-    public SchedulableResource getAuditoriumResource(Integer id) {
+    public AuditoriumResource getAuditoriumResource(Integer id) {
         return auditoriums.get(id);
+    }
+
+    /**
+     * Все комнаты — область поиска, когда учебный план не сузил её ни жёстким требованием, ни
+     * пулом. Раньше такой области не существовало: резервная ветка подбора не искала комнату
+     * вовсе, а выдавала базовую аудиторию группы вслепую, из-за чего поток на 116 человек
+     * оказывался в кабинете на 70, а свободная сотня рядом не рассматривалась.
+     */
+    public Collection<AuditoriumResource> allAuditoriumResources() {
+        return Collections.unmodifiableCollection(auditoriums.values());
     }
 
     /**

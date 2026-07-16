@@ -47,6 +47,8 @@ public class ScheduleQueryController {
     private final ru.services.exporting.ScheduleExportService scheduleExportService;
     // Сверка Command Side ↔ Query Side: асинхронная проекция могла отстать или упасть.
     private final ru.services.projection.ProjectionHealthService projectionHealthService;
+    // Датчик аудиторий: двойные бронирования и переполнения, которых не видит ни решатель, ни сетка.
+    private final ru.services.auditorium.AuditoriumHealthService auditoriumHealthService;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -348,6 +350,28 @@ public class ScheduleQueryController {
     @GetMapping("/projection-health")
     public ru.dto.ProjectionHealthDto getProjectionHealth(@RequestParam Integer periodId) {
         return projectionHealthService.check(periodId);
+    }
+
+    /**
+     * GET /api/schedule/query/auditorium-health?periodId=X
+     *
+     * <p>Не стоят ли двое в одной комнате и все ли помещаются. Оба состояния система создаёт
+     * сама и не показывает: двойное бронирование непредставимо в модели занятости решателя
+     * ({@code Map<ячейка, занятие>} — второй перезаписывает первого), а строки
+     * {@code schedule_view} друг о друге не знают. Расписание с конфликтами выглядит нормальным,
+     * найти их можно было только SQL-запросом снаружи приложения.</p>
+     *
+     * <p><b>Только смотрит.</b> Ничего не чинит и не блокирует — это датчик перед починкой
+     * подбора аудиторий, и он же будет её проверять. Разбивка по комнатам, а не одно число:
+     * маленькая аудитория, назначенная базовой нескольким группам, и приоритетная аудитория
+     * ловят конфликты по разным причинам и чинятся по-разному.</p>
+     *
+     * @param periodId учебный период
+     * @return счётчики (ячейки с конфликтом / занятий в них / не помещается) + разбивка по комнатам
+     */
+    @GetMapping("/auditorium-health")
+    public ru.dto.auditorium.AuditoriumHealthDto getAuditoriumHealth(@RequestParam Integer periodId) {
+        return auditoriumHealthService.check(periodId);
     }
 
     /**

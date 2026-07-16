@@ -6,7 +6,8 @@ import { HelpTip } from '../../../components/ui/HelpTip';
 import { ScheduleService } from '../../../services/apiServices';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
-  PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto, ExportAxis, ProjectionHealthDto
+  PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto, ExportAxis, ProjectionHealthDto,
+  AuditoriumHealthDto
 } from '../../../types/api';
 import { usePeriod } from '../../period/PeriodContext';
 import {
@@ -47,6 +48,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // то есть не виден никому — занятие просто не появляется в сетке.
   const [health, setHealth] = useState<ProjectionHealthDto | null>(null);
   const [repairing, setRepairing] = useState(false);
+  // Здоровье аудиторий: двойные бронирования и переполнения. Решатель их не видит (в его модели
+  // занятости ячейка → одно занятие, второе перезаписывает первое), сетка тоже — строки
+  // schedule_view друг о друге не знают. Без этого среза их вообще никак не заметить.
+  const [rooms, setRooms] = useState<AuditoriumHealthDto | null>(null);
 
   // Выгрузка расписания периода в Excel (все сущности выбранной оси). Бэк отдаёт файл,
   // ScheduleService сам запускает скачивание — здесь только состояние кнопки.
@@ -65,7 +70,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // Данные выбранного периода — перезагружаются при смене периода.
   // Готовность + плотность групп (честная ёмкость с бэка) + качество преподавателей + сверка проекции.
   useEffect(() => {
-    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setLoading(false); return; }
+    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all([
@@ -73,17 +78,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
       ScheduleService.getEducatorQuality(period.id),
       ScheduleService.getGroupDensity(period.id),
       ScheduleService.getProjectionHealth(period.id),
+      ScheduleService.getAuditoriumHealth(period.id),
     ])
-      .then(([rd, q, dens, hp]) => {
+      .then(([rd, q, dens, hp, rh]) => {
         if (cancelled) return;
         setReadiness(rd);
         setQuality(q);
         setDensity(dens);
         setHealth(hp);
+        setRooms(rh);
       })
       .catch((e) => {
         console.error('Дашборд: не удалось загрузить данные периода:', e);
-        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); }
+        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -116,6 +123,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   const readyPct = readiness && readiness.total > 0
     ? Math.round((readiness.placed / readiness.total) * 100)
     : 0;
+
+  // Худший перебор по всем комнатам. Именно величина отличает рабочую тесноту от фикции:
+  // +2 человека диспетчер сажает не задумываясь, +80 не сажает никогда.
+  const maxExcess = useMemo(
+    () => (rooms?.rooms ?? []).reduce((max, r) => Math.max(max, r.maxExcess), 0),
+    [rooms]
+  );
+
+  // Порядок групп в таблице плотности. Бэк сортирует ПО СМЫСЛУ (кому не хватает пар 1–3 —
+  // наверх, см. подсказку к таблице), и этот порядок отвечает на вопрос «где горит».
+  // Но он же мешает ответить на вопрос «а что у группы 955/2» — глазами её не найти.
+  // Это два разных вопроса, поэтому переключатель, а не замена одного порядка другим.
+  const [groupSort, setGroupSort] = useState<'problems' | 'number'>('problems');
+
+  // Номера групп — не просто строки: «955/2» должна идти ПЕРЕД «955/12», а не после, как дало бы
+  // обычное сравнение строк. numeric сравнивает цифровые куски числами, поэтому и «45/1 → 45/2 →
+  // 46», и «955/2 → 955/12» выходят правильно, без ручного разбора имени на части.
+  const groupCollator = useMemo(() => new Intl.Collator('ru', { numeric: true, sensitivity: 'base' }), []);
+
+  const sortedDensity = useMemo(() => {
+    if (groupSort === 'problems') return density; // порядок бэка — как пришёл
+    return [...density].sort((a, b) => groupCollator.compare(a.groupName ?? '', b.groupName ?? ''));
+  }, [density, groupSort, groupCollator]);
 
   // Все задействованные в расписании преподаватели. Бэк уже отсортировал: с требованием
   // компактности первыми, худшие (больший штраф) сверху. Для остальных компактность не
@@ -230,6 +260,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         </div>
       )}
 
+      {/*
+        Аудитории. Два баннера, а не один, потому что метрики разной силы:
+        двойное бронирование — физика (две группы не войдут в одну дверь), допустимо только ноль;
+        переполнение — суждение (перебор на пару человек рабочий, на десятки — фикция).
+        Кнопки «починить» нет намеренно: конфликт разрешается переносом занятия или сменой
+        комнаты, то есть решением диспетчера, а не операцией. Разбивка по комнатам — самое
+        полезное здесь: причина обычно в самой комнате (маленькая аудитория, назначенная базовой
+        сразу нескольким группам, ловит конфликты пачками).
+      */}
+      {rooms && rooms.doubleBooked > 0 && (
+        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 space-y-2">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 text-sm text-red-900">
+              <span className="font-bold">Двойное бронирование аудиторий:</span>{' '}
+              {rooms.doubleBooked} занятий делят комнату с другими — в {rooms.conflictingCells} ячейках
+              расписания две группы придут в одну дверь. Расписание выглядит нормальным: ни сетка,
+              ни распределитель этого не показывают.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pl-8">
+            {rooms.rooms.filter((r) => r.conflictingCells > 0).map((r) => (
+              <span
+                key={r.auditoriumId}
+                title={`${r.doubleBooked} занятий в ${r.conflictingCells} ячейках · вместимость ${r.capacity}`}
+                className="px-2 py-0.5 rounded-md bg-white border border-red-200 text-[11px] font-semibold text-red-800"
+              >
+                {r.name ?? `#${r.auditoriumId}`} · {r.conflictingCells} ячеек · {r.capacity} мест
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {rooms && rooms.overCapacity > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 space-y-2">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 text-sm text-amber-900">
+              <span className="font-bold">Не помещаются в аудиторию:</span>{' '}
+              {rooms.overCapacity} занятий — людей больше, чем мест
+              {maxExcess > 0 && <>, перебор до {maxExcess} человек</>}. Решать вам: несколько
+              человек — рабочая ситуация, десятки — нет.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pl-8">
+            {rooms.rooms.filter((r) => r.overCapacity > 0).map((r) => (
+              <span
+                key={r.auditoriumId}
+                title={`${r.overCapacity} занятий не помещается · вместимость ${r.capacity} · максимальный перебор ${r.maxExcess}`}
+                className="px-2 py-0.5 rounded-md bg-white border border-amber-200 text-[11px] font-semibold text-amber-800"
+              >
+                {r.name ?? `#${r.auditoriumId}`} · {r.overCapacity} занятий · +{r.maxExcess} чел.
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* KPI готовности расписания — «всего» из набора генерации бэка (не query-сторона) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi
@@ -259,14 +348,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
             title="Плотность групп (пары 1–3)"
             bodyClassName="px-4 pb-4 pt-1"
             headerActions={
-              <HelpTip text={
-                'Слоты — учебные пары 1–3 за период: ёмкость считается на бэке честно (закрытые пары '
-                + 'Вс и Сб-4, а также групповые ограничения уже вычтены), свободно = ёмкость минус занятое.\n\n'
-                + 'Занятия — что нужно разместить группе: всего по учебному плану, уже стоит в 1–3, '
-                + 'стоит в 4-й паре, осталось разместить.\n\n'
-                + '«Не влезет в 1–3» — из оставшихся занятий столько не поместится в свободные пары 1–3, '
-                + 'их придётся ставить в 4-ю пару. Эти группы показаны сверху и подсвечены.'
-              } />
+              <div className="flex items-center gap-2">
+                <div className="flex bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setGroupSort('problems')}
+                    title="Сначала те, кому не хватает пар 1–3"
+                    className={cn(
+                      'px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-tight transition-colors',
+                      groupSort === 'problems' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                    )}
+                  >
+                    По проблемам
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGroupSort('number')}
+                    title="По номеру группы: 45/1 → 45/2 → 46 → 955/2 → 955/12"
+                    className={cn(
+                      'px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-tight transition-colors',
+                      groupSort === 'number' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                    )}
+                  >
+                    По номеру
+                  </button>
+                </div>
+                <HelpTip text={
+                  'Слоты — учебные пары 1–3 за период: ёмкость считается на бэке честно (закрытые пары '
+                  + 'Вс и Сб-4, а также групповые ограничения уже вычтены), свободно = ёмкость минус занятое.\n\n'
+                  + 'Занятия — что нужно разместить группе: всего по учебному плану, уже стоит в 1–3, '
+                  + 'стоит в 4-й паре, осталось разместить.\n\n'
+                  + '«Не влезет в 1–3» — из оставшихся занятий столько не поместится в свободные пары 1–3, '
+                  + 'их придётся ставить в 4-ю пару. В порядке «по проблемам» такие группы показаны '
+                  + 'сверху; подсветка сохраняется в любом порядке.'
+                } />
+              </div>
             }
           >
             <div className="max-h-[320px] overflow-auto custom-scrollbar -mx-1 px-1">
@@ -295,7 +411,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {density.map((g) => {
+                  {sortedDensity.map((g) => {
                     // Проблема — не «мало свободных пар», а «занятия не помещаются».
                     const overflow = g.mustGoToFourth > 0;
                     return (

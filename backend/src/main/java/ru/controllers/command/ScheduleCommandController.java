@@ -61,6 +61,8 @@ public class ScheduleCommandController {
     private final ManualPlacementService manualPlacementService;
     private final PlacementBoardService placementBoardService;
     private final LessonOrderService lessonOrderService;
+    // Смена аудитории вручную: комнату раньше нельзя было выбрать вообще, её всегда назначал алгоритм.
+    private final ru.services.auditorium.PlacementAuditoriumService placementAuditoriumService;
     private final ScheduleSynchronizer scheduleSynchronizer;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
@@ -471,6 +473,57 @@ public class ScheduleCommandController {
         ScheduleSession session = lessonPinService.setLock(
                 placementId, request.locked(), "user", request.placementIds(), request.version());
         return ResponseEntity.ok(sessionMapper.toDto(session));
+    }
+
+    /**
+     * Куда ещё можно посадить это занятие — все комнаты со статусом.
+     *
+     * <p>GET /api/schedule/command/placements/{placementId}/auditorium-options</p>
+     *
+     * <p>Отдаём и занятые тоже, с именем занявшего: диспетчеру нужно понимать, почему нельзя в
+     * конкретную комнату, а не обнаруживать отсутствие строки. Фильтрует глаз, не бэк.</p>
+     *
+     * <p>Теснота приходит числом ({@code shortfall}) и выбор НЕ запрещает: перебор на пару
+     * человек — рабочая ситуация, решение за диспетчером. Запрещает только занятость — это физика.</p>
+     */
+    @GetMapping("/placements/{placementId}/auditorium-options")
+    public List<ru.dto.auditorium.AuditoriumOptionDto> getAuditoriumOptions(@PathVariable UUID placementId) {
+        return placementAuditoriumService.options(placementId);
+    }
+
+    /**
+     * Сменить аудиторию у стоящего занятия.
+     *
+     * <p>PATCH /api/schedule/command/placements/{placementId}/auditorium</p>
+     *
+     * <p>Раньше комнату нельзя было выбрать вообще — её всегда назначал алгоритм, а поле
+     * {@code newAuditoriumIds} в переносе бэк молча игнорировал. Теперь это отдельная команда:
+     * принимает НАБОР комнат (экзамен с рассадкой, деление на полупотоки), заменяет нынешние
+     * целиком, поднимает версию сессии через ту же дверь, что перенос и пины.</p>
+     *
+     * @return сессия с новой версией; занятая комната → 409 {@code RESOURCE_CONFLICT}
+     */
+    @PatchMapping("/placements/{placementId}/auditorium")
+    public ResponseEntity<?> changeAuditorium(
+        @PathVariable UUID placementId,
+        @RequestBody ru.dto.command.ChangeAuditoriumRequest request
+    ) {
+        log.info("Смена аудитории: placementId={}, комнат={}", placementId,
+                request.auditoriumIds() != null ? request.auditoriumIds().size() : 0);
+        try {
+            ScheduleSession session = placementAuditoriumService.changeAuditoriums(
+                    placementId, request.auditoriumIds(), request.version(), "user");
+            return ResponseEntity.ok(sessionMapper.toDto(session));
+        } catch (LessonMoveConflictException e) {
+            log.warn("❌ Конфликт смены аудитории: {}", e.getMessage());
+            // Версию берём по размещению: sessionId клиент сюда не присылает и не должен —
+            // надёжный якорь только placementId (см. LessonMoveService).
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
+                .body(new ConflictResponse(
+                    "RESOURCE_CONFLICT",
+                    "Невозможно сменить аудиторию: " + e.getMessage() + ".",
+                    placementAuditoriumService.currentSessionVersion(placementId)));
+        }
     }
 
     /**

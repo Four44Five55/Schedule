@@ -56,6 +56,7 @@ import {
   AuditoriumDeletionImpactDto,
   PeriodReadinessDto,
   ProjectionHealthDto,
+  AuditoriumHealthDto,
   SlotDeletionImpactDto,
   PeriodScheduleQualityDto,
   GroupDensityDto,
@@ -233,6 +234,16 @@ export const ScheduleService = {
    */
   getProjectionHealth: (periodId: number): Promise<ProjectionHealthDto | null> =>
       api.get<ProjectionHealthDto>('/schedule/query/projection-health', { params: { periodId } })
+      .then((r) => r.data)
+      .catch(() => null),
+
+  /**
+   * Здоровье аудиторий: не стоят ли двое в одной комнате и все ли помещаются.
+   * Кнопки «починить» тут нет и быть не может: конфликт разрешается только переносом занятия
+   * или сменой комнаты — это решение диспетчера, а не операция.
+   */
+  getAuditoriumHealth: (periodId: number): Promise<AuditoriumHealthDto | null> =>
+      api.get<AuditoriumHealthDto>('/schedule/query/auditorium-health', { params: { periodId } })
       .then((r) => r.data)
       .catch(() => null),
 

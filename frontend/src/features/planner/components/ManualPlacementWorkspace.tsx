@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScheduledLessonDto, StudyPeriodDto } from '../../../types/api';
 import { ScheduleSessionDto, PlacementBoardDto, BoardLessonDto, OrderFinding } from '../../../types/cqrs';
 import { CQRSService, dateUtils } from '../../../services/cqrsApiService';
@@ -12,6 +12,10 @@ import { Users, UserSquare2, ChevronRight, ChevronDown, Loader2, Lock, X, Trash2
 import { cn } from '../../../utils/cn';
 
 type ViewMode = 'group' | 'educator';
+
+// Окно, в течение которого SSE-звонок после СВОЕЙ команды считается эхом (доску не перечитываем
+// повторно). Своё эхо приходит сразу за командой; с запасом на нагрузку/схлопывание событий.
+const LOCAL_ECHO_WINDOW_MS = 3000;
 
 interface Props {
   period: StudyPeriodDto;
@@ -86,6 +90,17 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
     return data;
   }, [courseIds, viewMode]);
 
+  // Отметка «только что была СВОЯ мутация»: после своей команды доску (2.3 МБ) мы перечитываем
+  // тут же (Command Side, синхронна), поэтому SSE-звонок-эхо доску трогать не должен. Раньше эхо
+  // отличали по равенству версий, но под нагрузкой (4× CPU) `setSession(newVersion)` не успевает
+  // «долететь» до замыкания стрим-хука к приходу звонка → эхо считалось чужим и доска грузилась
+  // ВТОРОЙ раз. Метка ставится СИНХРОННО (ref), не дожидаясь ре-рендера, поэтому гонки нет.
+  const lastLocalMutationAt = useRef(0);
+  const reloadBoardLocal = useCallback((sessionId: string): Promise<PlacementBoardDto> => {
+    lastLocalMutationAt.current = Date.now();
+    return reloadBoard(sessionId);
+  }, [reloadBoard]);
+
   const entities = board?.entities ?? [];
 
   const selectedEntityData = useMemo(
@@ -106,10 +121,15 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // и трогать её второй раз — чистая потеря. А вот сетку перечитываем именно здесь: она приходит
   // с Query Side, и до этого звонка проекция была не готова.
   const streamConnected = useScheduleStream(session?.id, (e) => {
-    const isEcho = e.version != null && e.version === session?.version;
+    // Эхо своей команды определяем по СВЕЖЕЙ метке локальной мутации, а не по равенству версий:
+    // под нагрузкой обновление версии в state отстаёт от прихода звонка (см. reloadBoardLocal).
+    // Своё эхо приходит сразу после команды, поэтому короткого окна достаточно; чужая правка вне
+    // окна перечитает и доску, и версию. Сетку (Query Side) перечитываем ВСЕГДА — проекция
+    // до звонка была не готова.
+    const isOwnEcho = Date.now() - lastLocalMutationAt.current < LOCAL_ECHO_WINDOW_MS;
 
     reloadSchedule();
-    if (isEcho) return;
+    if (isOwnEcho) return; // доску уже перечитали в обработчике своей команды, версию тоже подхватили
 
     // Чужая правка: подхватываем поколение и обновляем палитру.
     if (e.version != null) setSession((s) => (s ? { ...s, version: e.version! } : s));
@@ -197,7 +217,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
         assignmentId, date, slot, studyPeriodId: period.id, version: session.version,
       });
       setSession(updated);
-      const freshBoard = await reloadBoard(session.id);
+      const freshBoard = await reloadBoardLocal(session.id);
       // Продолжаем очередь: сразу выбираем следующее занятие, не заставляя лишний раз кликать в палитру.
       const next = (selectedEntity && justPlaced) ? pickNextUnplaced(selectedEntity, justPlaced, freshBoard) : null;
       setSelectedUnplaced(next);
@@ -210,7 +230,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
       setPlaceError(e?.response?.data?.message || 'Не удалось разместить занятие: слот занят.');
       recoverIfStale(e);
     }
-  }, [session, period.id, reloadBoard, reloadAfterCommand, selectedEntity, selectedUnplaced,
+  }, [session, period.id, reloadBoardLocal, reloadAfterCommand, selectedEntity, selectedUnplaced,
       pickNextUnplaced, recoverIfStale]);
 
   // Закрепить/открепить занятие (пин). chainPlacementIds — эффективная цепочка с учётом
@@ -249,13 +269,13 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
     try {
       // Ответ несёт новую версию — подхватываем.
       setSession(await CQRSService.deletePlacement(placementId, session.version));
-      await reloadBoard(session.id);
+      await reloadBoardLocal(session.id);
       reloadAfterCommand();
     } catch (e) {
       console.error('Не удалось снять размещение:', e);
       recoverIfStale(e);
     }
-  }, [session, reloadBoard, reloadAfterCommand, recoverIfStale]);
+  }, [session, reloadBoardLocal, reloadAfterCommand, recoverIfStale]);
 
   // Массовое снятие: убрать все размещения выбранной дисциплины (вернуть в очередь).
   // Bulk-версия крестика — отдельного эндпоинта нет, снимаем через тот же deletePlacement
@@ -279,9 +299,9 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
     } finally {
       setSession(latest);
     }
-    await reloadBoard(session.id);
+    await reloadBoardLocal(session.id);
     reloadAfterCommand();
-  }, [session, reloadBoard, reloadAfterCommand, recoverIfStale]);
+  }, [session, reloadBoardLocal, reloadAfterCommand, recoverIfStale]);
 
   // Бутстрап: сессия периода → сетка (доску грузит отдельный эффект по session/оси).
   useEffect(() => {
@@ -583,7 +603,8 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                 onMoveLesson={() => {
                   // Доску можно перечитать сразу (она с Command Side, синхронна), а сетку —
                   // когда проекция будет готова: об этом сообщит поток (или запасная пауза).
-                  if (session) reloadBoard(session.id).catch(() => {});
+                  // reloadBoardLocal ставит метку «своя мутация» → SSE-эхо доску не задублирует.
+                  if (session) reloadBoardLocal(session.id).catch(() => {});
                   reloadAfterCommand();
                 }}
                 // Версия приезжает в ответе самой команды (последней в цепочке move → reorder),
