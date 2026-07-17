@@ -193,6 +193,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
           rootEntityType,
           rootEntityId: entityId,
           disciplineName: candidateDiscipline,
+          educatorIds: selectedUnplaced.educatorIds,
         }
       : null),
     [selectedUnplaced, rootEntityType, entityId, candidateDiscipline]

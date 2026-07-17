@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ConstraintDto, DayOfWeek, ScheduledLessonDto, TimeSlotPair} from '../../../types/api';
 import {isWithinInterval, parseISO} from 'date-fns';
 import {cn} from '../../../utils/cn';
-import {AlertTriangle, DoorOpen, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
+import {AlertTriangle, DoorOpen, Link2, Lock, LockOpen, Trash2, Unlink, X} from 'lucide-react';
 import {AuditoriumPickerModal} from './AuditoriumPickerModal';
 import {CQRSService} from '../../../services/cqrsApiService';
 import type {AuditoriumFinding, AuditoriumViolationKind, OrderFinding, OrderViolationKind} from '../../../types/cqrs';
@@ -49,6 +49,10 @@ interface AcademicGridScheduleProps {
     // до неё (см. orderDiscipline ниже). Занятия в сетке дисциплину несут сами, а кандидат
     // из очереди — нет, поэтому её передаёт хост.
     disciplineName?: string;
+    // Преподаватели кандидата — чтобы жёлтая подсветка «преподаватель занят» работала и при
+    // установке из палитры (у selectedLesson они есть, у кандидата из очереди — нет). Другой
+    // сценарий, тот же механизм teacherBusyCells.
+    educatorIds?: number[];
   } | null;
   studyPeriodId?: number;
   onPlace?: (assignmentId: number, date: string, slot: TimeSlotPair) => void | Promise<void>;
@@ -506,25 +510,26 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     return () => clearTimeout(t);
   }, [selectedLesson, loadingTargets, moving]);
 
-  // Преподаватели выбранного занятия — для условия «препод скрыто занят».
+  // Преподаватели активного занятия — выбранного для переноса ИЛИ кандидата из палитры (установка
+  // не размещённого). Оба сценария используют один механизм жёлтой подсветки «препод занят».
   const selectedEducatorIds = useMemo(
-    () => new Set(selectedLesson?.educatorIds ?? []),
-    [selectedLesson]
+    () => new Set(selectedLesson?.educatorIds ?? placementCandidate?.educatorIds ?? []),
+    [selectedLesson, placementCandidate]
   );
 
-  // Ячейки, где заняты преподаватель(и) выбранного занятия — чтобы располагать его
-  // компактно к остальным парам преподавателя. Считается из уже загруженного
-  // расписания (полное, по всем группам), без обращения к бэкенду.
+  // Ячейки, где заняты преподаватель(и) активного занятия — чтобы располагать его компактно к
+  // остальным парам преподавателя. Считается из уже загруженного расписания (полное, по всем
+  // группам), без обращения к бэкенду. Работает и для переноса, и для установки из палитры.
   const teacherBusyCells = useMemo(() => {
     const set = new Set<string>();
-    if (!selectedLesson) return set;
+    if (selectedEducatorIds.size === 0) return set;
     for (const l of lessons) {
       if (l.educatorIds.some((id) => selectedEducatorIds.has(id))) {
         set.add(`${l.date}_${l.timeSlotPair}`);
       }
     }
     return set;
-  }, [selectedLesson, lessons, selectedEducatorIds]);
+  }, [lessons, selectedEducatorIds]);
 
   // Эталонное занятие для подсветки: закреплённое выбором приоритетнее наведённого.
   // От него берём и дисциплину, и набор групп.
@@ -548,6 +553,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   const orderDiscipline = selectedLesson?.disciplineName
       ?? placementCandidate?.disciplineName
       ?? null;
+
+  // Группы выбранного занятия — для сужения находок порядка (в виде преподавателя/аудитории видны
+  // занятия многих групп, и нарушения ЧУЖИХ групп — шум). Тот же приём, что `sharesGroup` у подсветки
+  // дисциплины, но по образцу `orderDiscipline`: только ВЫБОР, без наведения (иначе штриховка мигала
+  // бы на hover). В виде группы набор всегда включает просматриваемую группу → сужение — no-op.
+  const orderGroupNames = useMemo(
+      () => new Set(selectedLesson?.groupNames ?? []),
+      [selectedLesson]
+  );
 
   // Сцепки слотов (SlotChain) — пары соседних слотов, идущих единой цепочкой.
   // Храним как множество канонических ключей "minId-maxId" для O(1)-проверки.
@@ -806,6 +820,33 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     }
   }, [clearSelection]);
 
+  // Снять выбранное занятие с расписания (вернуть в очередь неразмещённых). Как и перенос —
+  // команда идёт из сетки, версию/перезагрузку отдаём хосту (onVersionChanged + onMoveLesson).
+  const handleDeleteSelected = useCallback(async () => {
+    const s = latest.current;
+    if (!s.selectedLesson?.placementId || !s.sessionId || s.currentVersion == null) return;
+    if (!window.confirm('Снять занятие с расписания? Оно вернётся в очередь неразмещённых.')) return;
+    const placementId = s.selectedLesson.placementId;
+    setMoving(true);
+    try {
+      const session = await CQRSService.deletePlacement(placementId, s.currentVersion);
+      clearSelection();
+      s.onVersionChanged?.(session.version);
+      s.onMoveLesson?.(placementId); // сигнал хосту перечитать сетку/доску
+    } catch (e: any) {
+      if (e?.response?.status === 409) {
+        const conflict = e.response.data;
+        if (conflict?.currentVersion != null) s.onVersionChanged?.(conflict.currentVersion);
+        s.onMoveLesson?.(placementId);
+        window.alert('Расписание было изменено параллельно. Данные обновлены — повторите.');
+      } else {
+        console.error('Не удалось снять занятие:', e);
+      }
+    } finally {
+      setMoving(false);
+    }
+  }, [clearSelection]);
+
   // У преподавателя в ячейке важны группы (он ведёт разные), поэтому контент
   // ячейки перестраиваем именно для его расписания.
   const isEducatorView = filterType === 'educator';
@@ -834,21 +875,23 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
 
     const isConflict = !!lesson && !!activeConstraint;
     const isMoveTarget = (!!selectedLesson || !!placementCandidate) && !lesson && moveTargets.has(gridKey);
-    const isTeacherBusy = !!selectedLesson && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
+    const isTeacherBusy = selectedEducatorIds.size > 0 && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
     const isSourceCell = !!lesson && isSelectedLesson(lesson);
     const isChainMember = !!lesson?.placementId
         && selectedChainIds.includes(lesson.placementId);
-    const isTeacherBusyHidden = !!selectedLesson && !!lesson && !isSourceCell &&
+    const isTeacherBusyHidden = selectedEducatorIds.size > 0 && !!lesson && !isSourceCell &&
         teacherBusyCells.has(gridKey) &&
         !lesson.educatorIds.some((id) => selectedEducatorIds.has(id));
     const sharesGroup = activeGroupNames.size === 0
         || !!lesson?.groupNames.some((n) => activeGroupNames.has(n));
     const isDisciplineMatch = !!lesson?.disciplineName
         && lesson.disciplineName === activeDiscipline && sharesGroup;
-    // Нарушение порядка показываем, только если оно относится к дисциплине, которой диспетчер
-    // сейчас занят (или если он не занят ничем — тогда видно всё). См. orderDiscipline.
+    // Нарушение порядка показываем, только если оно относится к дисциплине И одной из групп
+    // выбранного занятия (или если ничего не выбрано — тогда видно всё). См. orderDiscipline/
+    // orderGroupNames. Групповое сужение убирает шум чужих групп в виде преподавателя.
     const orderVisible = !!lesson?.placementId
-        && (!orderDiscipline || lesson.disciplineName === orderDiscipline);
+        && (!orderDiscipline || lesson.disciplineName === orderDiscipline)
+        && (orderGroupNames.size === 0 || lesson!.groupNames.some((n) => orderGroupNames.has(n)));
     const orderFinding = orderVisible ? orderViolations?.get(lesson!.placementId!) : undefined;
 
     // Находка по аудитории — показываем всегда (конфликт комнаты физический, не зависит от того,
@@ -1001,6 +1044,17 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                         className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
                     >
                       <DoorOpen size={12} /> Аудитория
+                    </button>
+                )}
+                {/* Снять занятие с расписания. Деструктивно (с подтверждением) — потому красным. */}
+                {isEditMode && selectedLesson.placementId && (
+                    <button
+                        onClick={handleDeleteSelected}
+                        disabled={moving}
+                        title="Снять занятие с расписания (вернётся в очередь неразмещённых)"
+                        className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg bg-red-500/80 hover:bg-red-500 text-white transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      <Trash2 size={12} /> Удалить
                     </button>
                 )}
                 <button

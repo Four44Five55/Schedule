@@ -297,6 +297,15 @@ export const AssignmentsTab: React.FC<{
         const assignedSlotCount = slots.filter(s =>
           assignments.some(a => a.curriculumSlot.id === s.id)
         ).length;
+        // Цветовая маркировка счётчика: всё назначено → зелёный, ничего → красный, частично →
+        // янтарный. Пустой курс (нет занятий) — нейтральный: назначать нечего.
+        const assignmentTone = slots.length === 0
+          ? 'text-slate-400'
+          : assignedSlotCount >= slots.length
+            ? 'text-emerald-600'
+            : assignedSlotCount === 0
+              ? 'text-red-500'
+              : 'text-amber-600';
 
         return (
           <div key={courseId}>
@@ -321,7 +330,7 @@ export const AssignmentsTab: React.FC<{
                   {course.studyPeriod && ` · ${course.studyPeriod.name}`}
                 </span>
               </div>
-              <span className="ml-auto text-xs text-slate-400 shrink-0">
+              <span className={cn('ml-auto text-xs font-semibold shrink-0', assignmentTone)}>
                 назначено {assignedSlotCount}/{slots.length}
               </span>
             </button>
