@@ -323,6 +323,10 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 
 > ⚠️ Аудитории подбираются **на бэке** (`LessonMoveService` пересоздаёт workspace и валидирует слот
 > через `findPlacementOption`). Поле `newAuditoriumIds` в контракте осталось мёртвым — не используется.
+>
+> Опциональное поле **`reorder`** (`null`/`true` → как обычно; `false`) — режим «перенос без
+> пересортировки»: двигается только это занятие, авто-пузырёк в порядок плана не запускается
+> (соседи не сдвигаются). Сам перенос всё равно валидируется и комнату подбирает бэк.
 
 **Ответ (SUCCESS):** `MoveLessonResponse` — сессия с новой `version` + флаги пересортировки:
 ```json
@@ -349,7 +353,8 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 занятости ресурса (`LessonMoveConflictException`).
 
 **Перенос цепочки целиком:** `POST /command/sessions/{sessionId}/move-chain` — тело
-`MoveChainRequest {placementIds[], newStartDate, newStartSlot, version}` (аудитории тоже с бэка).
+`MoveChainRequest {placementIds[], newStartDate, newStartSlot, version, reorder?}` (аудитории тоже
+с бэка; `reorder` — как у одиночного переноса).
 
 ---
 

@@ -65,6 +65,9 @@ public class LessonMoveService {
      * @param newDate         новая дата
      * @param newSlot         новый временной слот (имя константы {@link TimeSlotPair})
      * @param expectedVersion ожидаемая версия сессии-владельца (optimistic lock)
+     * @param reorder         пересортировать ли трек в порядок плана после переноса;
+     *                        {@code false} — режим «перенос без пересортировки» (двигаем только это
+     *                        занятие, соседей не трогаем)
      * @param user            автор изменения (для аудита)
      * @return сессия-владелец размещения — с актуальными данными для ответа
      * @throws ObjectOptimisticLockingFailureException если версия сессии устарела
@@ -77,6 +80,7 @@ public class LessonMoveService {
             LocalDate newDate,
             String newSlot,
             Long expectedVersion,
+            boolean reorder,
             String user
     ) {
         // 1. Размещение — единственный надёжный якорь: сессию берём из него же, а не из
@@ -132,8 +136,12 @@ public class LessonMoveService {
         //    Раньше её вторым HTTP-запросом звал фронт: бизнес-правило жило на клиенте, между
         //    двумя транзакциями зияло окно для конкурента, а сверить версию в reorder было
         //    невозможно (её уже сдвинул сам перенос). Теперь это одна транзакция и одно поколение.
-        var reorder = trackReorderService.resort(placementId, user);
-
-        return new MoveResult(session, reorder.problems());
+        //    Режим «перенос без пересортировки» (reorder=false) её пропускает: уникальный перенос,
+        //    когда соседей трогать не надо. Само занятие уже валидно размещено (шаги 6–7).
+        if (!reorder) {
+            return new MoveResult(session, java.util.List.of());
+        }
+        var reorderResult = trackReorderService.resort(placementId, user);
+        return new MoveResult(session, reorderResult.problems());
     }
 }

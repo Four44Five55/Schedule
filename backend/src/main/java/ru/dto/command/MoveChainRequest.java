@@ -14,11 +14,14 @@ import java.util.UUID;
  * @param newStartDate  дата, на которую переносим первое звено (вся цепочка — этот же день)
  * @param newStartSlot  пара для первого звена ({@link ru.enums.TimeSlotPair}); остальные — следом
  * @param version       ожидаемая версия сессии (optimistic lock)
+ * @param reorder       включать ли авто-пересортировку трека после переноса. {@code null}/{@code true}
+ *                      — как обычно; {@code false} — режим «перенос без пересортировки»
  */
 public record MoveChainRequest(
     List<UUID> placementIds,
     LocalDate newStartDate,
     String newStartSlot,
-    Long version
+    Long version,
+    Boolean reorder
 ) {
 }

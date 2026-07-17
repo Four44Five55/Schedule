@@ -6,6 +6,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.entity.Assignment;
+import ru.entity.Auditorium;
+import ru.entity.Group;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.SlotChain;
 import ru.entity.write.LessonPlacement;
@@ -14,16 +16,24 @@ import ru.events.PlacementChangedEvent;
 import ru.repository.SlotChainRepository;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.session.ScheduleSessionGate;
+import ru.services.reindex.Cell;
 import ru.services.reindex.CellMove;
 import ru.services.reindex.ReorderPlan;
 import ru.services.reindex.ReorderProblem;
+import ru.services.reindex.ReorderRoomContext;
+import ru.services.reindex.ReorderRoomInput;
+import ru.services.reindex.ReorderRoomPlan;
+import ru.services.reindex.ReorderRoomResolver;
+import ru.services.reindex.RoomSlot;
 import ru.services.reindex.TimedLesson;
 import ru.services.reindex.TrackReorderStrategy;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -55,6 +65,8 @@ public class TrackReorderService {
     private final SlotChainRepository slotChainRepo;
     private final ScheduleSessionGate sessionGate;
     private final ApplicationEventPublisher eventPublisher;
+    /** Политика комнат при перестановке — через контракт, чтобы фаза 2 подменялась без правки сервиса. */
+    private final ReorderRoomResolver roomResolver;
 
     private final TrackReorderStrategy strategy = new TrackReorderStrategy();
 
@@ -79,8 +91,12 @@ public class TrackReorderService {
         Integer streamId = anchorAssignment.getStudyStream().getId();
         Set<Integer> educatorIds = educatorIdsOf(anchorAssignment);
 
+        // Все размещения сессии грузим один раз: из них и класс однородности, и снимок
+        // занятости не-классных комнат для проверки жёстких требований.
+        List<LessonPlacement> allSessionPlacements = placementRepo.findBySessionId(session.getId());
+
         // Класс однородности: та же сессия + курс + поток + набор преподавателей.
-        List<LessonPlacement> classPlacements = placementRepo.findBySessionId(session.getId()).stream()
+        List<LessonPlacement> classPlacements = allSessionPlacements.stream()
                 .filter(p -> {
                     Assignment a = p.getAssignment();
                     return courseId.equals(a.getCurriculumSlot().getDisciplineCourse().getId())
@@ -110,15 +126,35 @@ public class TrackReorderService {
 
         ReorderPlan plan = strategy.resort(lessons, chainPairs);
 
-        // Применяем переезды — только дата/пара, аудитории занятия сохраняем.
         Map<UUID, LessonPlacement> byId = classPlacements.stream()
                 .collect(Collectors.toMap(LessonPlacement::getId, p -> p));
+
+        // Куда каждое занятие класса встаёт после перестановки (не переехавшие — на месте).
+        Map<UUID, Cell> targetByPlacement = new HashMap<>();
+        for (LessonPlacement p : classPlacements) {
+            targetByPlacement.put(p.getId(), new Cell(p.getScheduledDate(), p.getScheduledSlot()));
+        }
+        for (CellMove move : plan.moves()) {
+            targetByPlacement.put(move.placementId(), new Cell(move.date(), move.slot()));
+        }
+
+        // Подбор комнат: взаимозаменяемые остаются с ячейкой, жёсткие едут с занятием и
+        // проверяются на занятость. Всё в памяти — workspace не строим.
+        ReorderRoomPlan roomPlan = resolveRooms(classPlacements, allSessionPlacements, targetByPlacement, byId);
+        Map<Integer, Auditorium> roomEntities = collectRoomEntities(classPlacements);
+
+        // Применяем переезды: дата/пара + подобранные комнаты (раньше комната ехала с занятием
+        // вслепую — отсюда 77 конфликтов, возвращавшихся после первого же переноса).
         List<LessonPlacement> changed = new ArrayList<>();
         for (CellMove move : plan.moves()) {
             LessonPlacement p = byId.get(move.placementId());
-            p.updatePlacement(move.date(), move.slot(), new HashSet<>(p.getAssignedAuditoriums()), user);
+            Set<Auditorium> rooms = toEntities(roomPlan.roomsByPlacement().get(move.placementId()), roomEntities, p);
+            p.updatePlacement(move.date(), move.slot(), rooms, user);
             changed.add(p);
         }
+
+        List<ReorderProblem> problems = new ArrayList<>(plan.problems());
+        problems.addAll(roomPlan.problems());
 
         if (!changed.isEmpty()) {
             // Дверь берём ТОЛЬКО когда что-то реально переехало: холостая пересортировка (а фронт
@@ -133,14 +169,93 @@ public class TrackReorderService {
             }
         }
 
-        log.info("↕ Пересортировка в план: класс={} занятий, переехало={}, флагов={}",
-                classPlacements.size(), changed.size(), plan.problems().size());
+        log.info("↕ Пересортировка в план: класс={} занятий, переехало={}, флагов сцепок={}, флагов аудиторий={}",
+                classPlacements.size(), changed.size(), plan.problems().size(), roomPlan.problems().size());
 
-        return new ReorderResult(session, plan.problems());
+        return new ReorderResult(session, problems);
     }
 
     private static Set<Integer> educatorIdsOf(Assignment a) {
         return a.getEducators().stream().map(e -> e.getId()).collect(Collectors.toSet());
+    }
+
+    /** Собрать pure-контекст подбора комнат из сущностей и прогнать политику. */
+    private ReorderRoomPlan resolveRooms(List<LessonPlacement> classPlacements,
+                                         List<LessonPlacement> allSessionPlacements,
+                                         Map<UUID, Cell> targetByPlacement,
+                                         Map<UUID, LessonPlacement> classById) {
+        List<ReorderRoomInput> inputs = new ArrayList<>();
+        for (LessonPlacement p : classPlacements) {
+            Set<Integer> currentRoomIds = p.getAssignedAuditoriums().stream()
+                    .map(Auditorium::getId)
+                    .collect(Collectors.toSet());
+            CurriculumSlot slot = p.getAssignment().getCurriculumSlot();
+            boolean hard = slot.getRequiredAuditorium() != null || slot.getAllowedAuditoriumPool() != null;
+            inputs.add(new ReorderRoomInput(
+                    p.getId(),
+                    new Cell(p.getScheduledDate(), p.getScheduledSlot()),
+                    targetByPlacement.get(p.getId()),
+                    currentRoomIds,
+                    hard,
+                    baseRoomIdOf(p)));
+        }
+
+        // Занятость не-классных размещений: они при пересортировке не двигаются, поэтому только с
+        // ними и может столкнуться переезжающая жёсткая комната (внутри класса ячейки уникальны).
+        Set<RoomSlot> occupiedByOthers = new HashSet<>();
+        for (LessonPlacement p : allSessionPlacements) {
+            if (classById.containsKey(p.getId())) {
+                continue;
+            }
+            Cell cell = new Cell(p.getScheduledDate(), p.getScheduledSlot());
+            for (Auditorium room : p.getAssignedAuditoriums()) {
+                occupiedByOthers.add(new RoomSlot(room.getId(), cell));
+            }
+        }
+
+        return roomResolver.resolve(new ReorderRoomContext(inputs, occupiedByOthers));
+    }
+
+    /** Базовая аудитория одной из групп потока — запасной вариант; null, если ни у одной нет. */
+    private static Integer baseRoomIdOf(LessonPlacement p) {
+        return p.getAssignment().getStudyStream().getGroups().stream()
+                .map(Group::getBaseAuditorium)
+                .filter(Objects::nonNull)
+                .map(Auditorium::getId)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** Все аудитории, которые может назначить политика: нынешние комнаты класса + базовые. */
+    private static Map<Integer, Auditorium> collectRoomEntities(List<LessonPlacement> classPlacements) {
+        Map<Integer, Auditorium> byId = new HashMap<>();
+        for (LessonPlacement p : classPlacements) {
+            for (Auditorium room : p.getAssignedAuditoriums()) {
+                byId.putIfAbsent(room.getId(), room);
+            }
+            for (Group g : p.getAssignment().getStudyStream().getGroups()) {
+                if (g.getBaseAuditorium() != null) {
+                    byId.putIfAbsent(g.getBaseAuditorium().getId(), g.getBaseAuditorium());
+                }
+            }
+        }
+        return byId;
+    }
+
+    /** id комнат → сущности; при отсутствии решения политики сохраняем текущие комнаты занятия. */
+    private static Set<Auditorium> toEntities(Set<Integer> roomIds, Map<Integer, Auditorium> roomEntities,
+                                              LessonPlacement fallback) {
+        if (roomIds == null) {
+            return new HashSet<>(fallback.getAssignedAuditoriums());
+        }
+        Set<Auditorium> rooms = new HashSet<>();
+        for (Integer id : roomIds) {
+            Auditorium room = roomEntities.get(id);
+            if (room != null) {
+                rooms.add(room);
+            }
+        }
+        return rooms;
     }
 
     /** Пары сцепленных слотов курса, у которых ОБА конца обслуживаются этим классом. */

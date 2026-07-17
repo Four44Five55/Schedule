@@ -228,9 +228,14 @@ export interface MoveLessonRequest {
   newSlot: string;                // 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH'
   newAuditoriumIds: number[];     // имя поля как в бэкенд-DTO
   version: number;                // Оптимистичная блокировка
+  reorder?: boolean;              // отсутствует/true — авто-пересортировка; false — без неё
 }
 
-/** Распавшаяся сцепка после пересортировки (предупреждение, а не отказ). */
+/**
+ * Проблема пересортировки — предупреждение, а не отказ (перенос выполнен).
+ * reason: 'CHAIN_BROKEN' (сцепка распалась) | 'AUDITORIUM_CONFLICT' (жёсткая комната была занята,
+ * занятие посажено в базовую — проверьте аудиторию).
+ */
 export interface ReorderProblemDto {
   placementId: string;
   reason: string;
@@ -295,6 +300,7 @@ export interface MoveChainRequest {
   newStartDate: string;            // YYYY-MM-DD — день первого звена (весь день один)
   newStartSlot: string;            // пара первого звена; остальные — следом
   version: number;                 // оптимистичная блокировка
+  reorder?: boolean;               // отсутствует/true — авто-пересортировка; false — без неё
 }
 
 /**

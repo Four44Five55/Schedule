@@ -103,6 +103,8 @@ public class LessonChainMoveService {
      * @param newStartDate  дата переноса (весь день — один)
      * @param newStartSlot  пара первого звена; остальные — следом по времени
      * @param expectedVersion ожидаемая версия сессии (optimistic lock)
+     * @param reorder       пересортировать ли трек в порядок плана после переноса;
+     *                      {@code false} — режим «перенос без пересортировки»
      * @param user          автор изменения
      * @return сессия-владелец (для ответа)
      * @throws ObjectOptimisticLockingFailureException если версия сессии устарела
@@ -114,6 +116,7 @@ public class LessonChainMoveService {
             LocalDate newStartDate,
             String newStartSlot,
             Long expectedVersion,
+            boolean reorder,
             String user
     ) {
         if (placementIds == null || placementIds.isEmpty()) {
@@ -175,10 +178,13 @@ public class LessonChainMoveService {
                 n, newStartDate, newStartSlot);
 
         // Пересортировка трека — часть переноса (см. LessonMoveService, шаг 9). Якорь — голова
-        // цепочки: класс однородности у всех звеньев один и тот же.
-        var reorder = trackReorderService.resort(placementIds.get(0), user);
-
-        return new LessonMoveService.MoveResult(session, reorder.problems());
+        // цепочки: класс однородности у всех звеньев один и тот же. Режим «без пересортировки»
+        // (reorder=false) её пропускает — звенья уже валидно размещены выше.
+        if (!reorder) {
+            return new LessonMoveService.MoveResult(session, List.of());
+        }
+        var reorderResult = trackReorderService.resort(placementIds.get(0), user);
+        return new LessonMoveService.MoveResult(session, reorderResult.problems());
     }
 
     /**

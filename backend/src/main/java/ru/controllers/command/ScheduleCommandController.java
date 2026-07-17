@@ -287,6 +287,7 @@ public class ScheduleCommandController {
                 request.newDate(),
                 request.newSlot(),
                 request.version(),
+                request.reorder() == null || request.reorder(), // отсутствует → пересортировываем
                 "user"
             );
 
@@ -328,6 +329,7 @@ public class ScheduleCommandController {
                 request.newStartDate(),
                 request.newStartSlot(),
                 request.version(),
+                request.reorder() == null || request.reorder(), // отсутствует → пересортировываем
                 "user"
             );
 

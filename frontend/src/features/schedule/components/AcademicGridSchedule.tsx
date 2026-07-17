@@ -376,6 +376,10 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // placementId звеньев цепочки, выбранной для переноса (в порядке по времени).
   // Длина > 1 → переносим цепочкой; иначе — одиночный перенос.
   const [selectedChainIds, setSelectedChainIds] = useState<string[]>([]);
+  // Режим «перенос без пересортировки»: на уникальный перенос отключаем авто-пузырёк в порядок
+  // плана — двигаем только выбранное занятие, соседей не трогаем. Транзиентный, живёт в сетке
+  // и не сбрасывается снятием выбора (включил → перенёс → выключил).
+  const [skipReorder, setSkipReorder] = useState(false);
 
   const clearSelection = useCallback(() => {
     setSelectedLesson(null);
@@ -398,7 +402,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // (объявлен позже); снимок обновляется на каждый рендер сразу после его объявления.
   const latest = useRef({
     isEditMode, sessionId, onMoveLesson, onVersionChanged, placementCandidate, onExitPlacementCandidate,
-    selectedLesson, moving, moveTargets, onPlace, selectedChainIds, currentVersion,
+    selectedLesson, moving, moveTargets, onPlace, selectedChainIds, currentVersion, skipReorder,
     onToggleLock, buildChain: (_l: ScheduledLessonDto): ScheduledLessonDto[] => [],
   });
 
@@ -599,7 +603,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // одного объекта). Здесь buildChain уже объявлен.
   latest.current = {
     isEditMode, sessionId, onMoveLesson, onVersionChanged, placementCandidate, onExitPlacementCandidate,
-    selectedLesson, moving, moveTargets, onPlace, selectedChainIds, currentVersion,
+    selectedLesson, moving, moveTargets, onPlace, selectedChainIds, currentVersion, skipReorder,
     onToggleLock, buildChain,
   };
 
@@ -728,6 +732,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             newStartDate: dateStr,
             newStartSlot: startSlot,
             version: s.currentVersion,
+            reorder: !s.skipReorder, // режим «без пересортировки» → двигаем только это
           })
         : await CQRSService.moveLesson(s.sessionId, {
             placementId: s.selectedLesson.placementId,
@@ -736,6 +741,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             // аудитории оставляем за занятием
             newAuditoriumIds: s.selectedLesson.auditoriumIds,
             version: s.currentVersion,
+            reorder: !s.skipReorder, // режим «без пересортировки» → двигаем только это
           });
       clearSelection();
       if (result.success) {
@@ -744,7 +750,12 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         // клиентским и оставлял окно, в котором расписание побывало «перенесено, но не
         // пересортировано». Флаги распавшихся сцепок приезжают тем же ответом.
         if (result.problems && result.problems.length > 0) {
-          window.alert(`Готово. Сцепок распалось: ${result.problems.length} — пересоберите вручную.`);
+          const chains = result.problems.filter(p => p.reason === 'CHAIN_BROKEN').length;
+          const rooms = result.problems.filter(p => p.reason === 'AUDITORIUM_CONFLICT').length;
+          const parts: string[] = [];
+          if (chains > 0) parts.push(`сцепок распалось: ${chains}`);
+          if (rooms > 0) parts.push(`аудиторий требуют проверки: ${rooms}`);
+          if (parts.length > 0) window.alert(`Готово. ${parts.join('; ')} — поправьте вручную.`);
         }
 
         // Отдаём хосту свежую версию: без этого его следующая команда уйдёт с устаревшей и
@@ -918,6 +929,25 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                   : <>Зелёные — куда можно перенести, <span className="text-amber-300">жёлтые</span> — где занят преподаватель</>)
                               : `Нет доступных слотов для «${selectedLesson.disciplineAbbreviation}»`}
                 </span>
+                {/*
+                  Режим «перенос без пересортировки»: на уникальный случай отключаем авто-пузырёк
+                  в порядок плана. ВКЛ подсвечен янтарём — состояние держится между переносами,
+                  пока диспетчер не выключит его сам (включил → перенёс → выключил).
+                */}
+                {isEditMode && (
+                    <button
+                        onClick={() => setSkipReorder(v => !v)}
+                        title={skipReorder
+                            ? 'Режим «без пересортировки» ВКЛ: перенос не двигает соседние занятия в порядок плана. Нажмите, чтобы вернуть авто-пересортировку'
+                            : 'Перенос авто-пересортирует трек в порядок плана. Нажмите, чтобы перенести без пересортировки'}
+                        className={cn(
+                            'flex items-center gap-1 text-[10px] font-black uppercase tracking-tight px-2 py-1 rounded-lg transition-colors shrink-0',
+                            skipReorder ? 'bg-amber-400 text-slate-900 hover:bg-amber-300' : 'bg-white/10 hover:bg-white/20'
+                        )}
+                    >
+                      <Unlink size={12} /> Без пересорт.
+                    </button>
+                )}
                 {/*
                   Смена комнаты живёт здесь, а не значком в ячейке: ячейка уже несёт замок, сцепку
                   и признак конфликта, а комната — операция редкая и осознанная. Показываем только
