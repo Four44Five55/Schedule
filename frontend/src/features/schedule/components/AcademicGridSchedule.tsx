@@ -5,7 +5,7 @@ import {cn} from '../../../utils/cn';
 import {AlertTriangle, DoorOpen, Link2, Lock, LockOpen, Unlink, X} from 'lucide-react';
 import {AuditoriumPickerModal} from './AuditoriumPickerModal';
 import {CQRSService} from '../../../services/cqrsApiService';
-import type {OrderFinding, OrderViolationKind} from '../../../types/cqrs';
+import type {AuditoriumFinding, AuditoriumViolationKind, OrderFinding, OrderViolationKind} from '../../../types/cqrs';
 import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
 import {kindStyleOf} from '../kindStyles';
@@ -66,6 +66,9 @@ interface AcademicGridScheduleProps {
   // перенос не блокируется. Карта приходит одним запросом на всё расписание
   // (CQRSService.getOrderViolations), хост перезапрашивает её после каждого изменения.
   orderViolations?: Map<string, OrderFinding>;
+  // Находки по аудиториям (те же, что дашборд считает счётчиками) — карта placementId → сводка.
+  // Сетка красит имя комнаты: красным — занята другим занятием, янтарным — поток не помещается.
+  auditoriumViolations?: Map<string, AuditoriumFinding>;
   // Потолок высоты сетки (Tailwind-класс) — пробрасывается в AcademicGridShell.
   // Позволяет хосту растянуть сетку до низа экрана вместо дефолтных 700px.
   maxHeightClass?: string;
@@ -98,6 +101,9 @@ interface ScheduleCellProps {
   // поверхностным сравнением, и новая ссылка на каждый рендер сводила бы мемоизацию на нет.
   orderKind?: OrderViolationKind;
   orderGapDays: number;
+  // Аудитория проблемная: красим имя комнаты и дополняем тултип. Примитивы — ячейка под React.memo.
+  auditoriumIssueKind?: AuditoriumViolationKind;
+  auditoriumIssueNote?: string;
   spineAbove: boolean;
   spineBelow: boolean;
   chainedBelow: boolean;
@@ -120,7 +126,8 @@ interface ScheduleCellProps {
 const ScheduleCell = React.memo(({
   lesson, constraintFullName, constraintAbbr, hasConstraint, isConflict,
   isMoveTarget, isTeacherBusy, isSourceCell, isChainMember,
-  isTeacherBusyHidden, isDisciplineMatch, orderKind, orderGapDays, spineAbove, spineBelow, chainedBelow,
+  isTeacherBusyHidden, isDisciplineMatch, orderKind, orderGapDays,
+  auditoriumIssueKind, auditoriumIssueNote, spineAbove, spineBelow, chainedBelow,
   detachedBelow, isChainedSpine, factor, dateStr, slotId, isEditMode, isEducatorView,
   pinningEnabled, selectionActive, onLessonClick, onCellMove, onToggleDetach,
   onToggleLock, onHover,
@@ -140,6 +147,7 @@ const ScheduleCell = React.memo(({
         ? ['⚠ ПОРЯДОК: занятие стоит раньше своей лекции по учебному плану'] : []),
     ...(orderKind === 'FAR_FROM_LECTURE'
         ? [`⚠ ОТРЫВ: ${orderGapDays} дн. от своей лекции — материал успевает забыться`] : []),
+    ...(auditoriumIssueNote ? [auditoriumIssueNote] : []),
     `Дисциплина: ${lesson.disciplineName}`,
     `Тип: ${lesson.kindOfStudyName}`,
     `Тема: Т.${lesson.themeNumber || '—'}`,
@@ -155,6 +163,14 @@ const ScheduleCell = React.memo(({
   const occupiedBg = isTeacherBusyHidden
       ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
       : isDisciplineMatch ? kindStyle.active : kindStyle.resting;
+
+  // Цвет имени аудитории: красный — комната занята другим занятием (физика), янтарный — поток
+  // не помещается (суждение), иначе — как было (приглушённо). По образцу двух баннеров дашборда.
+  const auditoriumClass = auditoriumIssueKind === 'DOUBLE_BOOKED'
+      ? 'text-red-600'
+      : auditoriumIssueKind === 'OVER_CAPACITY'
+          ? 'text-amber-600'
+          : 'opacity-80';
 
   return (
       <td
@@ -191,19 +207,21 @@ const ScheduleCell = React.memo(({
             канал, не конкурирующий ни с фоном по виду занятия, ни с красным «конфликтом
             ограничения», ни с синим кольцом выбора. Не перехватывает клики: подсказка, а не
             запрет.
-              • красная (плотная)   — занятие стоит РАНЬШЕ своей лекции: ошибка порядка;
-              • салатовая (редкая)  — стоит слишком ДАЛЕКО после неё: предупреждение.
-            Оттенок для отрыва — лаймовый, а не изумрудный: изумрудным в этой сетке залиты
-            ячейки «сюда можно поставить занятие», и путать их не стоит. Штриховка ложится
-            только на ЗАНЯТЫЕ ячейки, а зелёная заливка — только на пустые, поэтому в одной
-            ячейке они не встречаются. */}
+              • красная   — занятие стоит РАНЬШЕ своей лекции: ошибка порядка;
+              • салатовая — стоит слишком ДАЛЕКО после неё: предупреждение.
+            Обе — одинаковой светлой диагональю (тонкая линия, широкий шаг), различаются только
+            цветом; раньше красная была плотнее — сделали её по образцу лаймовой и обе светлее,
+            чтобы штриховка не спорила с содержимым ячейки. Оттенок для отрыва — лаймовый, а не
+            изумрудный: изумрудным в этой сетке залиты ячейки «сюда можно поставить занятие», и
+            путать их не стоит. Штриховка ложится только на ЗАНЯТЫЕ ячейки, а зелёная заливка —
+            только на пустые, поэтому в одной ячейке они не встречаются. */}
         {orderKind && (
             <div
                 className="absolute inset-0 z-10 pointer-events-none"
                 style={{
                   backgroundImage: orderKind === 'BEFORE_LECTURE'
-                      ? 'repeating-linear-gradient(45deg, rgba(190,18,60,0.30) 0 3px, transparent 3px 7px)'
-                      : 'repeating-linear-gradient(45deg, rgba(132,204,22,0.45) 0 2px, transparent 2px 8px)',
+                      ? 'repeating-linear-gradient(45deg, rgba(190,18,60,0.18) 0 2px, transparent 2px 8px)'
+                      : 'repeating-linear-gradient(45deg, rgba(132,204,22,0.26) 0 2px, transparent 2px 8px)',
                 }}
             />
         )}
@@ -290,7 +308,7 @@ const ScheduleCell = React.memo(({
                     <div className="font-bold text-center leading-tight break-words flex-1 flex items-center justify-center">
                       {lesson.groupNames.join(', ') || '—'}
                     </div>
-                    <div className="font-mono font-black text-right opacity-80" style={{ fontSize: bodyPx }}>
+                    <div className={cn('font-mono font-black text-right', auditoriumClass)} style={{ fontSize: bodyPx }}>
                       {lesson.auditoriumNames.join(', ')}
                     </div>
                   </>
@@ -302,7 +320,7 @@ const ScheduleCell = React.memo(({
                     <div className="font-black truncate w-full tracking-tighter flex-1 flex items-center justify-center" style={{ fontSize: abbrPx }}>
                       {lesson.disciplineAbbreviation}
                     </div>
-                    <div className="font-mono font-black text-right opacity-80" style={{ fontSize: bodyPx }}>
+                    <div className={cn('font-mono font-black text-right', auditoriumClass)} style={{ fontSize: bodyPx }}>
                       {lesson.auditoriumNames[0]}
                     </div>
                   </>
@@ -343,6 +361,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
                                                                             onExitPlacementCandidate,
                                                                             educatorPriority,
                                                                             orderViolations,
+                                                                            auditoriumViolations,
                                                                             maxHeightClass,
                                                                             chromeless
                                                                           }) => {
@@ -832,6 +851,26 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         && (!orderDiscipline || lesson.disciplineName === orderDiscipline);
     const orderFinding = orderVisible ? orderViolations?.get(lesson!.placementId!) : undefined;
 
+    // Находка по аудитории — показываем всегда (конфликт комнаты физический, не зависит от того,
+    // какой дисциплиной сейчас занят диспетчер). Двойное бронирование важнее тесноты — им и красим.
+    const auditoriumFinding = lesson?.placementId
+        ? auditoriumViolations?.get(lesson.placementId) : undefined;
+    const auditoriumIssueKind: AuditoriumViolationKind | undefined = auditoriumFinding
+        ? (auditoriumFinding.doubleBooked ? 'DOUBLE_BOOKED' : 'OVER_CAPACITY') : undefined;
+    let auditoriumIssueNote: string | undefined;
+    if (auditoriumFinding) {
+      const notes: string[] = [];
+      if (auditoriumFinding.doubleBooked) {
+        notes.push(auditoriumFinding.sharedWith.length
+            ? `⚠ Аудитория занята: ${auditoriumFinding.sharedWith.join(', ')}`
+            : '⚠ Аудитория занята другим занятием');
+      }
+      if (auditoriumFinding.overCapacity) {
+        notes.push(`⚠ В аудиторию не помещается: +${auditoriumFinding.excess} чел.`);
+      }
+      auditoriumIssueNote = notes.join('\n');
+    }
+
     // Сцепка с соседними по времени парами того же дня (для «скобы» и кнопки размыкания).
     const lessonAbove = slotIdx > 0
         ? resourceLessonByCell.get(`${dateStr}_${SLOTS[slotIdx - 1].id}`) : undefined;
@@ -862,6 +901,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             isDisciplineMatch={isDisciplineMatch}
             orderKind={orderFinding?.kind}
             orderGapDays={orderFinding?.gapDays ?? 0}
+            auditoriumIssueKind={auditoriumIssueKind}
+            auditoriumIssueNote={auditoriumIssueNote}
             spineAbove={spineAbove}
             spineBelow={spineBelow}
             chainedBelow={chainedBelow}

@@ -330,3 +330,31 @@ export interface OrderFinding {
   kind: OrderViolationKind;
   gapDays: number;
 }
+
+/**
+ * Вид находки по аудитории:
+ * - DOUBLE_BOOKED — комната занята в этой ячейке другим занятием (физика, допустимо только 0);
+ * - OVER_CAPACITY — поток не помещается в комнату (суждение; excess — на сколько человек).
+ */
+export type AuditoriumViolationKind = 'DOUBLE_BOOKED' | 'OVER_CAPACITY';
+
+/**
+ * Находка по аудитории конкретного занятия (по образцу OrderViolationDto).
+ * Подсказка, а не запрет: сетка красит имя комнаты (красным — занята, янтарным — тесно).
+ */
+export interface AuditoriumViolationDto {
+  placementId: string;
+  auditoriumId: number;
+  auditoriumName: string | null;
+  kind: AuditoriumViolationKind;
+  excess: number;              // на сколько человек не хватает мест (для OVER_CAPACITY)
+  sharedWith: string[];        // другие занятия в комнате («Фил · 954»), для DOUBLE_BOOKED
+}
+
+/** Свёрнутая по занятию находка — то, что сетка держит для подсветки (у занятия их может быть две). */
+export interface AuditoriumFinding {
+  doubleBooked: boolean;
+  overCapacity: boolean;
+  excess: number;              // макс. перебор по людям
+  sharedWith: string[];        // соседи по комнате (для тултипа)
+}

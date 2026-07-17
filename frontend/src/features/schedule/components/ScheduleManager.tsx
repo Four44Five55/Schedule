@@ -7,9 +7,10 @@ import { useEntityConstraints } from '../../constraints/useEntityConstraints';
 import { useEducatorPriority } from '../useEducatorPriority';
 import { useScheduleStream } from '../../../hooks/useScheduleStream';
 import { usePeriod } from '../../period/PeriodContext';
-import { CQRSService } from '../../../services/cqrsApiService';
+import { CQRSService, buildAuditoriumFindingMap } from '../../../services/cqrsApiService';
 import {
-  ScheduleSessionDto
+  ScheduleSessionDto,
+  AuditoriumFinding
 } from '../../../types/cqrs';
 import {
   Search,
@@ -42,6 +43,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
 
   const [lessons, setLessons] = useState<ScheduledLessonDto[]>([]);
   const [grid, setGrid] = useState<Record<string, ScheduledLessonDto[]>>({});
+  // Находки по аудиториям (двойное бронирование / теснота) — карта на всё расписание, вслед за
+  // сеткой. Сетка красит имя комнаты; сюда попадает после каждой перезагрузки lessons.
+  const [auditoriumViolations, setAuditoriumViolations] = useState<Map<string, AuditoriumFinding>>(new Map());
   const [loadingPeriodSchedule, setLoadingPeriodSchedule] = useState(false);
 
   // Тип фильтра и выбранный объект переживают обновление страницы (localStorage),
@@ -105,6 +109,19 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
     setLoadingPeriodSchedule(true);
     reloadPeriodSchedule().finally(() => setLoadingPeriodSchedule(false));
   }, [reloadPeriodSchedule]);
+
+  // Находки по аудиториям — вслед за сеткой: `lessons` меняется после каждой мутации и
+  // SSE-перезагрузки, поэтому одной подписки хватает на все пути. Одним запросом на всё расписание.
+  const sessionId = currentSession?.id;
+  useEffect(() => {
+    if (!sessionId) { setAuditoriumViolations(new Map()); return; }
+    CQRSService.getAuditoriumViolations(sessionId)
+      .then((v) => setAuditoriumViolations(buildAuditoriumFindingMap(v)))
+      .catch((e) => {
+        console.error('Не удалось загрузить находки по аудиториям:', e);
+        setAuditoriumViolations(new Map());
+      });
+  }, [sessionId, lessons]);
 
   // Синхронизируем currentSession с пропом (только если проп задан —
   // иначе не затираем сессию, подтянутую при открытии расписания).
@@ -414,6 +431,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
                 rootEntityType={rootEntityType}
                 rootEntityId={rootEntityId}
                 educatorPriority={educatorPriority}
+                auditoriumViolations={auditoriumViolations}
                 onMoveLesson={handleMoveLesson}
                 // Раздел «Расписание» сессию после переноса НЕ перечитывал (она кладётся только из
                 // пропа или getEditableSession при монтировании). Пока версия не росла, это сходило

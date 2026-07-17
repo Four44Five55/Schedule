@@ -459,6 +459,7 @@ curl -X POST "http://localhost:8080/api/schedule/command/sessions/generate" \
 |---|---|
 | `GET /command/sessions/{id}/placement-board?courseIds=1,2,3&axis=GROUP\|EDUCATOR` | «Доска раскладки» → `PlacementBoardDto` (дерево сущность→дисциплина→занятие со счётчиками total/placed/unplaced на каждом уровне). Ось — стратегия `BoardAxis`. ⚠️ Тяжёлая: ~2.3 МБ, кандидат на расщепление (см. FOLLOWUPS) |
 | `GET /command/sessions/{id}/placement-counts?courseIds=1,2,3` | Лёгкие счётчики «распределено N/M» по каждому курсу → `List<CoursePlacementCountDto>` (вкладка «Генерация») |
+| `GET /command/sessions/{id}/auditorium-violations` | **Аудитории по занятию** → `List<AuditoriumViolationDto>` — те же находки, что `auditorium-health` даёт счётчиками, но пофамильно: `DOUBLE_BOOKED` (занята другим, `sharedWith` — кто) и `OVER_CAPACITY` (`excess`). Для подсветки имени комнаты в сетке. Подсказка, а не запрет. Один запрос на всё расписание |
 | `GET /command/sessions/{id}/order-violations` | **Порядок изучения** → `List<OrderViolationDto>` — занятия, стоящие раньше предшествующей им по плану лекции (`kind=BEFORE_LECTURE`) либо слишком далеко после неё (`kind=FAR_FROM_LECTURE`, `gapDays`; порог — property `schedule.order.max-lecture-gap-days`, дефолт 14). **Подсказка, а не запрет:** ячейки не фильтруются, перенос не блокируется. Одним запросом на всё расписание |
 | `POST /command/sessions/{id}/reproject` | Ремонтная пересборка read-модели (`schedule_view`) сессии → число перепроецированных строк |
 

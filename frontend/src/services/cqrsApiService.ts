@@ -21,6 +21,8 @@ import {
   AuditoriumOptionDto,
   CoursePlacementCountDto,
   OrderViolationDto,
+  AuditoriumViolationDto,
+  AuditoriumFinding,
   ClearPlacementsResponse,
   MoveLessonResponse
 } from '../types/cqrs';
@@ -270,6 +272,19 @@ export const CQRSService = {
   },
 
   /**
+   * Находки по аудиториям во всём расписании сессии — ОДНИМ запросом (как order-violations).
+   *
+   * По занятию: DOUBLE_BOOKED (комната занята другим) и OVER_CAPACITY (поток не помещается).
+   * Подсказка, а не запрет — сетка красит имя комнаты. Карта держится на фронте и
+   * перезапрашивается после каждого изменения расписания.
+   */
+  getAuditoriumViolations: (sessionId: string): Promise<AuditoriumViolationDto[]> => {
+    return api
+      .get<AuditoriumViolationDto[]>(`/schedule/command/sessions/${sessionId}/auditorium-violations`)
+      .then(r => r.data);
+  },
+
+  /**
    * Лёгкие счётчики «распределено N/M» по каждому курсу сессии (вкладка генерации).
    */
   getPlacementCounts: (sessionId: string, courseIds: number[]): Promise<CoursePlacementCountDto[]> => {
@@ -493,6 +508,27 @@ export const CQRSService = {
     }
   },
 };
+
+/**
+ * Свернуть находки по аудиториям в карту «placementId → сводка» для сетки: у занятия их может
+ * быть две (комната и занята, и мала) — объединяем в одну запись.
+ */
+export function buildAuditoriumFindingMap(
+  violations: AuditoriumViolationDto[]
+): Map<string, AuditoriumFinding> {
+  const map = new Map<string, AuditoriumFinding>();
+  for (const v of violations) {
+    const cur = map.get(v.placementId) ?? {
+      doubleBooked: false, overCapacity: false, excess: 0, sharedWith: [] as string[],
+    };
+    if (v.kind === 'DOUBLE_BOOKED') cur.doubleBooked = true;
+    else cur.overCapacity = true;
+    cur.excess = Math.max(cur.excess, v.excess);
+    for (const s of v.sharedWith) if (!cur.sharedWith.includes(s)) cur.sharedWith.push(s);
+    map.set(v.placementId, cur);
+  }
+  return map;
+}
 
 /**
  * Вспомогательные функции для форматирования дат

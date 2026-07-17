@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScheduledLessonDto, StudyPeriodDto } from '../../../types/api';
-import { ScheduleSessionDto, PlacementBoardDto, BoardLessonDto, OrderFinding } from '../../../types/cqrs';
-import { CQRSService, dateUtils } from '../../../services/cqrsApiService';
+import { ScheduleSessionDto, PlacementBoardDto, BoardLessonDto, OrderFinding, AuditoriumFinding } from '../../../types/cqrs';
+import { CQRSService, dateUtils, buildAuditoriumFindingMap } from '../../../services/cqrsApiService';
 import { ScheduleService } from '../../../services/apiServices';
 import { useScheduleStream } from '../../../hooks/useScheduleStream';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
@@ -52,6 +52,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // Находки правила порядка изучения: placementId → что не так (раньше своей лекции /
   // слишком далеко после неё). Сетка штрихует занятие красным или салатовым.
   const [orderViolations, setOrderViolations] = useState<Map<string, OrderFinding>>(new Map());
+  const [auditoriumViolations, setAuditoriumViolations] = useState<Map<string, AuditoriumFinding>>(new Map());
 
   // Загрузка размещений периода для СЕТКИ (ручные пины проецируются в schedule_view).
   const reloadSchedule = useCallback(async () => {
@@ -77,6 +78,16 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
     } catch (e) {
       console.error('Не удалось загрузить находки порядка изучения:', e);
       setOrderViolations(new Map());
+    }
+  }, []);
+
+  // Находки по аудиториям — тем же приёмом, что и порядок: одна карта на всё расписание.
+  const reloadAuditoriumViolations = useCallback(async (sessionId: string) => {
+    try {
+      setAuditoriumViolations(buildAuditoriumFindingMap(await CQRSService.getAuditoriumViolations(sessionId)));
+    } catch (e) {
+      console.error('Не удалось загрузить находки по аудиториям:', e);
+      setAuditoriumViolations(new Map());
     }
   }, []);
 
@@ -336,7 +347,8 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   useEffect(() => {
     if (!sessionId) return;
     reloadOrderViolations(sessionId);
-  }, [sessionId, lessons, reloadOrderViolations]);
+    reloadAuditoriumViolations(sessionId);
+  }, [sessionId, lessons, reloadOrderViolations, reloadAuditoriumViolations]);
 
   const toggleExpand = (key: string) => {
     setExpanded((prev) => {
@@ -612,6 +624,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                 onVersionChanged={(version) => setSession((s) => (s ? { ...s, version } : s))}
                 onToggleLock={handleToggleLock}
                 orderViolations={orderViolations}
+                auditoriumViolations={auditoriumViolations}
                 placementCandidate={placementCandidate}
                 studyPeriodId={period.id}
                 onPlace={handlePlace}

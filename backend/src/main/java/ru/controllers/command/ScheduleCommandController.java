@@ -63,6 +63,7 @@ public class ScheduleCommandController {
     private final LessonOrderService lessonOrderService;
     // Смена аудитории вручную: комнату раньше нельзя было выбрать вообще, её всегда назначал алгоритм.
     private final ru.services.auditorium.PlacementAuditoriumService placementAuditoriumService;
+    private final ru.services.auditorium.AuditoriumViolationService auditoriumViolationService;
     private final ScheduleSynchronizer scheduleSynchronizer;
     private final ScheduleSessionMapper sessionMapper;
     private final LessonPlacementMapper placementMapper;
@@ -219,6 +220,22 @@ public class ScheduleCommandController {
     @GetMapping("/sessions/{sessionId}/order-violations")
     public ResponseEntity<List<OrderViolationDto>> orderViolations(@PathVariable UUID sessionId) {
         return ResponseEntity.ok(lessonOrderService.violationsOf(sessionId));
+    }
+
+    /**
+     * Находки по аудиториям во всём расписании сессии — для подсветки в сетке.
+     *
+     * <p>GET /api/schedule/command/sessions/{sessionId}/auditorium-violations</p>
+     *
+     * <p>Пофамильно (по занятию) те же находки, что дашборд ({@code auditorium-health}) схлопывает
+     * в счётчики: {@code DOUBLE_BOOKED} (комната занята другим — физика) и {@code OVER_CAPACITY}
+     * (поток не помещается — суждение, с числом перебора). Подсказка, а не запрет; как показывать —
+     * решает UI. Один запрос на всё расписание, как order-violations.</p>
+     */
+    @GetMapping("/sessions/{sessionId}/auditorium-violations")
+    public ResponseEntity<List<ru.dto.auditorium.AuditoriumViolationDto>> auditoriumViolations(
+            @PathVariable UUID sessionId) {
+        return ResponseEntity.ok(auditoriumViolationService.violationsOf(sessionId));
     }
 
     /**
