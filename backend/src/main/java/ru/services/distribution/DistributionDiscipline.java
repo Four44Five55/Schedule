@@ -127,8 +127,7 @@ public class DistributionDiscipline {
         // 2. Обновляем контекст только с регулярными занятиями
         context.setLessons(regularLessons);
         // Конец периода берём из workspace (= даты выбранного StudyPeriod),
-        // а не из захардкоженной даты — генерация корректна для любого семестра.
-        LocalDate semesterEnd = context.getWorkspace().getEndDate();
+            LocalDate semesterEnd = context.getWorkspace().getEndDate();
 
         log.info("=== НАЧАЛО Распределения. Всего занятий: {} ===", regularLessons.size());
 

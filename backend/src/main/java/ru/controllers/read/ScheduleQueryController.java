@@ -49,6 +49,7 @@ public class ScheduleQueryController {
     private final ru.services.projection.ProjectionHealthService projectionHealthService;
     // Датчик аудиторий: двойные бронирования и переполнения, которых не видит ни решатель, ни сетка.
     private final ru.services.auditorium.AuditoriumHealthService auditoriumHealthService;
+    private final ru.services.auditorium.AuditoriumLoadReportService auditoriumLoadReportService;
 
     /**
      * GET /api/schedule/query/student/{streamId}?start=X&end=Y
@@ -390,6 +391,23 @@ public class ScheduleQueryController {
     public ru.dto.PeriodScheduleQualityDto getEducatorQuality(@RequestParam Integer periodId) {
         log.info("Query: Educator schedule quality report for periodId={}", periodId);
         return educatorScheduleReportService.compute(periodId);
+    }
+
+    /**
+     * GET /api/schedule/query/reports/auditorium-load?periodId=X
+     *
+     * <p>Загрузка аудиторий за период (утилизация): по каждой комнате — занято/свободно пар,
+     * загрузка %, пар/день, дней, 4-я пара, суббота; в формате отчёта преподавателей. Знаменатель —
+     * открытые ячейки периода. Считается по живой сессии периода (write-сторона: у занятия все
+     * комнаты, а {@code schedule_view} несёт одну из N).</p>
+     *
+     * @param periodId учебный период
+     * @return сводка + строки по комнатам (самые загруженные первыми; простаивающие — 0 %)
+     */
+    @GetMapping("/reports/auditorium-load")
+    public ru.dto.auditorium.PeriodAuditoriumLoadDto getAuditoriumLoad(@RequestParam Integer periodId) {
+        log.info("Query: Auditorium load report for periodId={}", periodId);
+        return auditoriumLoadReportService.compute(periodId);
     }
 
     /**

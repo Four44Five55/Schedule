@@ -59,6 +59,7 @@ import {
   AuditoriumHealthDto,
   SlotDeletionImpactDto,
   PeriodScheduleQualityDto,
+  PeriodAuditoriumLoadDto,
   GroupDensityDto,
   ExportAxis,
   StudyStreamCreateDto, StudyStreamUpdateDto
@@ -250,6 +251,12 @@ export const ScheduleService = {
   /** Качество расписания преподавателей за период: компактность + равномерность (суббота). */
   getEducatorQuality: (periodId: number): Promise<PeriodScheduleQualityDto | null> =>
       api.get<PeriodScheduleQualityDto>('/schedule/query/reports/educator-quality', { params: { periodId } })
+      .then((r) => r.data)
+      .catch(() => null),
+
+  /** Загрузка аудиторий за период (утилизация): формат как у преподавателей. */
+  getAuditoriumLoad: (periodId: number): Promise<PeriodAuditoriumLoadDto | null> =>
+      api.get<PeriodAuditoriumLoadDto>('/schedule/query/reports/auditorium-load', { params: { periodId } })
       .then((r) => r.data)
       .catch(() => null),
 

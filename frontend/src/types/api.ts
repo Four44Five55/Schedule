@@ -576,6 +576,30 @@ export interface PeriodScheduleQualityDto {
   educators: EducatorScheduleQualityDto[]; // все ведущие; компактные первыми, по убыванию штрафа
 }
 
+/** Загрузка одной аудитории за период (утилизация, не компактность — у комнаты нет «окон/штрафа»). */
+export interface AuditoriumLoadDto {
+  auditoriumId: number;
+  name: string;
+  capacity: number;
+  occupiedPairs: number;   // занятых ячеек дата×пара (двойное бронирование = одна ячейка)
+  freePairs: number;
+  loadPercent: number;     // загрузка по времени: занято / доступно × 100
+  daysUsed: number;
+  avgPairsPerDay: number;
+  fourthPairs: number;     // дней с занятой 4-й парой
+  saturdayPairs: number;
+}
+
+/** Загрузка аудиторий за период: сводка + строки по комнатам (самые загруженные первыми). */
+export interface PeriodAuditoriumLoadDto {
+  totalRooms: number;
+  roomsUsed: number;
+  idleRooms: number;
+  availablePairs: number;   // доступных ячеек периода (знаменатель загрузки)
+  avgLoadPercent: number;
+  auditoriums: AuditoriumLoadDto[];
+}
+
 // ============ ВЫГРУЗКА РАСПИСАНИЯ В EXCEL ============
 
 /** Перспектива выгрузки расписания: с чьей точки зрения строится файл. */

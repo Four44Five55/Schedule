@@ -50,8 +50,7 @@ public class ScheduleGenerationService {
      * Строит workspace и запускает распределение для уже разрешённой области генерации.
      *
      * <p>Единый источник дат — {@link GenerationScope#period()}: и кэш ячеек, и сам
-     * workspace инициализируются календарными рамками выбранного периода (раньше
-     * период неявно брался из «первого курса», а конец семестра был захардкожен).</p>
+     * workspace инициализируются календарными рамками выбранного периода.</p>
      */
     private ScheduleWorkspace generateWorkspace(
             GenerationScope scope,

@@ -7,7 +7,7 @@ import { ScheduleService } from '../../../services/apiServices';
 import { CQRSService } from '../../../services/cqrsApiService';
 import {
   PeriodReadinessDto, PeriodScheduleQualityDto, GroupDensityDto, ExportAxis, ProjectionHealthDto,
-  AuditoriumHealthDto
+  AuditoriumHealthDto, PeriodAuditoriumLoadDto
 } from '../../../types/api';
 import { usePeriod } from '../../period/PeriodContext';
 import {
@@ -52,6 +52,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // занятости ячейка → одно занятие, второе перезаписывает первое), сетка тоже — строки
   // schedule_view друг о друге не знают. Без этого среза их вообще никак не заметить.
   const [rooms, setRooms] = useState<AuditoriumHealthDto | null>(null);
+  // Загрузка аудиторий (утилизация) — формат как у преподавателей: занято/свободно/загрузка %.
+  const [roomLoad, setRoomLoad] = useState<PeriodAuditoriumLoadDto | null>(null);
 
   // Выгрузка расписания периода в Excel (все сущности выбранной оси). Бэк отдаёт файл,
   // ScheduleService сам запускает скачивание — здесь только состояние кнопки.
@@ -70,7 +72,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // Данные выбранного периода — перезагружаются при смене периода.
   // Готовность + плотность групп (честная ёмкость с бэка) + качество преподавателей + сверка проекции.
   useEffect(() => {
-    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setLoading(false); return; }
+    if (!period) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setRoomLoad(null); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     Promise.all([
@@ -79,18 +81,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
       ScheduleService.getGroupDensity(period.id),
       ScheduleService.getProjectionHealth(period.id),
       ScheduleService.getAuditoriumHealth(period.id),
+      ScheduleService.getAuditoriumLoad(period.id),
     ])
-      .then(([rd, q, dens, hp, rh]) => {
+      .then(([rd, q, dens, hp, rh, rl]) => {
         if (cancelled) return;
         setReadiness(rd);
         setQuality(q);
         setDensity(dens);
         setHealth(hp);
         setRooms(rh);
+        setRoomLoad(rl);
       })
       .catch((e) => {
         console.error('Дашборд: не удалось загрузить данные периода:', e);
-        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); }
+        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setRoomLoad(null); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -521,6 +525,75 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
                               title={!tracked ? 'Компактность не требуется — штрафом не считается' : undefined}>
                               {tracked ? e.penalty : '—'}
                             </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Аудитории: загрузка (утилизация) — формат как у преподавателей */}
+          {roomLoad && roomLoad.auditoriums.length > 0 && (
+            <Card
+              title="Аудитории: загрузка"
+              bodyClassName="px-4 pb-4 pt-1"
+              headerActions={
+                <HelpTip text={
+                  'Загрузка % = занятые пары / доступные пары периода × 100 (Вс и Сб-4 закрыты). '
+                  + 'Знаменатель — открытые ячейки «дата×пара» за период, одинаков для всех комнат.\n\n'
+                  + '«Занято/Свободно» — ячейки времени (двойное бронирование считается за одну; конфликты — '
+                  + 'отдельный срез «здоровье аудиторий»). «4-я» — дней с занятой последней парой.\n\n'
+                  + 'Самые загруженные сверху; простаивающие комнаты — 0 %.'
+                } />
+              }
+            >
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <Chip label="Задействовано" value={`${roomLoad.roomsUsed}/${roomLoad.totalRooms}`} tone="emerald" />
+                  <Chip label="Ср. загрузка" value={`${roomLoad.avgLoadPercent.toFixed(0)} %`} tone="slate" />
+                  <Chip label="Простаивают" value={roomLoad.idleRooms} tone="amber" />
+                  <Chip label="Доступно пар" value={roomLoad.availablePairs} tone="slate" />
+                </div>
+                <div className="max-h-[360px] overflow-auto custom-scrollbar -mx-1 px-1">
+                  <table className="w-full text-xs">
+                    <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                      <tr className="border-b border-slate-100">
+                        <th className="text-left font-bold py-1.5">Аудитория</th>
+                        <th className="text-right font-bold px-2">Занято</th>
+                        <th className="text-right font-bold px-2">Свободно</th>
+                        <th className="text-right font-bold px-2">Загрузка</th>
+                        <th className="text-right font-bold px-2">Пар/день</th>
+                        <th className="text-right font-bold px-2">Дней</th>
+                        <th className="text-right font-bold px-2">В 4-й</th>
+                        <th className="text-right font-bold pl-2">Суббот</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {roomLoad.auditoriums.map((r) => {
+                        const idle = r.occupiedPairs === 0;
+                        const heavy = r.loadPercent >= 85;
+                        return (
+                          <tr key={r.auditoriumId} className={cn('transition-colors', heavy && 'bg-red-50/60')}>
+                            <td className="py-1.5 font-bold text-slate-700 truncate max-w-[160px]"
+                              title={`Вместимость ${r.capacity} мест`}>
+                              {r.name ?? `#${r.auditoriumId}`}
+                            </td>
+                            <td className="text-right px-2 tabular-nums text-slate-500">{r.occupiedPairs}</td>
+                            <td className="text-right px-2 tabular-nums text-slate-400">{r.freePairs}</td>
+                            <td className={cn('text-right px-2 tabular-nums font-black',
+                              idle ? 'text-slate-300' : heavy ? 'text-red-600' : 'text-slate-700')}>
+                              {r.loadPercent.toFixed(0)} %
+                            </td>
+                            <td className="text-right px-2 tabular-nums text-slate-500">{r.avgPairsPerDay.toFixed(1)}</td>
+                            <td className="text-right px-2 tabular-nums text-slate-500">{r.daysUsed}</td>
+                            <td className={cn('text-right px-2 tabular-nums font-bold',
+                              r.fourthPairs > 0 ? 'text-amber-600' : 'text-slate-300')}>
+                              {r.fourthPairs}
+                            </td>
+                            <td className="text-right pl-2 tabular-nums text-slate-500">{r.saturdayPairs}</td>
                           </tr>
                         );
                       })}

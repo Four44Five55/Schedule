@@ -117,7 +117,7 @@ interface ScheduleCellProps {
   dateStr: string;
   slotId: TimeSlotPair;
   isEditMode: boolean;
-  isEducatorView: boolean;
+  groupCentricView: boolean;
   pinningEnabled: boolean;
   selectionActive: boolean;
   onLessonClick: (lesson: ScheduledLessonDto) => void;
@@ -132,7 +132,7 @@ const ScheduleCell = React.memo(({
   isMoveTarget, isTeacherBusy, isSourceCell, isChainMember,
   isTeacherBusyHidden, isDisciplineMatch, orderKind, orderGapDays,
   auditoriumIssueKind, auditoriumIssueNote, spineAbove, spineBelow, chainedBelow,
-  detachedBelow, isChainedSpine, factor, dateStr, slotId, isEditMode, isEducatorView,
+  detachedBelow, isChainedSpine, factor, dateStr, slotId, isEditMode, groupCentricView,
   pinningEnabled, selectionActive, onLessonClick, onCellMove, onToggleDetach,
   onToggleLock, onHover,
 }: ScheduleCellProps) => {
@@ -299,7 +299,7 @@ const ScheduleCell = React.memo(({
                     <Lock size={lockPx} />
                   </div>
               ) : null}
-              {isEducatorView ? (
+              {groupCentricView ? (
                   <>
                     <div className="flex items-baseline gap-1 whitespace-nowrap overflow-hidden">
                       <span className="font-black tracking-tighter" style={{ fontSize: bodyPx }}>
@@ -847,9 +847,10 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     }
   }, [clearSelection]);
 
-  // У преподавателя в ячейке важны группы (он ведёт разные), поэтому контент
-  // ячейки перестраиваем именно для его расписания.
-  const isEducatorView = filterType === 'educator';
+  // В расписании преподавателя И аудитории важно, КТО в ячейке (группы): преподаватель ведёт
+  // разные группы, а у аудитории видно, кто её занял. Поэтому контент ячейки — «групповой»
+  // (дисциплина+вид сверху, группы по центру), а не «дисциплина крупно», как в виде группы.
+  const groupCentricView = filterType === 'educator' || filterType === 'auditorium';
 
   // Интервалы ограничений с ЗАРАНЕЕ распарсенными датами: раньше parseISO(start/end)
   // вызывался в renderScheduleCell на КАЖДУЮ из ~550 ячеек каждый рендер. Парсим один раз.
@@ -955,7 +956,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             dateStr={dateStr}
             slotId={slot.id}
             isEditMode={isEditMode}
-            isEducatorView={isEducatorView}
+            groupCentricView={groupCentricView}
             pinningEnabled={pinningEnabled}
             selectionActive={!!selectedLesson}
             onLessonClick={handleLessonClick}
