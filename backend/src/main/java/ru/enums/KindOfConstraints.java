@@ -7,7 +7,7 @@ public enum KindOfConstraints {
     MEDICAL_CARE("Углубленно-медицинское обеспечение", "УМО"),
     LIBRARY("Библиотека", "Биб"),
     FINAL_STATE_ATTESTATION("Государственная итоговая аттестация", "ГИА"),
-    OTHER("Другой вид ограничения", "ДВО");
+    OTHER("Другой вид ограничения", "СР");
 
     private final String fullName;
     private final String abbreviationName;

@@ -431,13 +431,14 @@ public class ScheduleQueryController {
      * GET /api/schedule/query/export?periodId=X&axis=GROUP|EDUCATOR|AUDITORIUM[&entityId=Y]
      *
      * <p>Выгрузка расписания периода в Excel из {@code schedule_view} (то, что реально размещено).
-     * Ось задаёт перспективу файла; без {@code entityId} — все сущности оси, по листу на каждую.
+     * Ось задаёт перспективу файла. С {@code entityId} — одна книга {@code .xlsx} по сущности; без
+     * него — все сущности оси <b>раздельными файлами</b> (книга на сущность) в ZIP-архиве.
      * Отдаётся как вложение (скачивание в браузере), кириллица в имени — по RFC 5987.</p>
      *
      * @param periodId учебный период
      * @param axis     перспектива (по умолчанию {@code GROUP})
-     * @param entityId опционально — одна сущность оси; иначе выгружаются все
-     * @return тело .xlsx с заголовками Content-Type/Content-Disposition
+     * @param entityId опционально — одна сущность оси ({@code .xlsx}); иначе — все (ZIP)
+     * @return тело файла с заголовками Content-Type/Content-Disposition
      */
     @GetMapping("/export")
     public org.springframework.http.ResponseEntity<byte[]> exportSchedule(
@@ -450,12 +451,14 @@ public class ScheduleQueryController {
 
         String encoded = java.net.URLEncoder.encode(result.filename(), java.nio.charset.StandardCharsets.UTF_8)
                 .replace("+", "%20");
+        // ASCII-фолбэк с тем же расширением, что и реальный файл (.xlsx или .zip).
+        String asciiFallback = result.filename().toLowerCase(java.util.Locale.ROOT).endsWith(".zip")
+                ? "schedule.zip" : "schedule.xlsx";
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(org.springframework.http.MediaType.parseMediaType(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentType(org.springframework.http.MediaType.parseMediaType(result.contentType()));
         // ASCII-фолбэк filename + UTF-8 filename* (кириллица) — понимают все современные браузеры.
         headers.set(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename=\"schedule.xlsx\"; filename*=UTF-8''" + encoded);
+                "attachment; filename=\"" + asciiFallback + "\"; filename*=UTF-8''" + encoded);
         return new org.springframework.http.ResponseEntity<>(result.bytes(), headers, org.springframework.http.HttpStatus.OK);
     }
 }

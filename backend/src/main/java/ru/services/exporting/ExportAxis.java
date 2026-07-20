@@ -42,12 +42,14 @@ public enum ExportAxis {
         }
     },
 
-    /** Преподаватель: в ячейке — дисциплина, группы, аудитория. */
+    /** Преподаватель: в ячейке — «дисциплина + вид/тема» (как в приложении), группы, аудитория. */
     EDUCATOR("Преподаватель") {
         @Override public Integer entityId(ScheduleView v) { return v.getEducatorId(); }
         @Override public String entityName(ScheduleView v) { return v.getEducatorName(); }
         @Override public List<String> cellLines(ScheduledLessonDto l) {
-            return List.of(nn(l.disciplineAbbreviation()), join(l.groupNames()), join(l.auditoriumNames()));
+            // 1-я строка как в сетке приложения (educator-вид): «Прогр Л/Т.4».
+            String disciplineWithKind = (nn(l.disciplineAbbreviation()) + " " + themeInfo(l)).trim();
+            return List.of(disciplineWithKind, join(l.groupNames()), join(l.auditoriumNames()));
         }
         @Override public Map<Integer, List<ConstraintData>> constraintsBy(AllConstraints all) {
             return all.educatorConstraints();
@@ -85,10 +87,13 @@ public enum ExportAxis {
     /** Карта ограничений (id сущности → развёрнутые в ячейки) этой оси из {@link AllConstraints}. */
     public abstract Map<Integer, List<ConstraintData>> constraintsBy(AllConstraints all);
 
-    /** Вид занятия + номер темы: «Л1.1»; без темы — только вид («ЭКЗ»). */
+    /**
+     * Вид занятия и тема — как в сетке расписания (frontend {@code AcademicGridSchedule}): «Л/Т.4»;
+     * без темы — только вид («ЭКЗ»). Формат сохранён идентичным UI: {@code вид + "/Т." + номерТемы}.
+     */
     protected static String themeInfo(ScheduledLessonDto l) {
         String kind = nn(l.kindOfStudyAbbr());
-        return (l.themeNumber() != null && !l.themeNumber().isBlank()) ? kind + l.themeNumber() : kind;
+        return (l.themeNumber() != null && !l.themeNumber().isBlank()) ? kind + "/Т." + l.themeNumber() : kind;
     }
 
     protected static String join(List<String> values) {

@@ -270,9 +270,10 @@ export const ScheduleService = {
       .catch(() => []),
 
   /**
-   * Выгрузка расписания периода в Excel (из schedule_view — то, что реально размещено).
-   * Без entityId выгружаются все сущности оси (лист на каждую). Бэк отдаёт файл вложением —
-   * здесь запускаем скачивание браузером; имя берём из Content-Disposition.
+   * Выгрузка расписания периода из schedule_view (то, что реально размещено). С entityId — одна
+   * книга .xlsx по сущности; без него — все сущности оси раздельными файлами (книга на каждую)
+   * в ZIP-архиве. Бэк отдаёт файл вложением — здесь запускаем скачивание браузером; имя и тип
+   * (xlsx/zip) берём из Content-Disposition, downloadBlob расширение не навязывает.
    */
   exportSchedule: async (periodId: number, axis: ExportAxis = 'GROUP', entityId?: number): Promise<void> => {
       const response = await api.get('/schedule/query/export', {

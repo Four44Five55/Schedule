@@ -8,14 +8,20 @@ import ru.dto.ScheduledLessonDto;
 import ru.entity.StudyPeriod;
 import ru.entity.constraints.ConstraintData;
 import ru.entity.read.ScheduleView;
+import ru.enums.KindOfStudy;
 import ru.repository.read.ScheduleViewRepository;
 import ru.services.ScheduleResponseService;
 import ru.services.StudyPeriodService;
 import ru.services.constraints.ConstraintService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Выгрузка расписания периода в Excel (Facade + SRP-координатор): период → скоуп по оси → сетка
@@ -26,13 +32,20 @@ import java.util.stream.Collectors;
  * раскладка, пины). Строки склеиваются в занятия тем же {@link ScheduleResponseService#buildGridFromViews},
  * что кормит UI. Пустые ячейки бланка подписываются ограничением сущности, как в историческом экспорте.</p>
  *
- * <p>Скоуп: {@code entityId} задан — одна сущность (один лист); иначе — все сущности оси в
- * расписании периода (лист на каждую, по имени). Сущности без размещений не появляются.</p>
+ * <p>Скоуп: {@code entityId} задан — одна сущность (один файл {@code .xlsx}); иначе — все сущности
+ * оси в расписании периода <b>раздельными файлами</b>: по одной книге на сущность, упакованными в
+ * ZIP-архив. Сущности без размещений не появляются.</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ScheduleExportService {
+
+    private static final String XLSX_MIME =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private static final String ZIP_MIME = "application/zip";
+    /** Академических часов в одной паре — для пересчёта числа лекционных пар в часы в легенде. */
+    private static final int ACADEMIC_HOURS_PER_PAIR = 2;
 
     private final StudyPeriodService studyPeriodService;
     private final ScheduleViewRepository viewRepository;
@@ -40,8 +53,8 @@ public class ScheduleExportService {
     private final ConstraintService constraintService;
     private final ScheduleWorkbookRenderer renderer;
 
-    /** Результат выгрузки: байты книги + имя файла (кириллица, кодируется в контроллере). */
-    public record ExportResult(byte[] bytes, String filename) {}
+    /** Результат выгрузки: байты, имя файла (кириллица, кодируется в контроллером) и MIME-тип. */
+    public record ExportResult(byte[] bytes, String filename, String contentType) {}
 
     @Transactional(readOnly = true)
     public ExportResult export(Integer periodId, ExportAxis axis, Integer entityId) {
@@ -58,43 +71,198 @@ public class ScheduleExportService {
         Map<Integer, List<ConstraintData>> axisConstraints =
                 axis.constraintsBy(constraintService.loadAllConstraints());
 
-        List<ScheduleWorkbookRenderer.SheetData> sheets = new ArrayList<>();
-        String scopeName;
+        // Для группы — карта «размещение → все его группы» (лекционный поток в легенде): строится из
+        // ВСЕХ строк оси (не только текущей группы), т.к. поток — это со-группы по общему placementId.
+        Map<UUID, Set<String>> streamGroups = axis == ExportAxis.GROUP
+                ? groupsByPlacement(relevant) : Map.of();
 
+        // Одна сущность — одна книга .xlsx (как раньше).
         if (entityId != null) {
             List<ScheduleView> rows = relevant.stream()
                     .filter(v -> entityId.equals(axis.entityId(v)))
                     .toList();
-            scopeName = rows.isEmpty() ? ("#" + entityId) : axis.entityName(rows.get(0));
-            sheets.add(sheetOf(scopeName, entityId, rows, axisConstraints, start, end));
-        } else {
-            Map<Integer, List<ScheduleView>> byEntity = relevant.stream()
-                    .collect(Collectors.groupingBy(axis::entityId));
-            byEntity.entrySet().stream()
-                    .sorted(Comparator.comparing(
-                            (Map.Entry<Integer, List<ScheduleView>> e) ->
-                                    Optional.ofNullable(axis.entityName(e.getValue().get(0))).orElse(""),
-                            String.CASE_INSENSITIVE_ORDER))
-                    .forEach(e -> sheets.add(sheetOf(
-                            axis.entityName(e.getValue().get(0)), e.getKey(), e.getValue(), axisConstraints, start, end)));
-            scopeName = "все (" + axis.title().toLowerCase(Locale.ROOT) + ")";
+            String scopeName = rows.isEmpty() ? ("#" + entityId) : axis.entityName(rows.get(0));
+            var sheet = sheetOf(scopeName, entityId, rows, axisConstraints, start, end, axis, streamGroups);
+            byte[] bytes = renderer.render(List.of(sheet), start, end, axis);
+            String filename = buildFilename(period, axis, scopeName, ".xlsx");
+            log.info("Экспорт расписания (бланк, .xlsx): период id={}, ось={}, сущность={}, {} байт",
+                    periodId, axis, entityId, bytes.length);
+            return new ExportResult(bytes, filename, XLSX_MIME);
         }
 
-        byte[] bytes = renderer.render(sheets, start, end, axis);
-        String filename = buildFilename(period, axis, scopeName);
-        log.info("Экспорт расписания (бланк): период id={}, ось={}, сущность={}, листов={}, {} байт",
-                periodId, axis, entityId, sheets.size(), bytes.length);
-        return new ExportResult(bytes, filename);
+        // Все сущности оси — раздельными файлами (по книге на сущность) в ZIP-архиве.
+        List<ScheduleWorkbookRenderer.SheetData> sheets = relevant.stream()
+                .collect(Collectors.groupingBy(axis::entityId))
+                .entrySet().stream()
+                .sorted(Comparator.comparing(
+                        (Map.Entry<Integer, List<ScheduleView>> e) ->
+                                Optional.ofNullable(axis.entityName(e.getValue().get(0))).orElse(""),
+                        String.CASE_INSENSITIVE_ORDER))
+                .map(e -> sheetOf(axis.entityName(e.getValue().get(0)), e.getKey(),
+                        e.getValue(), axisConstraints, start, end, axis, streamGroups))
+                .toList();
+
+        byte[] bytes = zipPerEntity(sheets, start, end, axis);
+        String scopeName = "все_" + axis.title().toLowerCase(Locale.ROOT);
+        String filename = buildFilename(period, axis, scopeName, ".zip");
+        log.info("Экспорт расписания (бланк, ZIP): период id={}, ось={}, файлов={}, {} байт",
+                periodId, axis, sheets.size(), bytes.length);
+        return new ExportResult(bytes, filename, ZIP_MIME);
     }
 
-    /** Собирает данные листа: сетка занятий + карта ограничений сущности по ячейкам. */
+    /**
+     * Упаковывает по одной книге {@code .xlsx} на сущность в ZIP-архив: каждый файл — самостоятельный
+     * бланк одной сущности (тот же рендер, что и для одиночной выгрузки, список из одного листа).
+     * Имена файлов внутри архива уникализируются (тёзки получают суффикс).
+     */
+    private byte[] zipPerEntity(List<ScheduleWorkbookRenderer.SheetData> sheets,
+                                LocalDate start, LocalDate end, ExportAxis axis) {
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+             ZipOutputStream zip = new ZipOutputStream(out, java.nio.charset.StandardCharsets.UTF_8)) {
+            Set<String> usedNames = new HashSet<>();
+            for (ScheduleWorkbookRenderer.SheetData sheet : sheets) {
+                byte[] book = renderer.render(List.of(sheet), start, end, axis);
+                zip.putNextEntry(new ZipEntry(zipEntryName(sheet.name(), usedNames)));
+                zip.write(book);
+                zip.closeEntry();
+            }
+            zip.finish();
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Не удалось сформировать ZIP-архив расписания", e);
+        }
+    }
+
+    /** Имя файла сущности внутри архива: очищенное имя + {@code .xlsx}, уникальное в пределах архива. */
+    private String zipEntryName(String rawName, Set<String> used) {
+        String base = (rawName == null || rawName.isBlank() ? "Лист" : rawName)
+                .replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
+        String name = base;
+        int n = 2;
+        while (!used.add(name + ".xlsx")) {
+            name = base + "_" + n++;
+        }
+        return name + ".xlsx";
+    }
+
+    /** Собирает данные листа: сетка занятий + карта ограничений + легенда «Обозначения» (для группы). */
     private ScheduleWorkbookRenderer.SheetData sheetOf(String name, Integer entityId, List<ScheduleView> rows,
                                                        Map<Integer, List<ConstraintData>> axisConstraints,
-                                                       LocalDate start, LocalDate end) {
+                                                       LocalDate start, LocalDate end, ExportAxis axis,
+                                                       Map<UUID, Set<String>> streamGroups) {
         Map<String, List<ScheduledLessonDto>> grid = responseService.buildGridFromViews(rows);
         Map<String, String> constraintAbbr = constraintMapFor(axisConstraints.get(entityId), start, end);
-        return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr);
+        // Таблица «Обозначения» бланка — только для группы; для препода/аудитории она вычищается.
+        List<ScheduleWorkbookRenderer.LegendRow> legend =
+                axis == ExportAxis.GROUP ? buildLegend(rows, streamGroups) : List.of();
+        return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr, legend);
     }
+
+    /** Карта «размещение → имена всех его групп» из строк проекции (для лекционного потока). */
+    private static Map<UUID, Set<String>> groupsByPlacement(List<ScheduleView> rows) {
+        Map<UUID, Set<String>> map = new HashMap<>();
+        for (ScheduleView v : rows) {
+            if (v.getPlacementId() == null || v.getGroupName() == null) continue;
+            map.computeIfAbsent(v.getPlacementId(), k -> new TreeSet<>()).add(v.getGroupName());
+        }
+        return map;
+    }
+
+    /**
+     * Легенда «Обозначения» группы из её же размещённых строк (без новых запросов): по дисциплине —
+     * аббревиатура, название, лектор(ы), преподаватели других (нелекционных) видов занятий и кол-во
+     * лекционных часов. Лекторов и «других» может быть несколько — собираем всех уникальных. Часы —
+     * по <b>реально размещённым</b> лекциям: число лекционных пар × {@value #ACADEMIC_HOURS_PER_PAIR}
+     * академ. часа (в модели хранимых часов нет). Порядок — по аббревиатуре/названию.
+     */
+    private List<ScheduleWorkbookRenderer.LegendRow> buildLegend(List<ScheduleView> rows,
+                                                                 Map<UUID, Set<String>> streamGroups) {
+        Map<String, List<ScheduleView>> byDiscipline = rows.stream()
+                .collect(Collectors.groupingBy(
+                        v -> nn(v.getDisciplineName()) + ' ' + nn(v.getDisciplineAbbr()),
+                        LinkedHashMap::new, Collectors.toList()));
+
+        List<ScheduleWorkbookRenderer.LegendRow> legend = new ArrayList<>();
+        for (List<ScheduleView> disc : byDiscipline.values()) {
+            String abbr = disc.get(0).getDisciplineAbbr();
+            String name = disc.get(0).getDisciplineName();
+            List<ScheduleView> lectures = disc.stream()
+                    .filter(v -> "LECTURE".equals(v.getKindOfStudy()))
+                    .toList();
+            // «Другие виды занятий» — все НЕлекционные занятия дисциплины (ПЗ/ЛР/семинары/…).
+            List<ScheduleView> nonLectures = disc.stream()
+                    .filter(v -> !"LECTURE".equals(v.getKindOfStudy()))
+                    .toList();
+
+            String lecturers = distinctEducators(lectures);
+            String others = distinctEducators(nonLectures);
+            // Кол-во часов «лекц-нелекц»: число размещённых пар × 2 академ. часа, две цифры через дефис.
+            int lectureHours = distinctPlacements(lectures) * ACADEMIC_HOURS_PER_PAIR;
+            int nonLectureHours = distinctPlacements(nonLectures) * ACADEMIC_HOURS_PER_PAIR;
+            String hours = (lectureHours == 0 && nonLectureHours == 0)
+                    ? "" : lectureHours + "-" + nonLectureHours;
+            // Отчёт — аббревиатуры зачётов/экзаменов дисциплины (если есть в расписании).
+            String report = reportAbbreviations(disc);
+            // Лекционный поток — все группы, слушающие лекции этой дисциплины вместе (со-группы по
+            // общему placementId лекций). Пусто, если лекций нет.
+            String lectureStream = lectures.stream()
+                    .map(ScheduleView::getPlacementId)
+                    .filter(Objects::nonNull)
+                    .flatMap(pid -> streamGroups.getOrDefault(pid, Set.of()).stream())
+                    .distinct()
+                    .sorted()
+                    .collect(Collectors.joining(", "));
+
+            legend.add(new ScheduleWorkbookRenderer.LegendRow(
+                    abbr, name, lecturers, others, hours, report, lectureStream));
+        }
+        legend.sort(Comparator.comparing(
+                l -> Optional.ofNullable(l.abbr()).orElseGet(() -> nn(l.discipline())),
+                String.CASE_INSENSITIVE_ORDER));
+        return legend;
+    }
+
+    /** Уникальные имена преподавателей строк (в порядке появления), склеенные через запятую. */
+    private static String distinctEducators(List<ScheduleView> rows) {
+        return rows.stream()
+                .map(ScheduleView::getEducatorName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.joining(", "));
+    }
+
+    /** Число уникальных размещений (пар) в строках — одно размещение = одна пара. */
+    private static int distinctPlacements(List<ScheduleView> rows) {
+        return (int) rows.stream()
+                .map(ScheduleView::getPlacementId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+    }
+
+    /** Виды занятий-«отчёты» для колонки «Отчет»: зачёты (с оценкой/без) и экзамен. */
+    private static final Set<KindOfStudy> REPORT_KINDS = EnumSet.of(
+            KindOfStudy.EXAM, KindOfStudy.CREDIT_WITH_GRADE, KindOfStudy.CREDIT_WITHOUT_GRADE);
+
+    /** Аббревиатуры зачётов/экзаменов дисциплины (уникальные, через запятую); пусто — если их нет. */
+    private static String reportAbbreviations(List<ScheduleView> rows) {
+        return rows.stream()
+                .map(ScheduleView::getKindOfStudy)
+                .map(ScheduleExportService::parseKind)
+                .filter(Objects::nonNull)
+                .filter(REPORT_KINDS::contains)
+                .distinct()
+                .map(KindOfStudy::getAbbreviationName)
+                .collect(Collectors.joining(", "));
+    }
+
+    /** Безопасный разбор строки вида занятия в enum ({@code null}, если значение неизвестно). */
+    private static KindOfStudy parseKind(String name) {
+        if (name == null) return null;
+        try { return KindOfStudy.valueOf(name); } catch (IllegalArgumentException e) { return null; }
+    }
+
+    private static String nn(String s) { return s == null ? "" : s; }
 
     /** Ограничения сущности → «date_SLOT → аббревиатура» в пределах периода (для пустых ячеек). */
     private Map<String, String> constraintMapFor(List<ConstraintData> constraints, LocalDate start, LocalDate end) {
@@ -108,8 +276,8 @@ public class ScheduleExportService {
         return map;
     }
 
-    private String buildFilename(StudyPeriod period, ExportAxis axis, String scopeName) {
-        String raw = "Расписание_" + axis.title() + "_" + scopeName + "_" + period.getName() + ".xlsx";
-        return raw.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
+    private String buildFilename(StudyPeriod period, ExportAxis axis, String scopeName, String ext) {
+        String raw = "Расписание_" + axis.title() + "_" + scopeName + "_" + period.getName();
+        return raw.replaceAll("[\\\\/:*?\"<>|\\s]+", "_") + ext;
     }
 }
