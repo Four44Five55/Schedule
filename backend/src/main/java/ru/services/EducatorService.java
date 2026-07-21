@@ -8,8 +8,10 @@ import ru.dto.educator.EducatorCreateDto;
 import ru.dto.educator.EducatorDto;
 import ru.dto.educator.EducatorUpdateDto;
 import ru.entity.Educator;
+import ru.entity.OrgUnit;
 import ru.mapper.EducatorMapper;
 import ru.repository.EducatorRepository;
+import ru.services.orgunit.OrgUnitService;
 import ru.services.projection.ProjectionMaintenance;
 import ru.services.projection.ProjectionSource;
 
@@ -27,6 +29,7 @@ public class EducatorService {
     private final EducatorRepository educatorRepository;
     private final EducatorMapper educatorMapper;
     private final ProjectionMaintenance projectionMaintenance;
+    private final OrgUnitService orgUnitService;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
@@ -43,6 +46,7 @@ public class EducatorService {
         newEducator.setPreferredDays(createDto.preferredDays());
         newEducator.setPreferredTimeSlots(createDto.preferredTimeSlots());
         newEducator.setCompactSchedule(createDto.compactSchedule());
+        newEducator.setOrgUnit(resolveOrgUnit(createDto.orgUnitId()));
 
         return educatorMapper.toDto(educatorRepository.save(newEducator));
     }
@@ -62,6 +66,8 @@ public class EducatorService {
         educatorToUpdate.setPreferredDays(updateDto.preferredDays());
         educatorToUpdate.setPreferredTimeSlots(updateDto.preferredTimeSlots());
         educatorToUpdate.setCompactSchedule(updateDto.compactSchedule());
+        // null — открепить: смена подразделения read-модели не касается (его нет в schedule_view).
+        educatorToUpdate.setOrgUnit(resolveOrgUnit(updateDto.orgUnitId()));
 
         EducatorDto updated = educatorMapper.toDto(educatorRepository.save(educatorToUpdate));
         // Имя преподавателя лежит в read-модели снимком: без этого переименование не дошло бы
@@ -128,5 +134,12 @@ public class EducatorService {
     @Transactional(readOnly = true)
     public List<Educator> getAllEntities() {
         return educatorRepository.findAll();
+    }
+
+    /**
+     * Подразделение по id; {@code null} — преподаватель не привязан ни к одному.
+     */
+    private OrgUnit resolveOrgUnit(Integer orgUnitId) {
+        return orgUnitId == null ? null : orgUnitService.getEntityById(orgUnitId);
     }
 }

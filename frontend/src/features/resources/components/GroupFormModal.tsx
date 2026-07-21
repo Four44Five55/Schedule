@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Users, Home, AlertCircle } from 'lucide-react';
+import { X, Save, Loader2, Users, Home, AlertCircle, Network, CalendarDays } from 'lucide-react';
 import { GroupDto, GroupCreateDto, GroupUpdateDto, AuditoriumDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
+import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
 import { cn } from '../../../utils/cn';
 
 interface GroupFormModalProps {
@@ -19,6 +20,7 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
                                                                   onSaved
                                                               }) => {
     const isEditMode = group !== null;
+    const { flat: orgUnits, loading: orgUnitsLoading } = useOrgUnits();
 
     // Состояние формы
     const [name, setName] = useState(group?.name || '');
@@ -26,6 +28,10 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
     const [baseAuditoriumId, setBaseAuditoriumId] = useState<number | null>(
         group?.baseAuditorium?.id || null
     );
+    // Год набора (поступления); null — не указан, это легитимно для уже заведённых групп.
+    const [enrollmentYear, setEnrollmentYear] = useState<number | null>(group?.enrollmentYear ?? null);
+    // Подразделение группы — кафедра или факультет; «не распределена» легитимно.
+    const [orgUnitId, setOrgUnitId] = useState<number | null>(group?.orgUnitId ?? null);
 
     // Список аудиторий для выбора
     const [auditoriums, setAuditoriums] = useState<AuditoriumDto[]>([]);
@@ -78,7 +84,9 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
             const payload: GroupCreateDto | GroupUpdateDto = {
                 name: name.trim(),
                 size,
-                baseAuditoriumId: baseAuditoriumId || null
+                baseAuditoriumId: baseAuditoriumId || null,
+                enrollmentYear: enrollmentYear || null,
+                orgUnitId: orgUnitId || null
             };
 
             let savedGroup: GroupDto;
@@ -200,6 +208,31 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
                         )}
                     </div>
 
+                    {/* Год набора (поступления) */}
+                    <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <CalendarDays size={12} />
+                Год набора
+              </span>
+                        </label>
+                        <input
+                            type="number"
+                            value={enrollmentYear ?? ''}
+                            onChange={(e) =>
+                                setEnrollmentYear(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                            placeholder={`Например: ${new Date().getFullYear()}`}
+                            min={1900}
+                            max={2200}
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium transition-all outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            disabled={saving}
+                        />
+                        <p className="text-xs text-slate-400">
+                            Год поступления. Отличает одноимённые группы разных наборов
+                        </p>
+                    </div>
+
                     {/* Базовая аудитория */}
                     <div className="space-y-1.5">
                         <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
@@ -224,6 +257,34 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
                         <p className="text-xs text-slate-400">
                             Аудитория, закреплённая за группой по умолчанию
                         </p>
+                    </div>
+
+                    {/* Подразделение (кафедра или факультет) */}
+                    <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <Network size={12} />
+                Подразделение
+              </span>
+                        </label>
+                        <select
+                            value={orgUnitId || ''}
+                            onChange={(e) => setOrgUnitId(e.target.value ? parseInt(e.target.value) : null)}
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium transition-all outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer bg-white"
+                            disabled={saving || orgUnitsLoading}
+                        >
+                            <option value="">— Не распределена —</option>
+                            {orgUnits
+                                // Расформированные не предлагаем, но уже выбранное показываем,
+                                // иначе правка карточки молча стёрла бы привязку.
+                                .filter((u) => u.active || u.id === orgUnitId)
+                                .map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                        {' '.repeat(u.depth * 4)}
+                                        {u.name}
+                                    </option>
+                                ))}
+                        </select>
                     </div>
 
                     {/* Кнопки */}

@@ -1,5 +1,6 @@
 package ru.dto.group;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -16,6 +17,14 @@ public record GroupCreateDto(
         int size,
 
         // ID домашней аудитории, необязательное поле
-        Integer baseAuditoriumId
+        Integer baseAuditoriumId,
+
+        // Год набора (поступления), необязательное поле; рамка — от опечаток, не доменное правило
+        @Min(value = 1900, message = "Год набора выглядит опечаткой")
+        @Max(value = 2200, message = "Год набора выглядит опечаткой")
+        Integer enrollmentYear,
+
+        // Подразделение (кафедра или факультет), необязательное поле
+        Integer orgUnitId
 ) {
 }

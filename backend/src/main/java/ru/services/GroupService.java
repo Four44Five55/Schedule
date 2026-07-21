@@ -9,8 +9,10 @@ import ru.dto.group.GroupDto;
 import ru.dto.group.GroupUpdateDto;
 import ru.entity.Auditorium;
 import ru.entity.Group;
+import ru.entity.OrgUnit;
 import ru.mapper.GroupMapper;
 import ru.repository.GroupRepository;
+import ru.services.orgunit.OrgUnitService;
 import ru.services.projection.ProjectionMaintenance;
 import ru.services.projection.ProjectionSource;
 
@@ -29,6 +31,7 @@ public class GroupService {
     private final AuditoriumService auditoriumService;
     private final GroupMapper groupMapper;
     private final ProjectionMaintenance projectionMaintenance;
+    private final OrgUnitService orgUnitService;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
@@ -53,6 +56,8 @@ public class GroupService {
             Auditorium baseAuditorium = auditoriumService.getEntityById(createDto.baseAuditoriumId());
             newGroup.setBaseAuditorium(baseAuditorium);
         }
+        newGroup.setEnrollmentYear(createDto.enrollmentYear());
+        newGroup.setOrgUnit(resolveOrgUnit(createDto.orgUnitId()));
 
         Group savedGroup = groupRepository.save(newGroup);
         return groupMapper.toDto(savedGroup);
@@ -87,6 +92,11 @@ public class GroupService {
             // Если ID не передан, значит, связь нужно убрать
             groupToUpdate.setBaseAuditorium(null);
         }
+
+        // null — снять значение: год набора в read-модели не хранится, перепроекция не нужна.
+        groupToUpdate.setEnrollmentYear(updateDto.enrollmentYear());
+        // null — открепить: подразделения нет в read-модели, перепроекция не нужна.
+        groupToUpdate.setOrgUnit(resolveOrgUnit(updateDto.orgUnitId()));
 
         GroupDto updated = groupMapper.toDto(groupRepository.save(groupToUpdate));
         // Имя группы в read-модели — снимок: без перепроекции переименование не дошло бы
@@ -154,5 +164,10 @@ public class GroupService {
         return groups;
     }
 
-
+    /**
+     * Подразделение по id; {@code null} — группа не привязана ни к одному.
+     */
+    private OrgUnit resolveOrgUnit(Integer orgUnitId) {
+        return orgUnitId == null ? null : orgUnitService.getEntityById(orgUnitId);
+    }
 }

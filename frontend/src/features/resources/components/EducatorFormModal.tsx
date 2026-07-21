@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Save, Loader2, User, AlertCircle, Calendar, Clock, Zap } from 'lucide-react';
+import { X, Save, Loader2, User, AlertCircle, Calendar, Clock, Zap, Network } from 'lucide-react';
 import { EducatorDto, EducatorCreateDto, EducatorUpdateDto, DayOfWeek, TimeSlotPair } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
+import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
 import { cn } from '../../../utils/cn';
 
 interface EducatorFormModalProps {
@@ -18,6 +19,7 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                                                                     }) => {
     const isEditMode = educator !== null;
     const { daysOfWeek, timeSlots } = useEnums();
+    const { flat: orgUnits, loading: orgUnitsLoading } = useOrgUnits();
 
     const [name, setName] = useState(educator?.name ?? '');
     const [preferredDays, setPreferredDays] = useState<Set<string>>(
@@ -29,6 +31,8 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
     const [compactSchedule, setCompactSchedule] = useState<boolean>(
         educator?.compactSchedule === true
     );
+    // Подразделение: одно на преподавателя (совместительство не моделируем).
+    const [orgUnitId, setOrgUnitId] = useState<number | null>(educator?.orgUnitId ?? null);
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -72,7 +76,8 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                 name: name.trim(),
                 preferredDays: Array.from(preferredDays) as DayOfWeek[],
                 preferredTimeSlots: Array.from(preferredTimeSlots) as TimeSlotPair[],
-                compactSchedule: compactSchedule
+                compactSchedule: compactSchedule,
+                orgUnitId: orgUnitId
             };
 
             console.log('📤 Отправка:', JSON.stringify(payload, null, 2));
@@ -151,6 +156,32 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                                 autoFocus
                             />
                             {nameError && <p className="text-xs text-red-600 font-medium">{nameError}</p>}
+                        </div>
+
+                        {/* Подразделение (кафедра или отдел) */}
+                        <div className="space-y-1.5">
+                            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider">
+                                <Network size={12} />
+                                Подразделение
+                            </label>
+                            <select
+                                value={orgUnitId ?? ''}
+                                onChange={(e) => setOrgUnitId(e.target.value ? parseInt(e.target.value) : null)}
+                                disabled={saving || orgUnitsLoading}
+                                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium outline-none appearance-none cursor-pointer bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            >
+                                <option value="">— Не распределён —</option>
+                                {orgUnits
+                                    // Расформированные не предлагаем, но уже выбранное показываем,
+                                    // иначе правка карточки молча стёрла бы привязку.
+                                    .filter((u) => u.active || u.id === orgUnitId)
+                                    .map((u) => (
+                                        <option key={u.id} value={u.id}>
+                                            {' '.repeat(u.depth * 4)}
+                                            {u.name}
+                                        </option>
+                                    ))}
+                            </select>
                         </div>
 
                         {/* Предпочитаемые дни */}

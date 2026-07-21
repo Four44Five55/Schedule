@@ -62,6 +62,15 @@ public class Educator implements IMaterialEntity {
     @Column(name = "compact_schedule", nullable = false)
     private boolean compactSchedule = false;
 
+    /**
+     * Подразделение преподавателя — кафедра или отдел. Ровно одно: совместительство не
+     * моделируем (решение заказчика), поэтому обычная ссылка, а не таблица членства.
+     * {@code null} — ещё не распределён.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "org_unit_id")
+    private OrgUnit orgUnit;
+
     // Конструктор для удобства
     public Educator(String name) {
         this.name = name;

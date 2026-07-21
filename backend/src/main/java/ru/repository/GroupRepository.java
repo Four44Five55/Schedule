@@ -37,4 +37,10 @@ public interface GroupRepository extends JpaRepository<Group, Integer> {
      * уходят каскадом, и у этих групп {@code base_auditorium_id} обнулится (SET NULL).
      */
     long countByBaseAuditoriumIdIn(java.util.Collection<Integer> auditoriumIds);
+
+    /**
+     * Сколько групп закреплено за подразделением. Для цены удаления: FK
+     * {@code groups.org_unit_id → org_unit ON DELETE RESTRICT}.
+     */
+    long countByOrgUnitId(Integer orgUnitId);
 }

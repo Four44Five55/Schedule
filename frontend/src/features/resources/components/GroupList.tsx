@@ -3,7 +3,7 @@ import { GroupDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { GroupFormModal } from './GroupFormModal';
-import { Users, Home, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Users, Home, Plus, Pencil, Trash2, Network } from 'lucide-react';
 
 interface GroupListProps {
   groups: GroupDto[];
@@ -116,7 +116,22 @@ export const GroupList: React.FC<GroupListProps> = ({ groups, onGroupsChange }) 
                       <div className="flex items-center gap-2">
                         <Users size={14} className="text-slate-400 shrink-0" />
                         <span className="text-xs font-bold text-slate-700">{group.size} студентов</span>
+                        {group.enrollmentYear && (
+                            <span className="ml-auto text-[11px] font-bold text-slate-500 shrink-0"
+                                  title="Год набора (поступления)">
+                              набор {group.enrollmentYear}
+                            </span>
+                        )}
                       </div>
+
+                      {group.orgUnitName && (
+                          <div className="flex items-center gap-2">
+                            <Network size={14} className="text-slate-400 shrink-0" />
+                            <span className="text-xs text-slate-600 truncate" title="Подразделение">
+                              {group.orgUnitName}
+                            </span>
+                          </div>
+                      )}
 
                       {group.baseAuditorium ? (
                           <div className="flex items-center gap-2">

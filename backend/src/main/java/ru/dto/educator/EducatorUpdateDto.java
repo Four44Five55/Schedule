@@ -12,6 +12,9 @@ public record EducatorUpdateDto(
         String name,
         Set<DayOfWeek> preferredDays,
         Set<TimeSlotPair> preferredTimeSlots,
-        boolean compactSchedule
+        boolean compactSchedule,
+
+        // Подразделение; null — открепить от подразделения
+        Integer orgUnitId
 ) {
 }

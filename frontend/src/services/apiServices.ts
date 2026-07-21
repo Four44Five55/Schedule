@@ -62,7 +62,11 @@ import {
   PeriodAuditoriumLoadDto,
   GroupDensityDto,
   ExportAxis,
-  StudyStreamCreateDto, StudyStreamUpdateDto
+  StudyStreamCreateDto, StudyStreamUpdateDto,
+  OrgUnitDto,
+  OrgUnitCreateDto,
+  OrgUnitUpdateDto,
+  OrgUnitDeletionImpactDto
 } from '../types/api';
 import { downloadBlob, filenameFromContentDisposition } from '../utils/download';
 
@@ -76,6 +80,7 @@ export const EnumService = {
             timeSlots: EnumDto[];
             kindOfConstraints: EnumDto[];
             periodTypes: EnumDto[];
+            orgUnitTypes: EnumDto[];
           }>('/enums/all')
           .then((r) => r.data),
 };
@@ -116,6 +121,16 @@ export const ResourceService = {
   getLocationDeleteImpact: (id: number) =>
       api.get<LocationDeletionImpactDto>(`/locations/${id}/delete-impact`).then((r) => r.data),
   deleteLocation: (id: number) => api.delete(`/locations/${id}`).then(() => {}),
+  // --- Оргструктура: плоский список, дерево собирает фронт (см. useOrgUnits) ---
+  getOrgUnits: () => api.get<OrgUnitDto[]>('/org-units').then((r) => r.data),
+  createOrgUnit: (data: OrgUnitCreateDto) => api.post<OrgUnitDto>('/org-units', data).then((r) => r.data),
+  updateOrgUnit: (id: number, data: OrgUnitUpdateDto) =>
+      api.put<OrgUnitDto>(`/org-units/${id}`, data).then((r) => r.data),
+  /** Цена удаления: ссылки (дети/преподаватели/группы) удаление запрещают — `deletable` с бэка. */
+  getOrgUnitDeleteImpact: (id: number) =>
+      api.get<OrgUnitDeletionImpactDto>(`/org-units/${id}/delete-impact`).then((r) => r.data),
+  deleteOrgUnit: (id: number) => api.delete(`/org-units/${id}`).then(() => {}),
+
   getBuildings: () => api.get<BuildingDto[]>('/buildings').then((r) => r.data),
   createBuilding: (data: BuildingCreateDto) => api.post<BuildingDto>('/buildings', data).then((r) => r.data),
   updateBuilding: (id: number, data: BuildingUpdateDto) => api.put<BuildingDto>(`/buildings/${id}`, data).then((r) => r.data),

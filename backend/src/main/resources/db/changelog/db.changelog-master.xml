@@ -58,4 +58,11 @@
          (ON DELETE CASCADE), чтобы каскады БД не оставляли строк-призраков -->
     <include file="017-schedule-view-placement-fk.sql" relativeToChangelogFile="true"/>
 
+    <!-- Оргструктура: подразделения (факультеты, кафедры, отделы) самоссылочным деревом
+         + принадлежность преподавателей и групп -->
+    <include file="018-create-org-unit.sql" relativeToChangelogFile="true"/>
+
+    <!-- Год набора группы: отличает одноимённые группы разных наборов -->
+    <include file="019-add-group-enrollment-year.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

@@ -12,5 +12,8 @@ public record EducatorCreateDto(
         String name,
         Set<DayOfWeek> preferredDays,
         Set<TimeSlotPair> preferredTimeSlots,
-        boolean compactSchedule
+        boolean compactSchedule,
+
+        // Подразделение (кафедра или отдел), необязательное поле: «не распределён» легитимно
+        Integer orgUnitId
 ) {}

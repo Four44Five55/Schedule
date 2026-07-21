@@ -32,6 +32,9 @@ export interface EducatorDto {
   preferredDays: DayOfWeek[];
   preferredTimeSlots: TimeSlotPair[];
   compactSchedule: boolean;
+  /** Подразделение (кафедра или отдел); null — ещё не распределён. */
+  orgUnitId?: number | null;
+  orgUnitName?: string | null;
 }
 
 export interface EducatorCreateDto {
@@ -39,6 +42,7 @@ export interface EducatorCreateDto {
   preferredDays: DayOfWeek[];
   preferredTimeSlots: TimeSlotPair[];
   compactSchedule: boolean;
+  orgUnitId?: number | null;
 }
 
 export interface EducatorUpdateDto {
@@ -46,6 +50,8 @@ export interface EducatorUpdateDto {
   preferredDays: DayOfWeek[];
   preferredTimeSlots: TimeSlotPair[];
   compactSchedule: boolean;
+  /** null — открепить от подразделения. */
+  orgUnitId?: number | null;
 }
 
 export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';
@@ -58,18 +64,80 @@ export interface GroupDto {
   name: string;
   size: number;
   baseAuditorium?: { id: number; name: string };
+  /** Год набора (поступления); null — не указан. */
+  enrollmentYear?: number | null;
+  /** Подразделение (кафедра или факультет); null — ещё не распределена. */
+  orgUnitId?: number | null;
+  orgUnitName?: string | null;
 }
 
 export interface GroupCreateDto {
   name: string;
   size: number;
   baseAuditoriumId?: number | null;
+  enrollmentYear?: number | null;
+  orgUnitId?: number | null;
 }
 
 export interface GroupUpdateDto {
   name: string;
   size: number;
   baseAuditoriumId?: number | null;
+  /** null — снять год набора. */
+  enrollmentYear?: number | null;
+  /** null — открепить от подразделения. */
+  orgUnitId?: number | null;
+}
+
+// ============ ОРГСТРУКТУРА (ПОДРАЗДЕЛЕНИЯ) ============
+
+/**
+ * Вид подразделения. Лейблы («Кафедра», «Каф.») сюда НЕ дублируются — они приходят с бэкенда
+ * через `GET /api/enums/org-unit-type` (единый источник правды, как у остальных enum-ов).
+ */
+export type OrgUnitType = 'INSTITUTE' | 'FACULTY' | 'DIVISION' | 'DEPARTMENT';
+
+/**
+ * Подразделение приходит плоским списком: дерево из него собирает фронт (`useOrgUnits`),
+ * потому что форма дерева — презентация, а не данные.
+ */
+export interface OrgUnitDto {
+  id: number;
+  name: string;
+  shortName?: string | null;
+  type: OrgUnitType;
+  /** Родитель; null — верхний уровень (кафедра вне факультета — легитимный случай). */
+  parentId?: number | null;
+  parentName?: string | null;
+  active: boolean;
+}
+
+export interface OrgUnitCreateDto {
+  name: string;
+  shortName?: string | null;
+  type: OrgUnitType;
+  parentId?: number | null;
+}
+
+export interface OrgUnitUpdateDto {
+  name: string;
+  shortName?: string | null;
+  type: OrgUnitType;
+  parentId?: number | null;
+  active: boolean;
+}
+
+/**
+ * Цена удаления подразделения. Каскада нет: любая ссылка (дочерние узлы, преподаватели, группы)
+ * удаление запрещает — `deletable` считает бэк, фронт его показывает, а не выводит.
+ */
+export interface OrgUnitDeletionImpactDto {
+  orgUnitId: number;
+  name: string;
+  deletable: boolean;
+  childUnits: number;
+  educators: number;
+  groups: number;
 }
 
 export interface AuditoriumDto {

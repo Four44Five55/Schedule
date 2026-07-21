@@ -12,6 +12,7 @@ interface EnumData {
     timeSlots: EnumDto[];
     kindOfConstraints: EnumDto[];
     periodTypes: EnumDto[];
+    orgUnitTypes: EnumDto[];
     loading: boolean;
 }
 
@@ -35,6 +36,10 @@ interface EnumHelpers {
     getStudyShort: (value: string) => string;
     /** Получить название ограничения */
     getConstraintLabel: (value: string) => string;
+    /** Получить название вида подразделения (например, "DEPARTMENT" → "Кафедра") */
+    getOrgUnitTypeLabel: (value: string) => string;
+    /** Получить сокращение вида подразделения (например, "DEPARTMENT" → "Каф.") */
+    getOrgUnitTypeShort: (value: string) => string;
 }
 
 type EnumContextType = EnumData & EnumHelpers;
@@ -51,6 +56,7 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timeSlots: [],
         kindOfConstraints: [],
         periodTypes: [],
+        orgUnitTypes: [],
         loading: true,
     });
 
@@ -63,6 +69,7 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     timeSlots: enums.timeSlots,
                     kindOfConstraints: enums.kindOfConstraints,
                     periodTypes: enums.periodTypes,
+                    orgUnitTypes: enums.orgUnitTypes ?? [],
                     loading: false,
                 });
             })
@@ -86,8 +93,10 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
             getStudyLabel: (v) => findInList(data.kindOfStudy, v)?.label ?? v,
             getStudyShort: (v) => findInList(data.kindOfStudy, v)?.abbreviation ?? v,
             getConstraintLabel: (v) => findInList(data.kindOfConstraints, v)?.label ?? v,
+            getOrgUnitTypeLabel: (v) => findInList(data.orgUnitTypes, v)?.label ?? v,
+            getOrgUnitTypeShort: (v) => findInList(data.orgUnitTypes, v)?.abbreviation ?? v,
         };
-    }, [data.daysOfWeek, data.timeSlots, data.kindOfStudy, data.kindOfConstraints]);
+    }, [data.daysOfWeek, data.timeSlots, data.kindOfStudy, data.kindOfConstraints, data.orgUnitTypes]);
 
     const value = useMemo(() => ({ ...data, ...helpers }), [data, helpers]);
 

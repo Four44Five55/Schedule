@@ -46,6 +46,21 @@ public class Group implements IMaterialEntity {
     private Auditorium baseAuditorium;
 
     /**
+     * Год набора (год поступления группы). Отличает одноимённые группы разных наборов —
+     * названия переиспользуются из года в год. {@code null} — не указан.
+     */
+    @Column(name = "enrollment_year")
+    private Integer enrollmentYear;
+
+    /**
+     * Подразделение, за которым закреплена группа (кафедра или факультет).
+     * {@code null} — ещё не распределена.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "org_unit_id")
+    private OrgUnit orgUnit;
+
+    /**
      * Связь для того, чтобы можно было узнать, в каких потоках состоит группа.
      * `mappedBy` указывает, что эта сторона связи не является управляющей.
      */

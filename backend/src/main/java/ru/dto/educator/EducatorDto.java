@@ -12,11 +12,15 @@ import ru.enums.TimeSlotPair;
  * @param preferredDays      Набор предпочитаемых дней недели.
  * @param preferredTimeSlots Набор предпочитаемых пар.
  * @param compactSchedule    Флаг компактности расписания.
+ * @param orgUnitId          Подразделение (кафедра или отдел); {@code null} — не распределён.
+ * @param orgUnitName        Название подразделения — чтобы список читался без склейки на клиенте.
  */
 public record EducatorDto(
         Integer id,
         String name,
         Set<DayOfWeek> preferredDays,
         Set<TimeSlotPair> preferredTimeSlots,
-        boolean compactSchedule
+        boolean compactSchedule,
+        Integer orgUnitId,
+        String orgUnitName
 ) {}

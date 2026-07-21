@@ -6,6 +6,7 @@ import { AuditoriumsSection } from './features/resources/components/AuditoriumsS
 import { GroupList } from './features/resources/components/GroupList';
 import { DisciplineList } from './features/curriculum/components/DisciplineList';
 import { StudyStreamList } from './features/resources/components/StudyStreamList';
+import { OrgUnitManager } from './features/orgUnit/components/OrgUnitManager';
 import { ConstraintsManager } from './features/constraints/components/ConstraintsManager';
 import { PlannerManager } from './features/planner/components/PlannerManager';
 import { ScheduleManager } from './features/schedule/components/ScheduleManager';
@@ -169,6 +170,19 @@ function AppShell() {
         return <DisciplineList disciplines={disciplines} onRefresh={reloadDisciplines} />;
       case 'streams':
         return <StudyStreamList streams={streams} onStreamsChange={reloadStreams} />;
+      case 'orgUnits':
+        // Преподаватели и группы уже загружены — счётчики подразделений считаются из них,
+        // без отдельных запросов. После правок обновляем оба списка: там показывается привязка.
+        return (
+            <OrgUnitManager
+                educators={educators}
+                groups={groups}
+                onChanged={() => {
+                  void reloadEducators();
+                  void reloadGroups();
+                }}
+            />
+        );
       case 'constraints':
         return <ConstraintsManager />;
       case 'planner':

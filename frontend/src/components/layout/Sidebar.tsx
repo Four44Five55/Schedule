@@ -10,7 +10,8 @@ import {
   LogOut,
   CalendarRange,
   Menu,
-  ChevronLeft
+  ChevronLeft,
+  Network
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -23,6 +24,7 @@ export type TabId =
     | 'auditoriums'
     | 'groups'
     | 'streams'
+    | 'orgUnits'
     | 'constraints'
     | 'schedule';
 
@@ -41,6 +43,7 @@ const menuItems: { id: TabId; label: string; icon: React.ElementType; color: str
   { id: 'auditoriums', label: 'Аудитории', icon: School, color: 'text-rose-500' },
   { id: 'groups', label: 'Группы', icon: Users, color: 'text-cyan-500' },
   { id: 'streams', label: 'Потоки', icon: Layers, color: 'text-teal-500' },
+  { id: 'orgUnits', label: 'Оргструктура', icon: Network, color: 'text-sky-500' },
   { id: 'constraints', label: 'Ограничения', icon: ShieldAlert, color: 'text-amber-500' },
 ];
 

@@ -93,8 +93,22 @@ public class EnumController {
     }
 
     /**
+     * Виды подразделений: Институт, Факультет, Кафедра, Отдел.
+     */
+    @GetMapping("/org-unit-type")
+    public List<EnumDto> getOrgUnitTypes() {
+        return Arrays.stream(OrgUnitType.values())
+                .map(e -> new EnumDto(
+                        e.name(),
+                        e.getFullName(),
+                        e.getAbbreviationName()
+                ))
+                .toList();
+    }
+
+    /**
      * Получить ВСЕ enum-ы одним запросом.
-     * Удобно для инициализации приложения — один запрос вместо пяти.
+     * Удобно для инициализации приложения — один запрос вместо шести.
      */
     @GetMapping("/all")
     public AllEnumsDto getAllEnums() {
@@ -103,7 +117,8 @@ public class EnumController {
                 getDaysOfWeek(),
                 getTimeSlots(),
                 getKindOfConstraints(),
-                getPeriodTypes()
+                getPeriodTypes(),
+                getOrgUnitTypes()
         );
     }
 
@@ -115,7 +130,8 @@ public class EnumController {
             List<EnumDto> daysOfWeek,
             List<EnumDto> timeSlots,
             List<EnumDto> kindOfConstraints,
-            List<EnumDto> periodTypes
+            List<EnumDto> periodTypes,
+            List<EnumDto> orgUnitTypes
     ) {
     }
 }
