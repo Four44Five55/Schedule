@@ -1,6 +1,8 @@
 package ru.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import ru.entity.Group;
 
@@ -43,4 +45,16 @@ public interface GroupRepository extends JpaRepository<Group, Integer> {
      * {@code groups.org_unit_id → org_unit ON DELETE RESTRICT}.
      */
     long countByOrgUnitId(Integer orgUnitId);
+
+    /**
+     * Id групп любого из подразделений набора — вход для фильтра «расписание кафедры».
+     * Вложенность разворачивает {@code OrgUnitScopeResolver}, см.
+     * {@code EducatorRepository.findIdsByOrgUnitIdIn}.
+     *
+     * <p>Класс указан полным именем намеренно: {@code GROUP} — зарезервированное слово JPQL
+     * ({@code GROUP BY}), и короткое {@code from Group g} зависит от снисходительности парсера.</p>
+     */
+    @Query("select g.id from ru.entity.Group g where g.orgUnit.id in :orgUnitIds")
+    java.util.List<Integer> findIdsByOrgUnitIdIn(
+            @Param("orgUnitIds") java.util.Collection<Integer> orgUnitIds);
 }

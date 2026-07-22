@@ -9,7 +9,9 @@ import org.springframework.web.bind.annotation.*;
 import ru.dto.orgUnit.OrgUnitCreateDto;
 import ru.dto.orgUnit.OrgUnitDeletionImpactDto;
 import ru.dto.orgUnit.OrgUnitDto;
+import ru.dto.orgUnit.OrgUnitScopeDto;
 import ru.dto.orgUnit.OrgUnitUpdateDto;
+import ru.services.orgunit.OrgUnitScopeResolver;
 import ru.services.orgunit.OrgUnitService;
 
 import java.util.List;
@@ -31,6 +33,7 @@ import java.util.List;
 public class OrgUnitController {
 
     private final OrgUnitService orgUnitService;
+    private final OrgUnitScopeResolver orgUnitScopeResolver;
 
     @GetMapping
     public ResponseEntity<List<OrgUnitDto>> getAll() {
@@ -68,6 +71,26 @@ public class OrgUnitController {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Охват подразделения: id вложенных подразделений, их преподавателей и групп.
+     *
+     * <p>Вход для фильтров «расписание кафедры», а не отчёт: множества id ложатся в
+     * {@code IN (...)} по существующим индексам. Счётчики по ветке выводятся размером множества
+     * — отдельного эндпоинта для них не будет, чтобы одно число не имело двух источников.</p>
+     *
+     * <p>В отличие от {@code GET /api/org-units}, вложенность разворачивает <b>бэк</b>: форма
+     * дерева — презентация и собирается фронтом, а охват — вход для выборок, и его владелец
+     * один ({@code OrgUnitScopeResolver}).</p>
+     */
+    @GetMapping("/{id}/scope")
+    public ResponseEntity<OrgUnitScopeDto> scope(@PathVariable Integer id) {
+        try {
+            return ResponseEntity.ok(orgUnitScopeResolver.scopeOf(id));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.notFound().build();
         }
     }
 

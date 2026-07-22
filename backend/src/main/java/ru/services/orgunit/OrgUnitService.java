@@ -162,8 +162,8 @@ public class OrgUnitService {
      */
     private void requireValidHierarchy(Integer selfId, OrgUnitType type, Integer parentId,
                                        List<OrgUnit> existing) {
-        Map<Integer, UnitNode> nodes = existing.stream()
-                .collect(Collectors.toMap(OrgUnit::getId, OrgUnitService::toNode));
+        // Сборка входа — общая с OrgUnitSubtree: своя копия toNode развела бы два источника формы.
+        Map<Integer, UnitNode> nodes = OrgUnitNodes.byId(existing);
 
         hierarchyRule.validateParent(selfId, type, parentId, nodes)
                 .or(() -> hierarchyRule.validateTypeChange(selfId, type, nodes))
@@ -197,20 +197,12 @@ public class OrgUnitService {
                                                 List<OrgUnit> existing) {
         boolean taken = existing.stream()
                 .filter(u -> !u.getId().equals(selfId))
-                .filter(u -> Objects.equals(parentIdOf(u), parentId))
+                .filter(u -> Objects.equals(OrgUnitNodes.parentIdOf(u), parentId))
                 .anyMatch(u -> u.getName().trim().equalsIgnoreCase(name.trim()));
 
         if (taken) {
             throw new IllegalStateException("Подразделение с названием «" + name.trim()
                     + "» уже есть на этом уровне.");
         }
-    }
-
-    private static UnitNode toNode(OrgUnit unit) {
-        return new UnitNode(unit.getId(), unit.getType(), parentIdOf(unit));
-    }
-
-    private static Integer parentIdOf(OrgUnit unit) {
-        return unit.getParent() == null ? null : unit.getParent().getId();
     }
 }
