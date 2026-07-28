@@ -69,6 +69,21 @@ class OrgUnitSubtreeTest {
     }
 
     @Test
+    @DisplayName("Ветви разной глубины: кафедра прямо под институтом (случай «ОАК») в охвате наравне с факультетскими")
+    void branchesOfDifferentDepthAreAllInScope() {
+        // Реальная форма из выгрузки: часть кафедр подчинена институту напрямую, минуя факультет
+        // (в файлах это и означает «ОАК»). Ранг допускает пропуск уровня: институт 10 < кафедра 30.
+        Map<Integer, UnitNode> units = tree();
+        int directDepartment = 6;
+        units.put(directDepartment, new UnitNode(directDepartment, OrgUnitType.DEPARTMENT, INSTITUTE));
+
+        Set<Integer> found = subtree.idsOf(INSTITUTE, units);
+
+        assertThat(found).containsExactlyInAnyOrder(
+                INSTITUTE, FACULTY, DEPARTMENT, OTHER_DEPARTMENT, directDepartment);
+    }
+
+    @Test
     @DisplayName("Лист — это поддерево из самого себя, а не пустое множество")
     void leafIsItsOwnSubtree() {
         Set<Integer> found = subtree.idsOf(DEPARTMENT, tree());
