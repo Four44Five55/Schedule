@@ -34,9 +34,17 @@ public class DisciplineController {
         DisciplineDto updated = disciplineService.updateDiscipline(id, dto);
         return ResponseEntity.ok(updated);
     }
+    /**
+     * Удаление дисциплины. Отказ приходит осмысленным 409 с текстом (у дисциплины есть курсы), а не
+     * сырым 500 — как у подразделений, корпусов и локаций.
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        disciplineService.deleteDiscipline(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<?> delete(@PathVariable Integer id) {
+        try {
+            disciplineService.deleteDiscipline(id);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+        }
     }
 }

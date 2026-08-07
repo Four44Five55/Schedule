@@ -15,6 +15,13 @@ public interface DisciplineCourseRepository extends JpaRepository<DisciplineCour
     boolean existsByDisciplineIdAndStudyPeriodId(Integer disciplineId, Integer studyPeriodId);
 
     /**
+     * Сколько курсов у дисциплины. Для запрета удаления: каскад БД уносит вместе с курсами их планы,
+     * назначения и уже размещённые занятия, поэтому дисциплину с курсами удалять нельзя — и сказать
+     * об этом надо до попытки, а не сырым отказом после.
+     */
+    long countByDisciplineId(Integer disciplineId);
+
+    /**
      * Проверяет дубль курса с учётом семестра: одна дисциплина в одном периоде может
      * существовать на разных семестрах, поэтому уникальность — (discipline, period, semester).
      */

@@ -167,7 +167,8 @@ function AppShell() {
       case 'groups':
         return <GroupList groups={groups} onGroupsChange={reloadGroups} />;
       case 'disciplines':
-        return <DisciplineList disciplines={disciplines} onRefresh={reloadDisciplines} />;
+        // Справочник: планы правятся в планировщике, отсюда — только переход туда.
+        return <DisciplineList disciplines={disciplines} onRefresh={reloadDisciplines} onNavigate={setActiveTab} />;
       case 'streams':
         return <StudyStreamList streams={streams} onStreamsChange={reloadStreams} />;
       case 'orgUnits':
