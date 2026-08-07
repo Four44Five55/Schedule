@@ -143,8 +143,7 @@ public class TrackReorderService {
         ReorderRoomPlan roomPlan = resolveRooms(classPlacements, allSessionPlacements, targetByPlacement, byId);
         Map<Integer, Auditorium> roomEntities = collectRoomEntities(classPlacements);
 
-        // Применяем переезды: дата/пара + подобранные комнаты (раньше комната ехала с занятием
-        // вслепую — отсюда 77 конфликтов, возвращавшихся после первого же переноса).
+        // Применяем переезды: дата/пара + подобранные комнаты
         List<LessonPlacement> changed = new ArrayList<>();
         for (CellMove move : plan.moves()) {
             LessonPlacement p = byId.get(move.placementId());

@@ -236,6 +236,7 @@ curl -X GET "http://localhost:8080/api/schedule/query/reports/educator-load?star
 | `GET /query/reports/educator-quality?periodId=X` | Качество расписания преподавателей → `PeriodScheduleQualityDto` (компактность + равномерность, считается из `schedule_view`) |
 | `GET /query/discipline/{abbr}` | Все занятия дисциплины по аббревиатуре |
 | `GET /query/kind/{kind}` | Все занятия вида (`LECTURE`, `PRACTICAL_WORK`, …) |
+| `GET /query/stream/{sessionId}` | **SSE-поток живых обновлений** (`text/event-stream`, `ScheduleStreamController`). Событие `schedule-changed` с телом `{sessionId, version}` шлётся **после** записи в `schedule_view` — то есть «данные готовы, перечитывай». Передаётся звонок, а не данные: что перечитать, решает клиент обычными REST-эндпоинтами. Подписка — браузерным `EventSource`; пачки событий клиент обязан схлопывать (массовая очистка = сотни событий) |
 
 ---
 
@@ -783,24 +784,26 @@ const moveLesson = async (sessionId: string, placementId: string,
 
 ---
 
-## 📊 Performance Benchmarks
+## 📊 Что реально померено
 
-### Query Side
+> ⚠️ Здесь раньше стояла таблица «Performance Benchmarks» с колонкой `Requests/sec` — эти числа
+> **никогда не измерялись** (такую же выдуманную таблицу вычистили из `CQRS_ARCHITECTURE.md`
+> 2026-07-12). Ниже — только фактические замеры: `⏱`-логи + `hibernate.generate_statistics` на живой
+> сессии (1075 размещений, 23 курса, 777 ограничений), 2026-07-12. Пропускная способность не
+> мерилась вовсе; нагрузочного теста нет.
 
-| Endpoint | Время | Requests/sec |
-|----------|-------|--------------|
-| `/query/student/{id}` | ~10ms | ~1000 |
-| `/query/educator/{id}` | ~5ms | ~2000 |
-| `/query/check-auditorium` | ~5ms | ~2000 |
-| `/query/reports/educator-load` | ~50ms | ~200 |
+| Путь | Пересоздание workspace | Сам алгоритм | Итого |
+|---|---|---|---|
+| `GET /query/all` (вся сетка, 2700 строк / 1.35 МБ) | — | один индексированный SELECT | **~55 мс** |
+| `POST /find-move-options` (перенос) | 133 мс | **1 мс** | 135 мс |
+| `POST /find-chain-move-options` (цепочка) | 164 мс | **1 мс** | 165 мс |
+| `GET /command/sessions/{id}/placement-options` (палитра) | 125 мс | **1 мс** | 129 мс |
 
-### Command Side
+**Вывод, который важнее чисел:** каскад фильтров подбора не стоит почти ничего — платим за
+**пересоздание `ScheduleWorkspace`** (~70 SQL-запросов на клик, из них посев 84–109 мс). Отсюда
+кэш workspace как главная оставшаяся победа по скорости — см. [FOLLOWUPS.md](FOLLOWUPS.md).
 
-| Endpoint | Время | Requests/sec |
-|----------|-------|--------------|
-| `POST /command/sessions` | ~50ms | ~200 |
-| `POST /command/sessions/generate` | ~500ms | ~20 |
-| `POST /command/sessions/{id}/move-lesson` | ~100ms | ~100 |
+Генерация, создание сессии и `move-lesson` **не замерялись** — цифр по ним нет.
 
 ---
 
@@ -816,3 +819,4 @@ const moveLesson = async (sessionId: string, placementId: string,
 *Изначально: CQRS Implementation Team, 2025-01-11*
 *Приведено в соответствие с текущими контроллерами: 2026-07-07*
 *Дополнено 2026-07-21: оргструктура (`/api/org-units`), `orgUnitId` у преподавателя и группы, `enrollmentYear` у группы*
+*Исправлено 2026-08-07: выдуманная таблица «Performance Benchmarks» заменена фактическими замерами; добавлен SSE-эндпоинт `/query/stream/{sessionId}`, которого не было в документе с момента его появления (2026-07-14)*

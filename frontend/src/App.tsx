@@ -141,7 +141,7 @@ function AppShell() {
             </div>
             <div className="text-center space-y-2">
               <p className="font-black text-slate-800 text-lg uppercase tracking-widest">Синхронизация</p>
-              <p className="text-slate-400 text-sm font-medium">Подключаемся к университетской базе данных...</p>
+              <p className="text-slate-400 text-sm font-medium">Подключаемся к базе данных...</p>
             </div>
           </div>
       );

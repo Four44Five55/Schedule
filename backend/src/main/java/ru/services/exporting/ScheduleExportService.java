@@ -7,8 +7,11 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.dto.ScheduledLessonDto;
 import ru.entity.StudyPeriod;
 import ru.entity.constraints.ConstraintData;
+import ru.entity.Educator;
+import ru.entity.OrgUnit;
 import ru.entity.read.ScheduleView;
 import ru.enums.KindOfStudy;
+import ru.repository.EducatorRepository;
 import ru.repository.read.ScheduleViewRepository;
 import ru.services.ScheduleResponseService;
 import ru.services.StudyPeriodService;
@@ -51,6 +54,7 @@ public class ScheduleExportService {
     private final ScheduleViewRepository viewRepository;
     private final ScheduleResponseService responseService;
     private final ConstraintService constraintService;
+    private final EducatorRepository educatorRepository;
     private final ScheduleWorkbookRenderer renderer;
 
     /** Результат выгрузки: байты, имя файла (кириллица, кодируется в контроллером) и MIME-тип. */
@@ -75,6 +79,12 @@ public class ScheduleExportService {
         // ВСЕХ строк оси (не только текущей группы), т.к. поток — это со-группы по общему placementId.
         Map<UUID, Set<String>> streamGroups = axis == ExportAxis.GROUP
                 ? groupsByPlacement(relevant) : Map.of();
+        // Кафедры участников для колонки «Каф» — тоже только для группы (только у неё есть таблица).
+        Map<Integer, String> departments = axis == ExportAxis.GROUP
+                ? departmentsByEducator(relevant) : Map.of();
+
+        // Правый край листов: последняя дата, на которой в расписании периода есть занятие.
+        LocalDate contentEnd = contentEnd(relevant, end);
 
         // Одна сущность — одна книга .xlsx (как раньше).
         if (entityId != null) {
@@ -82,8 +92,9 @@ public class ScheduleExportService {
                     .filter(v -> entityId.equals(axis.entityId(v)))
                     .toList();
             String scopeName = rows.isEmpty() ? ("#" + entityId) : axis.entityName(rows.get(0));
-            var sheet = sheetOf(scopeName, entityId, rows, axisConstraints, start, end, axis, streamGroups);
-            byte[] bytes = renderer.render(List.of(sheet), start, end, axis);
+            var sheet = sheetOf(scopeName, entityId, rows, axisConstraints, start, end, axis,
+                    streamGroups, departments);
+            byte[] bytes = renderer.render(List.of(sheet), start, end, contentEnd, axis);
             String filename = buildFilename(period, axis, scopeName, ".xlsx");
             log.info("Экспорт расписания (бланк, .xlsx): период id={}, ось={}, сущность={}, {} байт",
                     periodId, axis, entityId, bytes.length);
@@ -99,10 +110,10 @@ public class ScheduleExportService {
                                 Optional.ofNullable(axis.entityName(e.getValue().get(0))).orElse(""),
                         String.CASE_INSENSITIVE_ORDER))
                 .map(e -> sheetOf(axis.entityName(e.getValue().get(0)), e.getKey(),
-                        e.getValue(), axisConstraints, start, end, axis, streamGroups))
+                        e.getValue(), axisConstraints, start, end, axis, streamGroups, departments))
                 .toList();
 
-        byte[] bytes = zipPerEntity(sheets, start, end, axis);
+        byte[] bytes = zipPerEntity(sheets, start, end, contentEnd, axis);
         String scopeName = "все_" + axis.title().toLowerCase(Locale.ROOT);
         String filename = buildFilename(period, axis, scopeName, ".zip");
         log.info("Экспорт расписания (бланк, ZIP): период id={}, ось={}, файлов={}, {} байт",
@@ -116,12 +127,12 @@ public class ScheduleExportService {
      * Имена файлов внутри архива уникализируются (тёзки получают суффикс).
      */
     private byte[] zipPerEntity(List<ScheduleWorkbookRenderer.SheetData> sheets,
-                                LocalDate start, LocalDate end, ExportAxis axis) {
+                                LocalDate start, LocalDate end, LocalDate contentEnd, ExportAxis axis) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream();
              ZipOutputStream zip = new ZipOutputStream(out, java.nio.charset.StandardCharsets.UTF_8)) {
             Set<String> usedNames = new HashSet<>();
             for (ScheduleWorkbookRenderer.SheetData sheet : sheets) {
-                byte[] book = renderer.render(List.of(sheet), start, end, axis);
+                byte[] book = renderer.render(List.of(sheet), start, end, contentEnd, axis);
                 zip.putNextEntry(new ZipEntry(zipEntryName(sheet.name(), usedNames)));
                 zip.write(book);
                 zip.closeEntry();
@@ -149,13 +160,65 @@ public class ScheduleExportService {
     private ScheduleWorkbookRenderer.SheetData sheetOf(String name, Integer entityId, List<ScheduleView> rows,
                                                        Map<Integer, List<ConstraintData>> axisConstraints,
                                                        LocalDate start, LocalDate end, ExportAxis axis,
-                                                       Map<UUID, Set<String>> streamGroups) {
+                                                       Map<UUID, Set<String>> streamGroups,
+                                                       Map<Integer, String> departments) {
         Map<String, List<ScheduledLessonDto>> grid = responseService.buildGridFromViews(rows);
-        Map<String, String> constraintAbbr = constraintMapFor(axisConstraints.get(entityId), start, end);
-        // Таблица «Обозначения» бланка — только для группы; для препода/аудитории она вычищается.
+        List<ConstraintData> constraints = axisConstraints.get(entityId);
+        Map<String, String> constraintAbbr = constraintMapFor(constraints, start, end);
+        // Таблица «Обозначения» бланка и расшифровки под ней — только для группы; для препода и
+        // аудитории таблица вычищается, а вместе с ней уходит и место под расшифровки.
+        boolean group = axis == ExportAxis.GROUP;
         List<ScheduleWorkbookRenderer.LegendRow> legend =
-                axis == ExportAxis.GROUP ? buildLegend(rows, streamGroups) : List.of();
-        return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr, legend);
+                group ? buildLegend(rows, streamGroups, departments) : List.of();
+        List<ScheduleWorkbookRenderer.Mark> kindMarks = group ? kindMarksOf(rows) : List.of();
+        List<ScheduleWorkbookRenderer.Mark> otherMarks = group ? constraintMarksOf(constraints, start, end) : List.of();
+        return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr, legend, kindMarks, otherMarks);
+    }
+
+    /**
+     * Дата последнего занятия расписания — правый край листов: недели правее неё обрезаются.
+     *
+     * <p>Считается по <b>занятиям</b>, а не по ограничениям. Ограничение (командировка, сессия)
+     * растянуто на недели, где занятий нет вовсе, и учёт таких дат вернул бы границу к концу периода,
+     * то есть отменил бы обрезку. «Учебная неделя» — это неделя с занятиями. ⚠️ Следствие: метка
+     * ограничения на неделе, где во всём расписании нет ни одного занятия, в файл не попадёт.</p>
+     *
+     * <p>Считается по <b>всему</b> расписанию оси, а не по выбранной сущности: иначе файлы одной
+     * выгрузки заканчивались бы на разных неделях, а «в расписании N учебных недель» — свойство
+     * расписания, а не одной группы. Расписание пустое → {@code end} (режем по концу периода).</p>
+     */
+    private static LocalDate contentEnd(List<ScheduleView> relevant, LocalDate end) {
+        return relevant.stream()
+                .map(ScheduleView::getScheduledDate)
+                .filter(Objects::nonNull)
+                .max(Comparator.naturalOrder())
+                .orElse(end);
+    }
+
+    /** Виды занятий, реально встречающиеся на листе (в порядке справочника) — для расшифровки. */
+    private static List<ScheduleWorkbookRenderer.Mark> kindMarksOf(List<ScheduleView> rows) {
+        return rows.stream()
+                .map(ScheduleView::getKindOfStudy)
+                .map(ScheduleExportService::parseKind)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted() // порядок справочника: enum'ы сравниваются по ordinal
+                .map(k -> new ScheduleWorkbookRenderer.Mark(k.getAbbreviationName(), k.getFullName()))
+                .toList();
+    }
+
+    /** Виды ограничений, попавшие в сетку листа (в порядке справочника) — «Другие обозначения». */
+    private static List<ScheduleWorkbookRenderer.Mark> constraintMarksOf(List<ConstraintData> constraints,
+                                                                        LocalDate start, LocalDate end) {
+        if (constraints == null || constraints.isEmpty()) return List.of();
+        return constraints.stream()
+                .filter(c -> !c.cell().getDate().isBefore(start) && !c.cell().getDate().isAfter(end))
+                .map(ConstraintData::kind)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted() // порядок справочника: enum'ы сравниваются по ordinal
+                .map(k -> new ScheduleWorkbookRenderer.Mark(k.getAbbreviationName(), k.getFullName()))
+                .toList();
     }
 
     /** Карта «размещение → имена всех его групп» из строк проекции (для лекционного потока). */
@@ -176,10 +239,11 @@ public class ScheduleExportService {
      * академ. часа (в модели хранимых часов нет). Порядок — по аббревиатуре/названию.
      */
     private List<ScheduleWorkbookRenderer.LegendRow> buildLegend(List<ScheduleView> rows,
-                                                                 Map<UUID, Set<String>> streamGroups) {
+                                                                 Map<UUID, Set<String>> streamGroups,
+                                                                 Map<Integer, String> departments) {
         Map<String, List<ScheduleView>> byDiscipline = rows.stream()
                 .collect(Collectors.groupingBy(
-                        v -> nn(v.getDisciplineName()) + ' ' + nn(v.getDisciplineAbbr()),
+                        v -> nn(v.getDisciplineName()) + '\0' + nn(v.getDisciplineAbbr()),
                         LinkedHashMap::new, Collectors.toList()));
 
         List<ScheduleWorkbookRenderer.LegendRow> legend = new ArrayList<>();
@@ -213,13 +277,56 @@ public class ScheduleExportService {
                     .sorted()
                     .collect(Collectors.joining(", "));
 
+            // «Каф» — подразделения ВСЕХ участников дисциплины (и лекторов, и ведущих остальные
+            // виды): у дисциплины их может быть несколько, и это законно — межкафедральные потоки.
+            String department = disc.stream()
+                    .map(ScheduleView::getEducatorId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .map(departments::get)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .collect(Collectors.joining(", "));
+
             legend.add(new ScheduleWorkbookRenderer.LegendRow(
-                    abbr, name, lecturers, others, hours, report, lectureStream));
+                    abbr, name, department, lecturers, others, hours, report, lectureStream));
         }
         legend.sort(Comparator.comparing(
                 l -> Optional.ofNullable(l.abbr()).orElseGet(() -> nn(l.discipline())),
                 String.CASE_INSENSITIVE_ORDER));
         return legend;
+    }
+
+    /**
+     * Карта «преподаватель → его подразделение» для колонки «Каф»: краткое имя, а при его отсутствии
+     * полное. Столбец бланка узкий, поэтому краткое имя — не косметика: длинное («Кафедра высшей
+     * математики») перекрыло бы соседнюю колонку лектора.
+     *
+     * <p>Читается из master-данных <b>одним запросом на выгрузку</b>, а не из {@code schedule_view}:
+     * подразделение в проекцию сознательно не денормализовано (иначе переименование кафедры обязано
+     * было бы порождать перепроекцию — см. CQRS_ARCHITECTURE, «Что в проекцию НЕ кладут»).</p>
+     *
+     * <p>Показывается то подразделение, к которому преподаватель привязан фактически. Привязка
+     * nullable и по модели это может быть не только кафедра, но и факультет или отдел: подставлять
+     * вместо пустого значения догадку было бы хуже пустой ячейки.</p>
+     */
+    private Map<Integer, String> departmentsByEducator(List<ScheduleView> relevant) {
+        Set<Integer> ids = relevant.stream()
+                .map(ScheduleView::getEducatorId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) return Map.of();
+
+        Map<Integer, String> byEducator = new HashMap<>();
+        for (Educator educator : educatorRepository.findAllWithOrgUnitByIdIn(ids)) {
+            OrgUnit unit = educator.getOrgUnit();
+            if (unit == null) continue; // «без подразделения» — легитимное состояние, не ошибка
+            String label = unit.getShortName() != null && !unit.getShortName().isBlank()
+                    ? unit.getShortName() : unit.getName();
+            if (label != null && !label.isBlank()) byEducator.put(educator.getId(), label);
+        }
+        return byEducator;
     }
 
     /** Уникальные имена преподавателей строк (в порядке появления), склеенные через запятую. */

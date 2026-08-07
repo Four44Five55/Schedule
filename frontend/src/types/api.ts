@@ -112,6 +112,22 @@ export interface OrgUnitDto {
   active: boolean;
 }
 
+/**
+ * Охват подразделения: кто в него попадает С УЧЁТОМ ВЛОЖЕННОСТИ (кафедры факультета и т.д.).
+ *
+ * <p>Разворот поддерева считает бэк (`OrgUnitScopeResolver` — единственный владелец рекурсии по
+ * дереву), поэтому фронт не повторяет обход: дерево он строит только для отображения.</p>
+ *
+ * <p>Приходят id, а не карточки: списки преподавателей и групп у фронта уже есть.</p>
+ */
+export interface OrgUnitScopeDto {
+  orgUnitId: number;
+  name: string;
+  unitIds: number[];
+  educatorIds: number[];
+  groupIds: number[];
+}
+
 export interface OrgUnitCreateDto {
   name: string;
   shortName?: string | null;

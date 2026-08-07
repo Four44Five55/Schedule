@@ -66,6 +66,7 @@ import {
   OrgUnitDto,
   OrgUnitCreateDto,
   OrgUnitUpdateDto,
+  OrgUnitScopeDto,
   OrgUnitDeletionImpactDto
 } from '../types/api';
 import { downloadBlob, filenameFromContentDisposition } from '../utils/download';
@@ -127,6 +128,12 @@ export const ResourceService = {
   updateOrgUnit: (id: number, data: OrgUnitUpdateDto) =>
       api.put<OrgUnitDto>(`/org-units/${id}`, data).then((r) => r.data),
   /** Цена удаления: ссылки (дети/преподаватели/группы) удаление запрещают — `deletable` с бэка. */
+  /**
+   * Охват подразделения с учётом вложенности (id преподавателей/групп поддерева).
+   * Разворот дерева живёт на бэке намеренно — фронт свой обход для этого не заводит.
+   */
+  getOrgUnitScope: (id: number) =>
+      api.get<OrgUnitScopeDto>(`/org-units/${id}/scope`).then((r) => r.data),
   getOrgUnitDeleteImpact: (id: number) =>
       api.get<OrgUnitDeletionImpactDto>(`/org-units/${id}/delete-impact`).then((r) => r.data),
   deleteOrgUnit: (id: number) => api.delete(`/org-units/${id}`).then(() => {}),

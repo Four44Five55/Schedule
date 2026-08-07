@@ -1,6 +1,7 @@
 package ru.services.exporting;
 
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFColor;
@@ -63,7 +64,8 @@ public class ScheduleWorkbookRenderer {
     private static final int FIRST_DATE_ROW = 6;   // строка даты блока «Пн» (Excel 7 = строка «даты»)
     private static final int FIRST_WEEK_COL = 3;   // столбец D — первая неделя
     private static final int LAST_TEMPLATE_WEEK_COL = 32; // AG — последний недельный столбец шаблона (нед. 30)
-    private static final int LAST_COL = 80;        // столбец CC (dimension A1:CC106) — предел недель
+    private static final int LAST_SHEET_COL = 63;  // BL — правый край листа бланка (dimension A1:BL106)
+    private static final int LAST_COL = 80;        // предел недель при заполнении (шире листа не пишем)
     private static final int DAY_STRIDE = 13;      // строка даты + 4 пары × 3 строки
     private static final int LINES_PER_SLOT = 3;
 
@@ -74,6 +76,7 @@ public class ScheduleWorkbookRenderer {
     private static final int LEGEND_LAST_ROW = 105;        // 0-индекс, Excel 106 (для полной очистки)
     private static final int LEGEND_COL_ABBR = 0;          // A — обозначение
     private static final int LEGEND_COL_DISCIPLINE = 1;    // B:H — дисциплина (пишем в якорь B)
+    private static final int LEGEND_COL_DEPARTMENT = 8;    // I — «Каф»: подразделения участников
     private static final int LEGEND_COL_LECTURER = 9;      // J:M — лектор (якорь J)
     private static final int LEGEND_COL_OTHERS = 13;       // N:Q — другие виды занятий (якорь N)
     private static final int LEGEND_COL_HOURS = 17;        // R — кол-во часов «лекц-нелекц»
@@ -81,34 +84,58 @@ public class ScheduleWorkbookRenderer {
     private static final int LEGEND_COL_STREAM = 19;       // T:U — поток лекционный (якорь T)
     private static final int LEGEND_LAST_COL = 23;         // X — правый край легенды (Дом.задание V:X)
 
+    // Расшифровка аббревиатур под таблицей «Обозначения» (только группа): свободная зона бланка
+    // (строки 97–107 пусты). Строка 97 остаётся пустой — отбивка от таблицы.
+    private static final int MARKS_TITLE_ROW = 97;         // 0-индекс, Excel 98 — строка заголовков
+    private static final int MARKS_FIRST_DATA_ROW = 98;    // 0-индекс, Excel 99 — первая строка списков
+    private static final int MARKS_COL_KIND_ABBR = 0;      // A — аббревиатура вида занятия
+    private static final int MARKS_COL_KIND_NAME = 1;      // B — расшифровка (перетекает вправо по пустым)
+    private static final int MARKS_COL_OTHER_ABBR = 9;     // J — аббревиатура прочего обозначения
+    private static final int MARKS_COL_OTHER_NAME = 10;    // K — расшифровка
+    private static final int PRINT_LAST_ROW = 106;         // 0-индекс, Excel 107 — низ области печати бланка
+
     /**
      * Один лист выгрузки: имя (сущность), сетка «date_SLOT → занятия» (как отдаёт Query Side),
-     * карта ограничений «date_SLOT → аббревиатура» (для пустых ячеек, как в историческом экспорте)
-     * и строки легенды «Обозначения» (заполняются только для группы; для препода/аудитории пусто).
+     * карта ограничений «date_SLOT → аббревиатура» (для пустых ячеек, как в историческом экспорте),
+     * строки легенды «Обозначения» и две расшифровки аббревиатур — виды занятий и прочие обозначения
+     * (все три заполняются только для группы; для препода/аудитории пусто).
      */
     public record SheetData(String name,
                             Map<String, List<ScheduledLessonDto>> grid,
                             Map<String, String> constraintAbbr,
-                            List<LegendRow> legend) {}
+                            List<LegendRow> legend,
+                            List<Mark> kindMarks,
+                            List<Mark> otherMarks) {}
+
+    /**
+     * Одна строка расшифровки: аббревиатура, как она стоит в ячейках листа, и её полное название.
+     * Состав определяет вызывающий — в списки идут только <b>встречающиеся на листе</b> обозначения
+     * (решение заказчика 2026-08-07), поэтому расшифровка не превращается в справочник несуществующего.
+     */
+    public record Mark(String abbr, String name) {}
 
     /**
      * Одна строка таблицы «Обозначения» бланка (для группы): аббревиатура и название дисциплины,
-     * лектор(ы), преподаватели других (нелекционных) видов занятий, кол-во часов «лекц-нелекц»
-     * (напр. {@code "12-26"}), отчёт — аббревиатуры зачётов/экзаменов, и лекционный поток — группы,
-     * слушающие лекции вместе. Лекторов, «других», отчётов и групп потока может быть несколько.
+     * подразделения («Каф») всех её участников, лектор(ы), преподаватели других (нелекционных) видов
+     * занятий, кол-во часов «лекц-нелекц» (напр. {@code "12-26"}), отчёт — аббревиатуры зачётов/
+     * экзаменов, и лекционный поток — группы, слушающие лекции вместе. Кафедр, лекторов, «других»,
+     * отчётов и групп потока может быть несколько.
      */
-    public record LegendRow(String abbr, String discipline, String lecturer, String others,
-                            String hours, String report, String lectureStream) {}
+    public record LegendRow(String abbr, String discipline, String department, String lecturer,
+                            String others, String hours, String report, String lectureStream) {}
 
     /**
-     * @param sheets листы (для одной сущности — один); первый занимает лист-шаблон, остальные —
-     *               клоны пристина-шаблона (каждый = точный бланк)
-     * @param start  начало периода (включительно)
-     * @param end    конец периода (включительно)
-     * @param axis   перспектива (задаёт содержимое ячеек)
+     * @param sheets     листы (для одной сущности — один); первый занимает лист-шаблон, остальные —
+     *                   клоны пристина-шаблона (каждый = точный бланк)
+     * @param start      начало периода (включительно)
+     * @param end        конец периода (включительно)
+     * @param contentEnd последняя дата, по которой на листах есть что показывать (занятие или
+     *                   ограничение); правее её недели обрезаются. {@code null} → обрезаем по {@code end}
+     * @param axis       перспектива (задаёт содержимое ячеек)
      * @return байты .xlsx (заполненный бланк)
      */
-    public byte[] render(List<SheetData> sheets, LocalDate start, LocalDate end, ExportAxis axis) {
+    public byte[] render(List<SheetData> sheets, LocalDate start, LocalDate end,
+                         LocalDate contentEnd, ExportAxis axis) {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(TEMPLATE)) {
             if (is == null) {
                 throw new IllegalStateException("Шаблон не найден в ресурсах: " + TEMPLATE);
@@ -134,10 +161,11 @@ public class ScheduleWorkbookRenderer {
                 CellStyle dateStyle = buildDateStyle(wb, targets.get(0));
                 CellStyler styler = new CellStyler(wb); // заливки по виду + выравнивание влево
                 Set<String> usedNames = new HashSet<>();
+                LocalDate cropEnd = contentEnd != null && contentEnd.isBefore(end) ? contentEnd : end;
                 for (int i = 0; i < sheets.size(); i++) {
                     Sheet sheet = targets.get(i);
                     wb.setSheetName(wb.getSheetIndex(sheet), safeSheetName(sheets.get(i).name(), usedNames));
-                    fillSheet(sheet, sheets.get(i), start, end, axis, dateStyle, styler);
+                    fillSheet(sheet, sheets.get(i), start, end, cropEnd, axis, dateStyle, styler);
                 }
 
                 wb.write(out);
@@ -148,16 +176,20 @@ public class ScheduleWorkbookRenderer {
         }
     }
 
-    private void fillSheet(Sheet sheet, SheetData data, LocalDate start, LocalDate end,
+    private void fillSheet(Sheet sheet, SheetData data, LocalDate start, LocalDate end, LocalDate cropEnd,
                            ExportAxis axis, CellStyle dateStyle, CellStyler styler) {
         writeMonthHeader(sheet, start, end);
         writeEntityHeader(sheet, data.name(), start, end, axis);
         // Таблица «Обозначения» внизу бланка — групповая по смыслу (дисциплины/лекторы/часы группы).
         // Преподавателю и аудитории она не нужна — чистим целиком; группе — заполняем реальными данными.
+        int lastRow = PRINT_LAST_ROW;
         if (axis == ExportAxis.GROUP) {
             writeDisciplineLegend(sheet, data.legend(), styler);
+            // Расшифровка аббревиатур — ниже таблицы, поэтому только там, где эта таблица есть.
+            lastRow = Math.max(lastRow, writeAbbreviationMarks(sheet, data.kindMarks(), data.otherMarks()));
         } else {
             deleteDisciplineLegend(sheet);
+            lastRow = LEGEND_HEADER_FIRST_ROW - 1; // таблицы больше нет — низ листа поднимается к сетке
         }
 
         // Данные ячеек занятий (вид/тема/дисциплина/группы/аудитория) — по центру (шаблонный дефолт).
@@ -210,26 +242,185 @@ public class ScheduleWorkbookRenderer {
             }
         }
 
-        hideUnusedWeekColumns(sheet, start, end, axis);
+        int lastCol = cropColumnsRightOfSchedule(sheet, start, cropEnd, axis, styler);
+        // Область печати бланка (A1:Z107) фиксирована под 23 недели — приводим к фактическому листу,
+        // иначе печать либо тянет отрезанный хвост, либо режет расшифровку/недели за 23-й.
+        Workbook wb = sheet.getWorkbook();
+        wb.setPrintArea(wb.getSheetIndex(sheet), 0, lastCol, 0, lastRow);
     }
 
     /**
-     * Прячет хвостовые столбцы недель бланка, не попавшие в период (примерно 10 при семестре ~20
-     * недель): пустой «расчерченный» блок справа не показывается и не печатается. Именно <b>скрытие</b>,
-     * а не физическое удаление: недельные столбцы и таблица «Обозначения» внизу бланка <b>делят одни
-     * столбцы</b>, а строку месяца держат объединения по 4 столбца — сдвиг колонок разрушил бы и то,
-     * и другое. Для группы столбцы легенды (до {@code X}) не прячем, чтобы не срезать её таблицу.
+     * Обрезает столбцы правее последней недели, по которой на листе есть что показывать: снимает
+     * объединения, удаляет ячейки (вместе с их границами) — разлинованная «пустая» матрица справа
+     * исчезает совсем, а не прячется.
+     *
+     * <p><b>Почему удаление, а не скрытие</b> (было до 2026-08-07): скрытые столбцы остаются в листе,
+     * а хвост бланка правее AG не скрывался вовсе. Заказчик считает недели по факту: «в расписании 23
+     * учебные недели, начиная с 24-й — удалять».</p>
+     *
+     * <p><b>Почему не сдвигаем колонки</b> (и почему это безопасно): недельные столбцы и таблица
+     * «Обозначения» делят одни и те же столбцы, а строку месяца держат объединения по 4 столбца —
+     * сдвиг разрушил бы и то, и другое. Здесь сдвига нет: правее границы всё пусто, мы лишь стираем
+     * разметку. Единственное объединение, которое может пересечь границу, — блок строки месяца
+     * ({@code Y6:AC6} при 23 неделях): его усекаем до последнего оставшегося столбца, иначе название
+     * месяца над последними неделями исчезло бы вместе с объединением.</p>
+     *
+     * <p>Для группы граница не уходит левее {@code X}: там таблица «Обозначения» стоит на тех же
+     * столбцах, что недели, — срезав их, срезали бы её.</p>
+     *
+     * @return индекс последнего оставшегося столбца (правый край листа)
      */
-    private void hideUnusedWeekColumns(Sheet sheet, LocalDate start, LocalDate end, ExportAxis axis) {
-        int lastUsedWeekCol = FIRST_WEEK_COL
-                + (int) ChronoUnit.WEEKS.between(start.with(DayOfWeek.MONDAY), end.with(DayOfWeek.MONDAY));
-        int firstHide = lastUsedWeekCol + 1;
+    private int cropColumnsRightOfSchedule(Sheet sheet, LocalDate start, LocalDate cropEnd,
+                                           ExportAxis axis, CellStyler styler) {
+        int lastCol = FIRST_WEEK_COL
+                + (int) ChronoUnit.WEEKS.between(start.with(DayOfWeek.MONDAY), cropEnd.with(DayOfWeek.MONDAY));
         if (axis == ExportAxis.GROUP) {
-            firstHide = Math.max(firstHide, LEGEND_LAST_COL + 1); // легенду группы не режем
+            lastCol = Math.max(lastCol, LEGEND_LAST_COL); // таблицу «Обозначения» не режем
         }
-        for (int c = firstHide; c <= LAST_TEMPLATE_WEEK_COL; c++) {
-            sheet.setColumnHidden(c, true);
+        int firstCut = lastCol + 1;
+        if (firstCut > LAST_SHEET_COL) return Math.min(lastCol, LAST_SHEET_COL);
+
+        // 1. Объединения: целиком за границей — снять; пересекающие границу — усечь до неё.
+        List<Integer> toRemove = new ArrayList<>();
+        List<CellRangeAddress> crossing = new ArrayList<>();
+        for (int i = 0; i < sheet.getNumMergedRegions(); i++) {
+            var reg = sheet.getMergedRegion(i);
+            if (reg.getFirstColumn() >= firstCut) {
+                toRemove.add(i);
+            } else if (reg.getLastColumn() >= firstCut) {
+                toRemove.add(i);
+                crossing.add(new CellRangeAddress(
+                        reg.getFirstRow(), reg.getLastRow(), reg.getFirstColumn(), reg.getLastColumn()));
+            }
         }
+        if (!toRemove.isEmpty()) sheet.removeMergedRegions(toRemove);
+
+        for (CellRangeAddress reg : crossing) {
+            // У объединения правый край нарисован на его ПОСЛЕДНЕЙ ячейке (для блока месяцев
+            // `Y6:AC6` — на `AC6`), а не на левой границе соседа: у внутренних ячеек блока границ
+            // нет вовсе. Поэтому перенос «от соседа» (шаг 2) такую строку не закрыл бы.
+            for (int r = reg.getFirstRow(); r <= reg.getLastRow(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
+                Cell edge = row.getCell(lastCol);
+                Cell regionEnd = row.getCell(reg.getLastColumn());
+                if (edge != null && regionEnd != null) {
+                    styler.closeRightFromRegionEnd(edge, regionEnd.getCellStyle());
+                }
+            }
+            // Усечённый блок из одной ячейки объединять не нужно (и POI такого не примет).
+            CellRangeAddress cut = new CellRangeAddress(
+                    reg.getFirstRow(), reg.getLastRow(), reg.getFirstColumn(), lastCol);
+            if (cut.getNumberOfCells() > 1) sheet.addMergedRegion(cut);
+        }
+
+        // 2. Ячейки: удаляем вместе со стилем — исчезают границы, лист заканчивается на lastCol.
+        // Перед удалением закрываем правый край: вертикаль справа от столбца в этом бланке рисуется
+        // ЛЕВОЙ границей следующего столбца (у недельных ячеек задана только `left`), а замыкающая
+        // рамка таблицы — единственный `right` у столбца AG. Просто удалив хвост, мы бы срезали и то,
+        // и другое, и последний столбец расписания остался бы без правой границы.
+        for (Row row : sheet) {
+            Cell edge = row.getCell(lastCol);
+            Cell next = row.getCell(firstCut);
+            if (edge != null && next != null) {
+                styler.closeRight(edge, next.getCellStyle());
+            }
+            List<Cell> cells = new ArrayList<>();
+            for (Cell c : row) {
+                if (c.getColumnIndex() >= firstCut) cells.add(c);
+            }
+            cells.forEach(row::removeCell);
+        }
+        return lastCol;
+    }
+
+    /**
+     * Пишет под таблицей «Обозначения» две расшифровки: слева виды занятий (аббревиатуры из ячеек
+     * расписания), справа — прочие обозначения (виды ограничений, которыми подписаны пустые ячейки).
+     * Оба списка — только то, что реально встречается на листе, поэтому длина у каждого листа своя.
+     *
+     * <p>Расшифровка пишется в соседний столбец без объединения: справа от неё столбцы пусты, и текст
+     * перетекает — объединение пришлось бы заводить на каждую строку и оно бы конфликтовало с шириной
+     * недельных столбцов.</p>
+     *
+     * @return индекс последней занятой строки (для области печати)
+     */
+    private int writeAbbreviationMarks(Sheet sheet, List<Mark> kindMarks, List<Mark> otherMarks) {
+        boolean hasKinds = kindMarks != null && !kindMarks.isEmpty();
+        boolean hasOthers = otherMarks != null && !otherMarks.isEmpty();
+        if (!hasKinds && !hasOthers) return PRINT_LAST_ROW;
+
+        MarksStyles styles = marksStyles(sheet);
+        if (hasKinds) {
+            setMarkCell(sheet, MARKS_TITLE_ROW, MARKS_COL_KIND_ABBR, "Обозначения видов занятий:", styles.title());
+        }
+        if (hasOthers) {
+            setMarkCell(sheet, MARKS_TITLE_ROW, MARKS_COL_OTHER_ABBR, "Другие обозначения:", styles.title());
+        }
+
+        int lastRow = MARKS_TITLE_ROW;
+        lastRow = Math.max(lastRow,
+                writeMarkColumn(sheet, kindMarks, MARKS_COL_KIND_ABBR, MARKS_COL_KIND_NAME, styles.entry()));
+        lastRow = Math.max(lastRow,
+                writeMarkColumn(sheet, otherMarks, MARKS_COL_OTHER_ABBR, MARKS_COL_OTHER_NAME, styles.entry()));
+        return Math.max(lastRow, PRINT_LAST_ROW);
+    }
+
+    /** Один столбец расшифровки: «аббревиатура | — название», начиная с {@link #MARKS_FIRST_DATA_ROW}. */
+    private int writeMarkColumn(Sheet sheet, List<Mark> marks, int abbrCol, int nameCol, CellStyle style) {
+        if (marks == null || marks.isEmpty()) return MARKS_FIRST_DATA_ROW;
+        int row = MARKS_FIRST_DATA_ROW;
+        for (Mark mark : marks) {
+            setMarkCell(sheet, row, abbrCol, mark.abbr() == null ? "" : mark.abbr(), style);
+            setMarkCell(sheet, row, nameCol, "— " + (mark.name() == null ? "" : mark.name()), style);
+            row++;
+        }
+        return row - 1;
+    }
+
+    /** Ячейка блока расшифровки: значение + единый стиль блока (шрифт бланка, без границ). */
+    private void setMarkCell(Sheet sheet, int row, int col, String value, CellStyle style) {
+        Cell cell = cell(sheet, row, col);
+        cell.setCellValue(value);
+        cell.setCellStyle(style);
+    }
+
+    /** Пара стилей блока расшифровки: жирный для заголовков, обычный для строк списка. */
+    private record MarksStyles(CellStyle title, CellStyle entry) {}
+
+    /**
+     * Стили блока расшифровки. Свободные строки бланка размечены вразнобой (столбец A — {@code Arial
+     * Cyr 10 bold}, столбцы B/J/K — {@code Calibri 11}), поэтому список, написанный «как лежит»,
+     * выпадал из типографики расписания. Берём за основу стиль заголовочной ячейки блока (он в
+     * шрифте бланка) и делаем из него два: как есть — для заголовков, с не-жирным начертанием —
+     * для строк.
+     *
+     * <p>Шрифт для строк <b>создаётся новый</b>, а не правится существующий: объекты шрифтов в книге
+     * общие, и снятие жирности с найденного шрифта задело бы все ячейки бланка, где он использован.</p>
+     */
+    private MarksStyles marksStyles(Sheet sheet) {
+        Workbook wb = sheet.getWorkbook();
+        Row titleRow = sheet.getRow(MARKS_TITLE_ROW);
+        Cell sample = titleRow != null ? titleRow.getCell(MARKS_COL_KIND_ABBR) : null;
+
+        CellStyle title = wb.createCellStyle();
+        if (sample != null && sample.getCellStyle() != null) {
+            title.cloneStyleFrom(sample.getCellStyle());
+        }
+        title.setAlignment(HorizontalAlignment.LEFT);
+
+        Font base = wb.getFontAt(title.getFontIndex());
+        Font plain = wb.createFont();
+        plain.setFontName(base.getFontName());
+        plain.setFontHeightInPoints(base.getFontHeightInPoints());
+        plain.setCharSet(base.getCharSet());
+        plain.setColor(base.getColor());
+        plain.setBold(false);
+
+        CellStyle entry = wb.createCellStyle();
+        entry.cloneStyleFrom(title);
+        entry.setFont(plain);
+        return new MarksStyles(title, entry);
     }
 
     /**
@@ -316,7 +507,8 @@ public class ScheduleWorkbookRenderer {
 
     /**
      * Заполняет таблицу «Обозначения» бланка (только для группы): по строке на дисциплину —
-     * аббревиатура (A), название (B:H), лектор(ы) (J:M), преподаватели других видов занятий (N:Q),
+     * аббревиатура (A), название (B:H), кафедры участников (I), лектор(ы) (J:M),
+     * преподаватели других видов занятий (N:Q),
      * кол-во часов «лекц-нелекц» (R), отчёт — зачёты/экзамены (S) и лекционный поток (T:U). Шапка
      * (стр. 83–85) сохраняется;
      * строки данных (86–96) очищаются от стале-примера шаблона и переписываются. В бланке 11 строк
@@ -333,6 +525,7 @@ public class ScheduleWorkbookRenderer {
             int row = LEGEND_FIRST_DATA_ROW + i;
             setLegendCell(sheet, row, LEGEND_COL_ABBR, lr.abbr());
             setLegendCell(sheet, row, LEGEND_COL_DISCIPLINE, lr.discipline());
+            setLegendCell(sheet, row, LEGEND_COL_DEPARTMENT, lr.department());
             setLegendCell(sheet, row, LEGEND_COL_LECTURER, lr.lecturer());
             setLegendCell(sheet, row, LEGEND_COL_OTHERS, lr.others());
             setLegendCell(sheet, row, LEGEND_COL_HOURS, lr.hours());
@@ -398,6 +591,50 @@ public class ScheduleWorkbookRenderer {
                 return s;
             });
             cell.setCellStyle(derived);
+        }
+
+        /**
+         * Закрывает правый край ячейки границей, которая до обрезки рисовалась <b>левой</b> границей
+         * соседа справа. В бланке вертикали таблицы заданы именно так (у недельных ячеек только
+         * {@code left}), поэтому удаление хвоста столбцов уносит и линию — её надо перевесить.
+         * Берём начертание и цвет у соседа, а не константу: так восстанавливается и тонкая
+         * межнедельная линия, и замыкающая рамка таблицы, каждая на своей строке.
+         */
+        void closeRight(Cell cell, CellStyle removedNeighbour) {
+            setRightBorder(cell, removedNeighbour.getBorderLeft(),
+                    removedNeighbour instanceof XSSFCellStyle n ? n.getLeftBorderXSSFColor() : null);
+        }
+
+        /**
+         * То же для усечённого объединения: правый край блока нарисован на его последней ячейке,
+         * поэтому берём её <b>правую</b> границу, а не левую границу соседа.
+         */
+        void closeRightFromRegionEnd(Cell cell, CellStyle regionEnd) {
+            setRightBorder(cell, regionEnd.getBorderRight(),
+                    regionEnd instanceof XSSFCellStyle e ? e.getRightBorderXSSFColor() : null);
+        }
+
+        private void setRightBorder(Cell cell, BorderStyle border, XSSFColor color) {
+            if (border == BorderStyle.NONE) return; // линии не было — переносить нечего
+            CellStyle src = cell.getCellStyle();
+            String key = src.getIndex() + ":R:" + border + ":" + colorKey(color);
+            CellStyle derived = cache.computeIfAbsent(key, k -> {
+                CellStyle s = wb.createCellStyle();
+                s.cloneStyleFrom(src);
+                s.setBorderRight(border);
+                if (color != null && s instanceof XSSFCellStyle derivedXssf) {
+                    derivedXssf.setRightBorderColor(color);
+                }
+                return s;
+            });
+            cell.setCellStyle(derived);
+        }
+
+        /** Ключ цвета для кэша стилей: RGB, иначе индексный номер, иначе «авто». */
+        private static String colorKey(XSSFColor color) {
+            if (color == null) return "auto";
+            String argb = color.getARGBHex();
+            return argb != null ? argb : "idx" + color.getIndexed();
         }
 
         private static XSSFColor rgb(int r, int g, int b) {
