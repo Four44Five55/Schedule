@@ -312,7 +312,7 @@ export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducato
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                       {section.items.map((educator) => (
                           <EducatorCard
                               key={educator.id}
@@ -374,82 +374,80 @@ const EducatorCard: React.FC<EducatorCardProps> = ({
 
   return (
       <div className="bg-white rounded-lg border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden group/card">
-        {/* Шапка */}
-        <div className="px-3 py-2.5 border-b border-slate-50">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-black text-slate-900 truncate flex-1" title={educator.name}>
+        <div className="px-2 py-1.5 space-y-1">
+          {/* Фамилия и кафедра — одной строкой: отдельная строка под подразделение занимала
+              высоту в КАЖДОЙ карточке, а краткое имя короткое и рядом с фамилией читается. */}
+          <div className="flex items-center gap-1">
+            <h3 className="text-xs font-black text-slate-900 truncate min-w-0 flex-1" title={educator.name}>
               {educator.name}
             </h3>
+
+            {unitShort && (
+                <span
+                    className="px-1 py-px bg-slate-100 text-slate-600 text-[10px] font-bold rounded shrink-0 max-w-[45%] truncate"
+                    title={educator.orgUnitName ?? undefined}
+                >
+                  {unitShort}
+                </span>
+            )}
+
             <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0">
               <button
                   onClick={onEdit}
-                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                   title="Редактировать"
               >
-                <Pencil size={13} />
+                <Pencil size={12} />
               </button>
               <button
                   onClick={onDelete}
-                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                  className="p-0.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                   title="Удалить"
               >
-                <Trash2 size={13} />
+                <Trash2 size={12} />
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Содержимое */}
-        <div className="px-3 py-2 space-y-2">
-          {/* Подразделение — краткое имя (заголовок секции виден не всегда при прокрутке) */}
-          {unitShort && (
-              <div className="flex items-center gap-1.5">
-                <Network size={12} className="text-slate-400 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-600 truncate"
-                      title={educator.orgUnitName ?? undefined}>
-                  {unitShort}
-                </span>
-              </div>
-          )}
-
-          {/* Предпочтения: показываем только заданные. Обе пустые — одна строка вместо двух. */}
-          {hasDays && (
-              <div className="flex items-center gap-1.5">
-                <Calendar size={12} className="text-slate-400 shrink-0" />
-                <div className="flex gap-0.5 flex-wrap">
-                  {educator.preferredDays.map((day) => (
-                      <span key={day} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded">
-                        {getDayShort(day)}
-                      </span>
-                  ))}
-                </div>
-              </div>
-          )}
-
-          {hasSlots && (
-              <div className="flex items-center gap-1.5">
-                <Clock size={12} className="text-slate-400 shrink-0" />
-                <div className="flex gap-0.5">
-                  {educator.preferredTimeSlots.map((slot) => (
-                      <span key={slot} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded">
-                        {getSlotShort(slot)}
-                      </span>
-                  ))}
-                </div>
+          {/* Дни и пары — одной строкой: ширины карточки хватает, а группы различимы по цвету
+              (дни синие, пары зелёные), поэтому переносить их в две строки незачем. При избытке
+              чипов строка перенесётся сама. */}
+          {(hasDays || hasSlots) && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {hasDays && (
+                    <>
+                      <Calendar size={11} className="text-slate-400 shrink-0" />
+                      {educator.preferredDays.map((day) => (
+                          <span key={day} className="px-1 py-px bg-blue-50 text-blue-700 text-[10px] font-bold rounded">
+                            {getDayShort(day)}
+                          </span>
+                      ))}
+                    </>
+                )}
+                {hasSlots && (
+                    <>
+                      <Clock size={11} className={`text-slate-400 shrink-0 ${hasDays ? 'ml-0.5' : ''}`} />
+                      {educator.preferredTimeSlots.map((slot) => (
+                          <span key={slot} className="px-1 py-px bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded">
+                            {getSlotShort(slot)}
+                          </span>
+                      ))}
+                    </>
+                )}
               </div>
           )}
 
           {!hasDays && !hasSlots && (
-              <div className="flex items-center gap-1.5">
-                <Calendar size={12} className="text-slate-300 shrink-0" />
+              <div className="flex items-center gap-1">
+                <Calendar size={11} className="text-slate-300 shrink-0" />
                 <span className="text-[10px] text-slate-400 italic">Любые дни и пары</span>
               </div>
           )}
 
           {/* Компактное расписание */}
           {educator.compactSchedule && (
-              <div className="flex items-center gap-1.5">
-                <Zap size={12} className="text-emerald-500 shrink-0" />
+              <div className="flex items-center gap-1">
+                <Zap size={11} className="text-emerald-500 shrink-0" />
                 <span className="text-[10px] text-emerald-700 font-bold">Компактное</span>
               </div>
           )}

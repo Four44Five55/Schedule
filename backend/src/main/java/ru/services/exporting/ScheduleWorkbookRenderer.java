@@ -92,7 +92,8 @@ public class ScheduleWorkbookRenderer {
     private static final int MARKS_COL_KIND_NAME = 1;      // B — расшифровка (перетекает вправо по пустым)
     private static final int MARKS_COL_OTHER_ABBR = 9;     // J — аббревиатура прочего обозначения
     private static final int MARKS_COL_OTHER_NAME = 10;    // K — расшифровка
-    private static final int PRINT_LAST_ROW = 106;         // 0-индекс, Excel 107 — низ области печати бланка
+    // Низ листа НЕ константа: бланк правят (2026-08-07 хвостовые пустые строки 97–106 удалены,
+    // лист стал заканчиваться на 96). Область печати считается от последней ЗАПОЛНЕННОЙ строки.
 
     /**
      * Один лист выгрузки: имя (сущность), сетка «date_SLOT → занятия» (как отдаёт Query Side),
@@ -182,7 +183,7 @@ public class ScheduleWorkbookRenderer {
         writeEntityHeader(sheet, data.name(), start, end, axis);
         // Таблица «Обозначения» внизу бланка — групповая по смыслу (дисциплины/лекторы/часы группы).
         // Преподавателю и аудитории она не нужна — чистим целиком; группе — заполняем реальными данными.
-        int lastRow = PRINT_LAST_ROW;
+        int lastRow = LEGEND_LAST_DATA_ROW; // низ таблицы «Обозначения» — базовый край листа группы
         if (axis == ExportAxis.GROUP) {
             writeDisciplineLegend(sheet, data.legend(), styler);
             // Расшифровка аббревиатур — ниже таблицы, поэтому только там, где эта таблица есть.
@@ -348,7 +349,7 @@ public class ScheduleWorkbookRenderer {
     private int writeAbbreviationMarks(Sheet sheet, List<Mark> kindMarks, List<Mark> otherMarks) {
         boolean hasKinds = kindMarks != null && !kindMarks.isEmpty();
         boolean hasOthers = otherMarks != null && !otherMarks.isEmpty();
-        if (!hasKinds && !hasOthers) return PRINT_LAST_ROW;
+        if (!hasKinds && !hasOthers) return LEGEND_LAST_DATA_ROW;
 
         MarksStyles styles = marksStyles(sheet);
         if (hasKinds) {
@@ -363,16 +364,16 @@ public class ScheduleWorkbookRenderer {
                 writeMarkColumn(sheet, kindMarks, MARKS_COL_KIND_ABBR, MARKS_COL_KIND_NAME, styles.entry()));
         lastRow = Math.max(lastRow,
                 writeMarkColumn(sheet, otherMarks, MARKS_COL_OTHER_ABBR, MARKS_COL_OTHER_NAME, styles.entry()));
-        return Math.max(lastRow, PRINT_LAST_ROW);
+        return Math.max(lastRow, LEGEND_LAST_DATA_ROW);
     }
 
-    /** Один столбец расшифровки: «аббревиатура | — название», начиная с {@link #MARKS_FIRST_DATA_ROW}. */
+    /** Один столбец расшифровки: «аббревиатура | название», начиная с {@link #MARKS_FIRST_DATA_ROW}. */
     private int writeMarkColumn(Sheet sheet, List<Mark> marks, int abbrCol, int nameCol, CellStyle style) {
         if (marks == null || marks.isEmpty()) return MARKS_FIRST_DATA_ROW;
         int row = MARKS_FIRST_DATA_ROW;
         for (Mark mark : marks) {
             setMarkCell(sheet, row, abbrCol, mark.abbr() == null ? "" : mark.abbr(), style);
-            setMarkCell(sheet, row, nameCol, "— " + (mark.name() == null ? "" : mark.name()), style);
+            setMarkCell(sheet, row, nameCol, mark.name() == null ? "" : mark.name(), style);
             row++;
         }
         return row - 1;
@@ -397,17 +398,29 @@ public class ScheduleWorkbookRenderer {
      *
      * <p>Шрифт для строк <b>создаётся новый</b>, а не правится существующий: объекты шрифтов в книге
      * общие, и снятие жирности с найденного шрифта задело бы все ячейки бланка, где он использован.</p>
+     *
+     * <p><b>Источник образца не одна ячейка, а цепочка.</b> Раньше брали строку заголовков блока —
+     * но 2026-08-07 хвостовые пустые строки из бланка удалили, ячейка исчезла, и стиль молча
+     * откатывался к умолчанию книги ({@code Calibri}), возвращая ровно ту разноголосицу шрифтов,
+     * ради которой всё и делалось. Поэтому запасной образец — ячейка аббревиатуры таблицы
+     * «Обозначения»: она в шрифте бланка и живёт, пока жива сама таблица. Границы и заливку
+     * образца снимаем: под таблицей рамок быть не должно.</p>
      */
     private MarksStyles marksStyles(Sheet sheet) {
         Workbook wb = sheet.getWorkbook();
-        Row titleRow = sheet.getRow(MARKS_TITLE_ROW);
-        Cell sample = titleRow != null ? titleRow.getCell(MARKS_COL_KIND_ABBR) : null;
+        Cell sample = existingCell(sheet, MARKS_TITLE_ROW, MARKS_COL_KIND_ABBR);
+        if (sample == null) sample = existingCell(sheet, LEGEND_FIRST_DATA_ROW, LEGEND_COL_ABBR);
 
         CellStyle title = wb.createCellStyle();
         if (sample != null && sample.getCellStyle() != null) {
             title.cloneStyleFrom(sample.getCellStyle());
         }
         title.setAlignment(HorizontalAlignment.LEFT);
+        title.setBorderTop(BorderStyle.NONE);
+        title.setBorderBottom(BorderStyle.NONE);
+        title.setBorderLeft(BorderStyle.NONE);
+        title.setBorderRight(BorderStyle.NONE);
+        title.setFillPattern(FillPatternType.NO_FILL);
 
         Font base = wb.getFontAt(title.getFontIndex());
         Font plain = wb.createFont();
@@ -676,6 +689,12 @@ public class ScheduleWorkbookRenderer {
         Row r = sheet.getRow(row);
         Cell c = r != null ? r.getCell(col) : null;
         if (c != null) c.setBlank();
+    }
+
+    /** Ячейка по (row, col), если она в бланке есть; {@code null} — без создания (для образцов стиля). */
+    private Cell existingCell(Sheet sheet, int row, int col) {
+        Row r = sheet.getRow(row);
+        return r != null ? r.getCell(col) : null;
     }
 
     /** Ячейка по (row, col); строка/ячейка создаются при отсутствии (стиль бланка сохраняется). */
