@@ -71,6 +71,47 @@ public class Educator implements IMaterialEntity {
     @JoinColumn(name = "org_unit_id")
     private OrgUnit orgUnit;
 
+    /**
+     * Специальное (воинское) звание — приставка перед фамилией в подписи. {@code null} — не указано.
+     *
+     * <p>Регалии ниже в планировании <b>не участвуют</b>: у звания нет занятости, солвер о них не
+     * знает — то же решение, что по подразделению. Их место — карточка преподавателя, таблица
+     * «Обозначения» выгрузки и разбор чужих файлов на импорте.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "special_rank_id")
+    private ru.entity.dictionary.SpecialRank specialRank;
+
+    /**
+     * Род службы к званию («юстиции»): независимая ось, а не разновидность звания.
+     * Почти всегда {@code null} — печатается только вместе со званием.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rank_service_id")
+    private ru.entity.dictionary.RankService rankService;
+
+    /**
+     * Уровень учёной степени. Вторая её половина — {@link #scienceBranch}: вместе они дают
+     * «к.т.н.». Готовая строка сокращения не хранится намеренно — это было бы третье
+     * представление одного факта.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "academic_degree", length = 50)
+    private ru.enums.AcademicDegree academicDegree;
+
+    /** Отрасль науки учёной степени: «технические» → «к.т.н.». */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "science_branch_id")
+    private ru.entity.dictionary.ScienceBranch scienceBranch;
+
+    /**
+     * Учёное звание (доцент/профессор). ⚠️ Не должность: «доцент кафедры» — другое поле, которого
+     * в модели пока нет.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "academic_title", length = 50)
+    private ru.enums.AcademicTitle academicTitle;
+
     // Конструктор для удобства
     public Educator(String name) {
         this.name = name;

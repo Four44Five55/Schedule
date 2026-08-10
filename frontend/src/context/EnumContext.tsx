@@ -13,6 +13,10 @@ interface EnumData {
     kindOfConstraints: EnumDto[];
     periodTypes: EnumDto[];
     orgUnitTypes: EnumDto[];
+    /** Уровни учёной степени (кандидат/доктор). Отрасль науки — справочник, не enum. */
+    academicDegrees: EnumDto[];
+    /** Учёные звания (доцент/профессор) — не должности. */
+    academicTitles: EnumDto[];
     loading: boolean;
 }
 
@@ -40,6 +44,10 @@ interface EnumHelpers {
     getOrgUnitTypeLabel: (value: string) => string;
     /** Получить сокращение вида подразделения (например, "DEPARTMENT" → "Каф.") */
     getOrgUnitTypeShort: (value: string) => string;
+    /** Название уровня степени (например, "CANDIDATE" → "кандидат наук") */
+    getAcademicDegreeLabel: (value: string) => string;
+    /** Название учёного звания (например, "ASSOCIATE_PROFESSOR" → "доцент") */
+    getAcademicTitleLabel: (value: string) => string;
 }
 
 type EnumContextType = EnumData & EnumHelpers;
@@ -57,6 +65,8 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
         kindOfConstraints: [],
         periodTypes: [],
         orgUnitTypes: [],
+        academicDegrees: [],
+        academicTitles: [],
         loading: true,
     });
 
@@ -70,6 +80,8 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     kindOfConstraints: enums.kindOfConstraints,
                     periodTypes: enums.periodTypes,
                     orgUnitTypes: enums.orgUnitTypes ?? [],
+                    academicDegrees: enums.academicDegrees ?? [],
+                    academicTitles: enums.academicTitles ?? [],
                     loading: false,
                 });
             })
@@ -95,8 +107,11 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
             getConstraintLabel: (v) => findInList(data.kindOfConstraints, v)?.label ?? v,
             getOrgUnitTypeLabel: (v) => findInList(data.orgUnitTypes, v)?.label ?? v,
             getOrgUnitTypeShort: (v) => findInList(data.orgUnitTypes, v)?.abbreviation ?? v,
+            getAcademicDegreeLabel: (v) => findInList(data.academicDegrees, v)?.label ?? v,
+            getAcademicTitleLabel: (v) => findInList(data.academicTitles, v)?.label ?? v,
         };
-    }, [data.daysOfWeek, data.timeSlots, data.kindOfStudy, data.kindOfConstraints, data.orgUnitTypes]);
+    }, [data.daysOfWeek, data.timeSlots, data.kindOfStudy, data.kindOfConstraints, data.orgUnitTypes,
+        data.academicDegrees, data.academicTitles]);
 
     const value = useMemo(() => ({ ...data, ...helpers }), [data, helpers]);
 

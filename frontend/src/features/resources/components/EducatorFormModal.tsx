@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
-import { X, Save, Loader2, User, AlertCircle, Calendar, Clock, Zap, Network } from 'lucide-react';
-import { EducatorDto, EducatorCreateDto, EducatorUpdateDto, DayOfWeek, TimeSlotPair } from '../../../types/api';
+import { X, Save, Loader2, User, AlertCircle, Calendar, Clock, Zap, Network, Award } from 'lucide-react';
+import {
+    EducatorDto, EducatorCreateDto, EducatorUpdateDto, DayOfWeek, TimeSlotPair,
+    AcademicDegree, AcademicTitle,
+} from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
 import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
+import {
+    useEducatorCredentialDictionaries, selectableEntries,
+} from '../../educatorDictionary/hooks/useEducatorDictionaries';
 import { cn } from '../../../utils/cn';
 
 interface EducatorFormModalProps {
@@ -18,8 +24,11 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                                                                         onSaved
                                                                     }) => {
     const isEditMode = educator !== null;
-    const { daysOfWeek, timeSlots } = useEnums();
+    const { daysOfWeek, timeSlots, academicDegrees, academicTitles } = useEnums();
     const { flat: orgUnits, loading: orgUnitsLoading } = useOrgUnits();
+    // Звания/службы/отрасли — справочники (их ведёт пользователь); степень и учёное звание —
+    // enum-ы и приезжают тем же каналом, что виды занятий.
+    const { ranks, services, branches, loading: dictsLoading } = useEducatorCredentialDictionaries();
 
     const [name, setName] = useState(educator?.name ?? '');
     const [preferredDays, setPreferredDays] = useState<Set<string>>(
@@ -33,6 +42,15 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
     );
     // Подразделение: одно на преподавателя (совместительство не моделируем).
     const [orgUnitId, setOrgUnitId] = useState<number | null>(educator?.orgUnitId ?? null);
+
+    // Регалии. Пять независимых полей, любое может остаться пустым: «не указано» — законное
+    // состояние, а не незаполненная форма. Степень — ДВА поля (уровень + отрасль): готовой
+    // строки «к.т.н.» в модели нет, её собирает бэк.
+    const [specialRankId, setSpecialRankId] = useState<number | null>(educator?.specialRankId ?? null);
+    const [rankServiceId, setRankServiceId] = useState<number | null>(educator?.rankServiceId ?? null);
+    const [academicDegree, setAcademicDegree] = useState<AcademicDegree | null>(educator?.academicDegree ?? null);
+    const [scienceBranchId, setScienceBranchId] = useState<number | null>(educator?.scienceBranchId ?? null);
+    const [academicTitle, setAcademicTitle] = useState<AcademicTitle | null>(educator?.academicTitle ?? null);
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -77,7 +95,12 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                 preferredDays: Array.from(preferredDays) as DayOfWeek[],
                 preferredTimeSlots: Array.from(preferredTimeSlots) as TimeSlotPair[],
                 compactSchedule: compactSchedule,
-                orgUnitId: orgUnitId
+                orgUnitId: orgUnitId,
+                specialRankId,
+                rankServiceId,
+                academicDegree,
+                scienceBranchId,
+                academicTitle
             };
 
             console.log('📤 Отправка:', JSON.stringify(payload, null, 2));
@@ -182,6 +205,85 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                                         </option>
                                     ))}
                             </select>
+                        </div>
+
+                        {/* Регалии: звание — приставкой перед фамилией, степень и учёное звание — после */}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider">
+                                <Award size={12} />
+                                Звание и степень
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <select
+                                    value={specialRankId ?? ''}
+                                    onChange={(e) => setSpecialRankId(e.target.value ? parseInt(e.target.value) : null)}
+                                    disabled={saving || dictsLoading}
+                                    title="Специальное звание — приставка перед фамилией"
+                                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium outline-none bg-white cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                >
+                                    <option value="">— Звание не указано —</option>
+                                    {selectableEntries(ranks, specialRankId).map((r) => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={rankServiceId ?? ''}
+                                    onChange={(e) => setRankServiceId(e.target.value ? parseInt(e.target.value) : null)}
+                                    disabled={saving || dictsLoading}
+                                    title="Род службы — исключение; печатается только вместе со званием"
+                                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium outline-none bg-white cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                >
+                                    <option value="">— Род службы —</option>
+                                    {selectableEntries(services, rankServiceId).map((s) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={academicDegree ?? ''}
+                                    onChange={(e) => setAcademicDegree((e.target.value || null) as AcademicDegree | null)}
+                                    disabled={saving}
+                                    title="Уровень учёной степени"
+                                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium outline-none bg-white cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                >
+                                    <option value="">— Степени нет —</option>
+                                    {academicDegrees.map((d) => (
+                                        <option key={d.value} value={d.value}>{d.label}</option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={scienceBranchId ?? ''}
+                                    onChange={(e) => setScienceBranchId(e.target.value ? parseInt(e.target.value) : null)}
+                                    disabled={saving || dictsLoading}
+                                    title="Отрасль науки: вместе с уровнем даёт «к.т.н.»"
+                                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium outline-none bg-white cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                >
+                                    <option value="">— Отрасль науки —</option>
+                                    {selectableEntries(branches, scienceBranchId).map((b) => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={academicTitle ?? ''}
+                                    onChange={(e) => setAcademicTitle((e.target.value || null) as AcademicTitle | null)}
+                                    disabled={saving}
+                                    title="Учёное звание — не должность"
+                                    className="col-span-2 px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium outline-none bg-white cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                >
+                                    <option value="">— Учёного звания нет —</option>
+                                    {academicTitles.map((t) => (
+                                        <option key={t.value} value={t.value}>{t.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                                Подпись собирается автоматически: «п-к юст Иванов И.И., к.т.н., доц». Перечни званий,
+                                родов службы и отраслей правятся в справочниках раздела «Преподаватели».
+                            </p>
                         </div>
 
                         {/* Предпочитаемые дни */}

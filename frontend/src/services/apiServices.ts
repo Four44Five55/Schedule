@@ -67,7 +67,10 @@ import {
   OrgUnitCreateDto,
   OrgUnitUpdateDto,
   OrgUnitScopeDto,
-  OrgUnitDeletionImpactDto
+  OrgUnitDeletionImpactDto,
+  DictionaryEntryDto,
+  DictionaryEntryFormDto,
+  DictionaryKindDto
 } from '../types/api';
 import { downloadBlob, filenameFromContentDisposition } from '../utils/download';
 
@@ -82,8 +85,39 @@ export const EnumService = {
             kindOfConstraints: EnumDto[];
             periodTypes: EnumDto[];
             orgUnitTypes: EnumDto[];
+            academicDegrees: EnumDto[];
+            academicTitles: EnumDto[];
           }>('/enums/all')
           .then((r) => r.data),
+};
+
+/**
+ * Справочники регалий преподавателя: специальные звания, роды службы, отрасли науки.
+ *
+ * Один набор методов на все виды — вид передаётся сегментом пути ({@code special-ranks}).
+ * Копировать CRUD на каждый справочник незачем: они отличаются только таблицей, а будущая
+ * должность подключится сюда же новым значением kind, без правки этого файла.
+ *
+ * Степень (кандидат/доктор) и учёное звание (доцент/профессор) сюда НЕ входят — у них по два
+ * значения, они живут enum-ами и приезжают через EnumService.
+ */
+export type EducatorDictionaryKind = 'special-ranks' | 'rank-services' | 'science-branches';
+
+export const EducatorDictionaryService = {
+  getKinds: () => api.get<DictionaryKindDto[]>('/educator-dictionaries').then((r) => r.data),
+
+  getAll: (kind: EducatorDictionaryKind) =>
+      api.get<DictionaryEntryDto[]>(`/educator-dictionaries/${kind}`).then((r) => r.data),
+
+  create: (kind: EducatorDictionaryKind, dto: DictionaryEntryFormDto) =>
+      api.post<DictionaryEntryDto>(`/educator-dictionaries/${kind}`, dto).then((r) => r.data),
+
+  update: (kind: EducatorDictionaryKind, id: number, dto: DictionaryEntryFormDto) =>
+      api.put<DictionaryEntryDto>(`/educator-dictionaries/${kind}/${id}`, dto).then((r) => r.data),
+
+  /** 409 с текстом причины, если на строку ссылаются преподаватели (FK RESTRICT). */
+  delete: (kind: EducatorDictionaryKind, id: number) =>
+      api.delete<void>(`/educator-dictionaries/${kind}/${id}`).then((r) => r.data),
 };
 
 // ============ 2. РЕСУРСЫ ============

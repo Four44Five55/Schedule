@@ -65,4 +65,8 @@
     <!-- Год набора группы: отличает одноимённые группы разных наборов -->
     <include file="019-add-group-enrollment-year.sql" relativeToChangelogFile="true"/>
 
+    <!-- Регалии преподавателя: специальное звание (+ род службы), учёная степень (уровень +
+         отрасль науки) и учёное звание; справочники ведёт пользователь -->
+    <include file="020-create-educator-credentials.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

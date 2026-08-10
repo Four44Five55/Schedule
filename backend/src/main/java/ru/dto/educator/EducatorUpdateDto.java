@@ -2,6 +2,8 @@ package ru.dto.educator;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import ru.enums.AcademicDegree;
+import ru.enums.AcademicTitle;
 import ru.enums.DayOfWeek;
 import ru.enums.TimeSlotPair;
 
@@ -15,6 +17,14 @@ public record EducatorUpdateDto(
         boolean compactSchedule,
 
         // Подразделение; null — открепить от подразделения
-        Integer orgUnitId
+        Integer orgUnitId,
+
+        // Регалии; null у любого поля — снять значение (звание не пожизненно в рамках карточки:
+        // ошибочно проставленное надо уметь убрать)
+        Integer specialRankId,
+        Integer rankServiceId,
+        AcademicDegree academicDegree,
+        Integer scienceBranchId,
+        AcademicTitle academicTitle
 ) {
 }

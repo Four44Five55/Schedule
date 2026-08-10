@@ -16,6 +16,10 @@ export type KindOfStudy =
 export type TimeSlotPair = 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH';
 export type KindOfConstraints = 'BUSINESS_TRIP' | 'VACATION' | 'EXAM_SESSION' | 'MEDICAL_CARE' | 'LIBRARY' | 'FINAL_STATE_ATTESTATION' | 'OTHER';
 export type PeriodType = 'FALL_SEMESTER' | 'SPRING_SEMESTER' | 'FALL_EXAM_SESSION' | 'SPRING_EXAM_SESSION';
+/** Уровень учёной степени. Отрасль науки — не здесь: она справочник, её ведёт пользователь. */
+export type AcademicDegree = 'CANDIDATE' | 'DOCTOR';
+/** Учёное звание. ⚠️ Не должность: «доцент кафедры» — другое, в модели пока отсутствует. */
+export type AcademicTitle = 'ASSOCIATE_PROFESSOR' | 'PROFESSOR';
 
 // ============ ENUM DTO ============
 export interface EnumDto {
@@ -26,7 +30,25 @@ export interface EnumDto {
 }
 
 // ============ RESOURCES ============
-export interface EducatorDto {
+/**
+ * Регалии преподавателя. Все поля необязательны — «не указано» законное состояние.
+ * Степень задаётся ДВУМЯ полями (уровень + отрасль): готовой строки «к.т.н.» в модели нет,
+ * её собирает бэк.
+ */
+export interface EducatorCredentialsFields {
+  /** Специальное (воинское) звание. */
+  specialRankId?: number | null;
+  /** Род службы к званию («юстиции»); печатается только вместе со званием. */
+  rankServiceId?: number | null;
+  /** Уровень учёной степени. */
+  academicDegree?: AcademicDegree | null;
+  /** Отрасль науки степени. */
+  scienceBranchId?: number | null;
+  /** Учёное звание — НЕ должность. */
+  academicTitle?: AcademicTitle | null;
+}
+
+export interface EducatorDto extends EducatorCredentialsFields {
   id: number;
   name: string;
   preferredDays: DayOfWeek[];
@@ -35,9 +57,18 @@ export interface EducatorDto {
   /** Подразделение (кафедра или отдел); null — ещё не распределён. */
   orgUnitId?: number | null;
   orgUnitName?: string | null;
+  specialRankName?: string | null;
+  rankServiceName?: string | null;
+  scienceBranchName?: string | null;
+  /**
+   * Готовая подпись «п-к юст Иванов И.И., к.т.н., доц» — собрана на бэке.
+   * Фронт её НЕ склеивает сам: тот же текст нужен бланку выгрузки, и вторая склейка
+   * неминуемо разошлась бы с первой. Без регалий равна ФИО.
+   */
+  titleLine?: string | null;
 }
 
-export interface EducatorCreateDto {
+export interface EducatorCreateDto extends EducatorCredentialsFields {
   name: string;
   preferredDays: DayOfWeek[];
   preferredTimeSlots: TimeSlotPair[];
@@ -45,13 +76,41 @@ export interface EducatorCreateDto {
   orgUnitId?: number | null;
 }
 
-export interface EducatorUpdateDto {
+export interface EducatorUpdateDto extends EducatorCredentialsFields {
   name: string;
   preferredDays: DayOfWeek[];
   preferredTimeSlots: TimeSlotPair[];
   compactSchedule: boolean;
   /** null — открепить от подразделения. */
   orgUnitId?: number | null;
+}
+
+/** Строка справочника регалий (звание, род службы, отрасль науки). */
+export interface DictionaryEntryDto {
+  id: number;
+  name: string;
+  /** Сокращение без точек («п-к»); точки, где нужны по форме («к.т.н.»), расставляет бэк. */
+  shortName: string;
+  sortOrder: number;
+  active: boolean;
+  /** Сколько преподавателей ссылается на строку. */
+  educatorCount: number;
+  /** Решение считает бэк (FK стоят с RESTRICT), фронт его только показывает. */
+  deletable: boolean;
+}
+
+export interface DictionaryEntryFormDto {
+  name: string;
+  shortName: string;
+  sortOrder?: number | null;
+  active?: boolean | null;
+}
+
+/** Вид справочника регалий; slug — сегмент пути API. */
+export interface DictionaryKindDto {
+  value: string;
+  slug: string;
+  label: string;
 }
 
 export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';

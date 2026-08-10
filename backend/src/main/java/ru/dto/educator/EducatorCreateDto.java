@@ -2,6 +2,8 @@ package ru.dto.educator;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import ru.enums.AcademicDegree;
+import ru.enums.AcademicTitle;
 import ru.enums.DayOfWeek;
 import ru.enums.TimeSlotPair;
 
@@ -15,5 +17,13 @@ public record EducatorCreateDto(
         boolean compactSchedule,
 
         // Подразделение (кафедра или отдел), необязательное поле: «не распределён» легитимно
-        Integer orgUnitId
+        Integer orgUnitId,
+
+        // Регалии — все необязательны, «не указано» такое же законное состояние.
+        // Степень задаётся ДВУМЯ полями (уровень + отрасль): готовой строки «к.т.н.» в модели нет.
+        Integer specialRankId,
+        Integer rankServiceId,
+        AcademicDegree academicDegree,
+        Integer scienceBranchId,
+        AcademicTitle academicTitle
 ) {}

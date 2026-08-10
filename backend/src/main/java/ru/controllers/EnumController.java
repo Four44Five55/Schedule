@@ -107,8 +107,43 @@ public class EnumController {
     }
 
     /**
+     * Уровни учёной степени: кандидат наук, доктор наук.
+     *
+     * <p>Enum, а не справочник: два значения, заданы нормативкой. Вторая половина степени —
+     * отрасль науки — наоборот, справочник, который ведёт пользователь
+     * ({@code /api/educator-dictionaries/science-branches}). {@code extra} несёт форму без
+     * отрасли («канд наук»): она нужна, когда отрасль не указана, — записи «к.н.» не существует.</p>
+     */
+    @GetMapping("/academic-degree")
+    public List<EnumDto> getAcademicDegrees() {
+        return Arrays.stream(AcademicDegree.values())
+                .map(e -> new EnumDto(
+                        e.name(),
+                        e.getFullName(),
+                        e.getAbbreviation(),
+                        e.getStandalone()
+                ))
+                .toList();
+    }
+
+    /**
+     * Учёные звания: доцент, профессор. ⚠️ Не должность — «доцент кафедры» это другое поле,
+     * которого в модели пока нет.
+     */
+    @GetMapping("/academic-title")
+    public List<EnumDto> getAcademicTitles() {
+        return Arrays.stream(AcademicTitle.values())
+                .map(e -> new EnumDto(
+                        e.name(),
+                        e.getFullName(),
+                        e.getAbbreviation()
+                ))
+                .toList();
+    }
+
+    /**
      * Получить ВСЕ enum-ы одним запросом.
-     * Удобно для инициализации приложения — один запрос вместо шести.
+     * Удобно для инициализации приложения — один запрос вместо восьми.
      */
     @GetMapping("/all")
     public AllEnumsDto getAllEnums() {
@@ -118,7 +153,9 @@ public class EnumController {
                 getTimeSlots(),
                 getKindOfConstraints(),
                 getPeriodTypes(),
-                getOrgUnitTypes()
+                getOrgUnitTypes(),
+                getAcademicDegrees(),
+                getAcademicTitles()
         );
     }
 
@@ -131,7 +168,9 @@ public class EnumController {
             List<EnumDto> timeSlots,
             List<EnumDto> kindOfConstraints,
             List<EnumDto> periodTypes,
-            List<EnumDto> orgUnitTypes
+            List<EnumDto> orgUnitTypes,
+            List<EnumDto> academicDegrees,
+            List<EnumDto> academicTitles
     ) {
     }
 }

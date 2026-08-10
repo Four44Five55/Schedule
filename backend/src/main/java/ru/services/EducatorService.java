@@ -11,6 +11,7 @@ import ru.entity.Educator;
 import ru.entity.OrgUnit;
 import ru.mapper.EducatorMapper;
 import ru.repository.EducatorRepository;
+import ru.services.educator.EducatorCredentialsBinder;
 import ru.services.orgunit.OrgUnitService;
 import ru.services.projection.ProjectionMaintenance;
 import ru.services.projection.ProjectionSource;
@@ -30,6 +31,7 @@ public class EducatorService {
     private final EducatorMapper educatorMapper;
     private final ProjectionMaintenance projectionMaintenance;
     private final OrgUnitService orgUnitService;
+    private final EducatorCredentialsBinder credentialsBinder;
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ (ДЛЯ API) ===
 
@@ -47,6 +49,9 @@ public class EducatorService {
         newEducator.setPreferredTimeSlots(createDto.preferredTimeSlots());
         newEducator.setCompactSchedule(createDto.compactSchedule());
         newEducator.setOrgUnit(resolveOrgUnit(createDto.orgUnitId()));
+        credentialsBinder.bind(newEducator,
+                createDto.specialRankId(), createDto.rankServiceId(),
+                createDto.academicDegree(), createDto.scienceBranchId(), createDto.academicTitle());
 
         return educatorMapper.toDto(educatorRepository.save(newEducator));
     }
@@ -68,6 +73,11 @@ public class EducatorService {
         educatorToUpdate.setCompactSchedule(updateDto.compactSchedule());
         // null — открепить: смена подразделения read-модели не касается (его нет в schedule_view).
         educatorToUpdate.setOrgUnit(resolveOrgUnit(updateDto.orgUnitId()));
+        // Регалии в проекцию тоже не денормализованы (см. CQRS_ARCHITECTURE, «Что в проекцию НЕ
+        // кладут»): присвоение звания перепроекции не требует, подпись собирается на чтении.
+        credentialsBinder.bind(educatorToUpdate,
+                updateDto.specialRankId(), updateDto.rankServiceId(),
+                updateDto.academicDegree(), updateDto.scienceBranchId(), updateDto.academicTitle());
 
         EducatorDto updated = educatorMapper.toDto(educatorRepository.save(educatorToUpdate));
         // Имя преподавателя лежит в read-модели снимком: без этого переименование не дошло бы

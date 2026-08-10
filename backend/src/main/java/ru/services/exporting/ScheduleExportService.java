@@ -16,6 +16,7 @@ import ru.repository.read.ScheduleViewRepository;
 import ru.services.ScheduleResponseService;
 import ru.services.StudyPeriodService;
 import ru.services.constraints.ConstraintService;
+import ru.services.educator.EducatorCredentialsAssembler;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -79,9 +80,10 @@ public class ScheduleExportService {
         // ВСЕХ строк оси (не только текущей группы), т.к. поток — это со-группы по общему placementId.
         Map<UUID, Set<String>> streamGroups = axis == ExportAxis.GROUP
                 ? groupsByPlacement(relevant) : Map.of();
-        // Кафедры участников для колонки «Каф» — тоже только для группы (только у неё есть таблица).
-        Map<Integer, String> departments = axis == ExportAxis.GROUP
-                ? departmentsByEducator(relevant) : Map.of();
+        // Подписи участников для таблицы «Обозначения» (кафедра + регалии) — тоже только для
+        // группы: у преподавателя и аудитории таблица удаляется целиком.
+        Map<Integer, EducatorLabel> educatorLabels = axis == ExportAxis.GROUP
+                ? labelsByEducator(relevant) : Map.of();
 
         // Правый край листов: последняя дата, на которой в расписании периода есть занятие.
         LocalDate contentEnd = contentEnd(relevant, end);
@@ -93,7 +95,7 @@ public class ScheduleExportService {
                     .toList();
             String scopeName = rows.isEmpty() ? ("#" + entityId) : axis.entityName(rows.get(0));
             var sheet = sheetOf(scopeName, entityId, rows, axisConstraints, start, end, axis,
-                    streamGroups, departments);
+                    streamGroups, educatorLabels);
             byte[] bytes = renderer.render(List.of(sheet), start, end, contentEnd, axis);
             String filename = buildFilename(period, axis, scopeName, ".xlsx");
             log.info("Экспорт расписания (бланк, .xlsx): период id={}, ось={}, сущность={}, {} байт",
@@ -110,7 +112,7 @@ public class ScheduleExportService {
                                 Optional.ofNullable(axis.entityName(e.getValue().get(0))).orElse(""),
                         String.CASE_INSENSITIVE_ORDER))
                 .map(e -> sheetOf(axis.entityName(e.getValue().get(0)), e.getKey(),
-                        e.getValue(), axisConstraints, start, end, axis, streamGroups, departments))
+                        e.getValue(), axisConstraints, start, end, axis, streamGroups, educatorLabels))
                 .toList();
 
         byte[] bytes = zipPerEntity(sheets, start, end, contentEnd, axis);
@@ -161,7 +163,7 @@ public class ScheduleExportService {
                                                        Map<Integer, List<ConstraintData>> axisConstraints,
                                                        LocalDate start, LocalDate end, ExportAxis axis,
                                                        Map<UUID, Set<String>> streamGroups,
-                                                       Map<Integer, String> departments) {
+                                                       Map<Integer, EducatorLabel> educatorLabels) {
         Map<String, List<ScheduledLessonDto>> grid = responseService.buildGridFromViews(rows);
         List<ConstraintData> constraints = axisConstraints.get(entityId);
         Map<String, String> constraintAbbr = constraintMapFor(constraints, start, end);
@@ -169,7 +171,7 @@ public class ScheduleExportService {
         // аудитории таблица вычищается, а вместе с ней уходит и место под расшифровки.
         boolean group = axis == ExportAxis.GROUP;
         List<ScheduleWorkbookRenderer.LegendRow> legend =
-                group ? buildLegend(rows, streamGroups, departments) : List.of();
+                group ? buildLegend(rows, streamGroups, educatorLabels) : List.of();
         List<ScheduleWorkbookRenderer.Mark> kindMarks = group ? kindMarksOf(rows) : List.of();
         List<ScheduleWorkbookRenderer.Mark> otherMarks = group ? constraintMarksOf(constraints, start, end) : List.of();
         return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr, legend, kindMarks, otherMarks);
@@ -240,7 +242,7 @@ public class ScheduleExportService {
      */
     private List<ScheduleWorkbookRenderer.LegendRow> buildLegend(List<ScheduleView> rows,
                                                                  Map<UUID, Set<String>> streamGroups,
-                                                                 Map<Integer, String> departments) {
+                                                                 Map<Integer, EducatorLabel> educatorLabels) {
         Map<String, List<ScheduleView>> byDiscipline = rows.stream()
                 .collect(Collectors.groupingBy(
                         v -> nn(v.getDisciplineName()) + '\0' + nn(v.getDisciplineAbbr()),
@@ -258,8 +260,8 @@ public class ScheduleExportService {
                     .filter(v -> !"LECTURE".equals(v.getKindOfStudy()))
                     .toList();
 
-            String lecturers = distinctEducators(lectures);
-            String others = distinctEducators(nonLectures);
+            String lecturers = distinctEducators(lectures, educatorLabels);
+            String others = distinctEducators(nonLectures, educatorLabels);
             // Кол-во часов «лекц-нелекц»: число размещённых пар × 2 академ. часа, две цифры через дефис.
             int lectureHours = distinctPlacements(lectures) * ACADEMIC_HOURS_PER_PAIR;
             int nonLectureHours = distinctPlacements(nonLectures) * ACADEMIC_HOURS_PER_PAIR;
@@ -283,8 +285,10 @@ public class ScheduleExportService {
                     .map(ScheduleView::getEducatorId)
                     .filter(Objects::nonNull)
                     .distinct()
-                    .map(departments::get)
+                    .map(educatorLabels::get)
                     .filter(Objects::nonNull)
+                    .map(EducatorLabel::department)
+                    .filter(d -> d != null && !d.isBlank())
                     .distinct()
                     .sorted(String.CASE_INSENSITIVE_ORDER)
                     .collect(Collectors.joining(", "));
@@ -299,42 +303,77 @@ public class ScheduleExportService {
     }
 
     /**
-     * Карта «преподаватель → его подразделение» для колонки «Каф»: краткое имя, а при его отсутствии
-     * полное. Столбец бланка узкий, поэтому краткое имя — не косметика: длинное («Кафедра высшей
-     * математики») перекрыло бы соседнюю колонку лектора.
+     * Что бланк пишет о преподавателе: подразделение для колонки «Каф» и подпись с регалиями для
+     * колонок лектора и ведущих остальные виды.
+     *
+     * @param department краткое имя подразделения («ВМ»); пусто — привязки нет
+     * @param titleLine  подпись «п-к юст Иванов И.И., к.т.н., доц»; без регалий равна ФИО
+     */
+    private record EducatorLabel(String department, String titleLine) {}
+
+    /**
+     * Карта «преподаватель → подписи для таблицы „Обозначения“»: подразделение и ФИО с регалиями.
+     *
+     * <p>Подразделение — краткое имя, а при его отсутствии полное. Столбец бланка узкий, поэтому
+     * краткое имя — не косметика: длинное («Кафедра высшей математики») перекрыло бы соседнюю
+     * колонку лектора.</p>
      *
      * <p>Читается из master-данных <b>одним запросом на выгрузку</b>, а не из {@code schedule_view}:
-     * подразделение в проекцию сознательно не денормализовано (иначе переименование кафедры обязано
-     * было бы порождать перепроекцию — см. CQRS_ARCHITECTURE, «Что в проекцию НЕ кладут»).</p>
+     * ни подразделение, ни регалии в проекцию сознательно не денормализованы (иначе переименование
+     * кафедры и присвоение звания обязаны были бы порождать перепроекцию — см. CQRS_ARCHITECTURE,
+     * «Что в проекцию НЕ кладут»). Регалии приезжают тем же запросом, что и кафедра: это простые
+     * поля той же сущности, второго обращения к БД они не стоят.</p>
      *
      * <p>Показывается то подразделение, к которому преподаватель привязан фактически. Привязка
      * nullable и по модели это может быть не только кафедра, но и факультет или отдел: подставлять
-     * вместо пустого значения догадку было бы хуже пустой ячейки.</p>
+     * вместо пустого значения догадку было бы хуже пустой ячейки. То же и с регалиями — их
+     * отсутствие даёт просто ФИО.</p>
      */
-    private Map<Integer, String> departmentsByEducator(List<ScheduleView> relevant) {
+    private Map<Integer, EducatorLabel> labelsByEducator(List<ScheduleView> relevant) {
         Set<Integer> ids = relevant.stream()
                 .map(ScheduleView::getEducatorId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (ids.isEmpty()) return Map.of();
 
-        Map<Integer, String> byEducator = new HashMap<>();
-        for (Educator educator : educatorRepository.findAllWithOrgUnitByIdIn(ids)) {
+        Map<Integer, EducatorLabel> byEducator = new HashMap<>();
+        for (Educator educator : educatorRepository.findAllWithDetailsByIdIn(ids)) {
             OrgUnit unit = educator.getOrgUnit();
-            if (unit == null) continue; // «без подразделения» — легитимное состояние, не ошибка
-            String label = unit.getShortName() != null && !unit.getShortName().isBlank()
-                    ? unit.getShortName() : unit.getName();
-            if (label != null && !label.isBlank()) byEducator.put(educator.getId(), label);
+            String department = null;
+            if (unit != null) { // «без подразделения» — легитимное состояние, не ошибка
+                department = unit.getShortName() != null && !unit.getShortName().isBlank()
+                        ? unit.getShortName() : unit.getName();
+            }
+            // Подпись собирает общий форматтер — тот же, что кормит карточку преподавателя.
+            byEducator.put(educator.getId(),
+                    new EducatorLabel(department, EducatorCredentialsAssembler.lineOf(educator)));
         }
         return byEducator;
     }
 
-    /** Уникальные имена преподавателей строк (в порядке появления), склеенные через запятую. */
-    private static String distinctEducators(List<ScheduleView> rows) {
+    /**
+     * Уникальные преподаватели строк (в порядке появления) — подписью с регалиями, через запятую.
+     *
+     * <p>Различаются по {@code educatorId}, а склеиваются из master-данных: имя в
+     * {@code schedule_view} — снимок без регалий, и брать текст оттуда значило бы завести второй
+     * формат подписи. Если преподавателя в карте почему-то нет, остаётся имя из проекции —
+     * потерять человека в легенде хуже, чем показать его без звания.</p>
+     */
+    private static String distinctEducators(List<ScheduleView> rows,
+                                            Map<Integer, EducatorLabel> educatorLabels) {
         return rows.stream()
-                .map(ScheduleView::getEducatorName)
-                .filter(Objects::nonNull)
-                .distinct()
+                .filter(v -> v.getEducatorId() != null)
+                .collect(Collectors.toMap(
+                        ScheduleView::getEducatorId,
+                        v -> {
+                            EducatorLabel label = educatorLabels.get(v.getEducatorId());
+                            return label != null && label.titleLine() != null && !label.titleLine().isBlank()
+                                    ? label.titleLine() : nn(v.getEducatorName());
+                        },
+                        (first, second) -> first,
+                        LinkedHashMap::new))
+                .values().stream()
+                .filter(s -> !s.isBlank())
                 .collect(Collectors.joining(", "));
     }
 

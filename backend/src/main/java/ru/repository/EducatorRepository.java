@@ -20,6 +20,17 @@ public interface EducatorRepository extends JpaRepository<Educator, Integer> {
     long countByOrgUnitId(Integer orgUnitId);
 
     /**
+     * Сколько преподавателей ссылается на строку справочника регалий. Нужно для той же цели, что
+     * и {@link #countByOrgUnitId}: FK стоят с {@code ON DELETE RESTRICT}, поэтому цену удаления
+     * называем заранее — числом в списке и флагом {@code deletable}, а не сырым 500 после попытки.
+     */
+    long countBySpecialRankId(Integer specialRankId);
+
+    long countByRankServiceId(Integer rankServiceId);
+
+    long countByScienceBranchId(Integer scienceBranchId);
+
+    /**
      * Id преподавателей любого из подразделений набора — вход для фильтра «расписание кафедры».
      *
      * <p>Набор подразделений разворачивает {@code OrgUnitScopeResolver} (единственный владелец
@@ -33,15 +44,27 @@ public interface EducatorRepository extends JpaRepository<Educator, Integer> {
     List<Integer> findIdsByOrgUnitIdIn(@Param("orgUnitIds") Collection<Integer> orgUnitIds);
 
     /**
-     * Преподаватели набора вместе с их подразделением — вход для колонки «Каф» в выгрузке расписания.
+     * Преподаватели набора вместе с подразделением и регалиями — вход для таблицы «Обозначения»
+     * в выгрузке расписания: колонка «Каф» и подпись «п-к юст Иванов И.И., к.т.н., доц».
      *
-     * <p>{@code left join fetch}: привязка к подразделению nullable, и при внутреннем соединении
-     * преподаватели без него молча выпали бы из результата. Fetch — чтобы не ловить N+1 на ленивом
-     * {@code orgUnit} уже за пределами метода.</p>
+     * <p>{@code left join fetch} на каждой связи: все они nullable («не указано» — легитимное
+     * состояние), и внутреннее соединение молча выбросило бы преподавателей без кафедры или без
+     * звания. Fetch — чтобы не ловить N+1 на ленивых связях уже за пределами метода.</p>
      *
-     * <p>Подразделение читается здесь, а не из {@code schedule_view}: в проекцию его сознательно не
-     * денормализуют (переименование кафедры обязывало бы к перепроекции) — см. CQRS_ARCHITECTURE.</p>
+     * <p>Все четыре справочника — {@code ToOne}, поэтому несколько fetch-соединений в одном
+     * запросе допустимы (декартова взрыва, как на коллекциях, здесь нет).</p>
+     *
+     * <p>Читается из master-данных, а не из {@code schedule_view}: ни подразделение, ни регалии в
+     * проекцию сознательно не денормализованы — иначе переименование кафедры и присвоение звания
+     * обязаны были бы порождать перепроекцию. См. CQRS_ARCHITECTURE, «Что в проекцию НЕ кладут».</p>
      */
-    @Query("select e from Educator e left join fetch e.orgUnit where e.id in :ids")
-    List<Educator> findAllWithOrgUnitByIdIn(@Param("ids") Collection<Integer> ids);
+    @Query("""
+            select e from Educator e
+            left join fetch e.orgUnit
+            left join fetch e.specialRank
+            left join fetch e.rankService
+            left join fetch e.scienceBranch
+            where e.id in :ids
+            """)
+    List<Educator> findAllWithDetailsByIdIn(@Param("ids") Collection<Integer> ids);
 }

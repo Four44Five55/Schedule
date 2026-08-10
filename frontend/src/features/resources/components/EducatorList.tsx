@@ -5,7 +5,8 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { EducatorFormModal } from './EducatorFormModal';
 import { useEnums } from '../../../context/EnumContext';
 import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
-import { User, Clock, Calendar, Zap, Plus, Pencil, Trash2, Network, Search, X } from 'lucide-react';
+import { EducatorDictionaryManager } from '../../educatorDictionary/components/EducatorDictionaryManager';
+import { User, Clock, Calendar, Zap, Plus, Pencil, Trash2, Network, Search, X, BookMarked } from 'lucide-react';
 
 interface EducatorListProps {
   educators: EducatorDto[];
@@ -48,6 +49,7 @@ export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducato
   const [scopeError, setScopeError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDictionaryOpen, setIsDictionaryOpen] = useState(false);
   const [editingEducator, setEditingEducator] = useState<EducatorDto | null>(null);
   const [deletingEducator, setDeletingEducator] = useState<EducatorDto | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -246,6 +248,15 @@ export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducato
             </select>
 
             <button
+                onClick={() => setIsDictionaryOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg font-bold text-xs hover:bg-slate-50 transition-colors"
+                title="Звания, роды службы, отрасли науки — перечни ведёт пользователь"
+            >
+              <BookMarked size={15} />
+              Справочники
+            </button>
+
+            <button
                 onClick={handleCreate}
                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700 transition-colors shadow-md shadow-blue-600/20"
             >
@@ -340,6 +351,14 @@ export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducato
             <EducatorFormModal educator={editingEducator} onClose={handleCloseModal} onSaved={handleSaved} />
         )}
 
+        {isDictionaryOpen && (
+            <EducatorDictionaryManager
+                onClose={() => setIsDictionaryOpen(false)}
+                // Правка справочника меняет подписи преподавателей — перечитываем список.
+                onChanged={onEducatorsChange}
+            />
+        )}
+
         {deletingEducator && (
             <ConfirmDialog
                 title="Удалить преподавателя?"
@@ -378,8 +397,13 @@ const EducatorCard: React.FC<EducatorCardProps> = ({
           {/* Фамилия и кафедра — одной строкой: отдельная строка под подразделение занимала
               высоту в КАЖДОЙ карточке, а краткое имя короткое и рядом с фамилией читается. */}
           <div className="flex items-center gap-1">
-            <h3 className="text-xs font-black text-slate-900 truncate min-w-0 flex-1" title={educator.name}>
-              {educator.name}
+            {/* Подпись с регалиями приходит с бэка готовой строкой: тот же текст уходит в бланк
+                выгрузки, и вторая склейка здесь разошлась бы с ним. Без регалий равна ФИО.
+                ⚠️ Поиск и сортировка выше идут по name, а не по этой строке: иначе список
+                выстроился бы по званиям, а поиск спотыкался бы о приставку. */}
+            <h3 className="text-xs font-black text-slate-900 truncate min-w-0 flex-1"
+                title={educator.titleLine || educator.name}>
+              {educator.titleLine || educator.name}
             </h3>
 
             {unitShort && (
