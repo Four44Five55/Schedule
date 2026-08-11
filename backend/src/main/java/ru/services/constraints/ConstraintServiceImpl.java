@@ -41,7 +41,7 @@ public class ConstraintServiceImpl implements ConstraintService {
             Integer educatorId = constraint.getEducator().getId();
             List<ConstraintData> dataList = educatorConstraintsMap.computeIfAbsent(educatorId, k -> new ArrayList<>());
             expandToCells(dataList, constraint.getStartDate(), constraint.getEndDate(),
-                    constraint.getTimeSlot(), constraint.getKindOfConstraint());
+                    constraint.getTimeSlot(), constraint.getKindOfConstraint().toRef());
         }
 
         // === Обработка ограничений для ГРУПП ===
@@ -50,7 +50,7 @@ public class ConstraintServiceImpl implements ConstraintService {
             Integer groupId = constraint.getGroup().getId();
             List<ConstraintData> dataList = groupConstraintsMap.computeIfAbsent(groupId, k -> new ArrayList<>());
             expandToCells(dataList, constraint.getStartDate(), constraint.getEndDate(),
-                    constraint.getTimeSlot(), constraint.getKindOfConstraint());
+                    constraint.getTimeSlot(), constraint.getKindOfConstraint().toRef());
         }
 
         // === Обработка ограничений для АУДИТОРИЙ ===
@@ -59,7 +59,7 @@ public class ConstraintServiceImpl implements ConstraintService {
             Integer auditoriumId = constraint.getAuditorium().getId();
             List<ConstraintData> dataList = auditoriumConstraintsMap.computeIfAbsent(auditoriumId, k -> new ArrayList<>());
             expandToCells(dataList, constraint.getStartDate(), constraint.getEndDate(),
-                    constraint.getTimeSlot(), constraint.getKindOfConstraint());
+                    constraint.getTimeSlot(), constraint.getKindOfConstraint().toRef());
         }
 
         return new AllConstraints(educatorConstraintsMap, groupConstraintsMap, auditoriumConstraintsMap);
@@ -74,7 +74,7 @@ public class ConstraintServiceImpl implements ConstraintService {
      * работает пер-ячейка, поэтому здесь только проекция диапазона в ячейки.</p>
      */
     private void expandToCells(List<ConstraintData> dataList, LocalDate startDate, LocalDate endDate,
-                               TimeSlotPair timeSlot, ru.enums.KindOfConstraints kind) {
+                               TimeSlotPair timeSlot, ru.entity.constraints.ConstraintKindRef kind) {
         for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
             if (timeSlot != null) {
                 dataList.add(new ConstraintData(new CellForLesson(date, timeSlot), kind));

@@ -23,6 +23,10 @@ public class EnumController {
 
     /**
      * Виды занятий: Лекция, Практика, Лабораторная и т.д.
+     *
+     * <p>Отдаётся вместе с категорией вида ({@code category}: LECTURE / PRACTICE / PROGRESS_CHECK /
+     * ASSESSMENT) — чтобы фронт не заводил у себя вторую копию правил «что считать аттестацией».
+     * Классификацией владеет {@link KindOfStudy.Category}, фронт лишь выбирает цвет по её значению.</p>
      */
     @GetMapping("/kind-of-study")
     public List<EnumDto> getKindOfStudy() {
@@ -30,7 +34,9 @@ public class EnumController {
                 .map(e -> new EnumDto(
                         e.name(),
                         e.getFullName(),
-                        e.getAbbreviationName()
+                        e.getAbbreviationName(),
+                        null,
+                        e.getCategory().name()
                 ))
                 .toList();
     }
@@ -64,19 +70,10 @@ public class EnumController {
                 .toList();
     }
 
-    /**
-     * Виды ограничений: Командировка, Отпуск, Сессия и т.д.
-     */
-    @GetMapping("/kind-of-constraints")
-    public List<EnumDto> getKindOfConstraints() {
-        return Arrays.stream(KindOfConstraints.values())
-                .map(e -> new EnumDto(
-                        e.name(),
-                        e.getFullName(),
-                        e.getAbbreviationName()
-                ))
-                .toList();
-    }
+    // Виды ограничений здесь больше не отдаются: перечень переехал в пользовательский справочник
+    // (GET /api/constraint-kinds). Код по видам ограничений не ветвится, значит владеет им
+    // пользователь, а не релиз — правило в CLAUDE.md. Виды ЗАНЯТИЙ остаются enum'ом и остаются
+    // здесь: от них зависят распределение и порядок изучения.
 
     /**
      * Типы учебных периодов: Осенний семестр, Весенняя сессия и т.д.
@@ -151,7 +148,6 @@ public class EnumController {
                 getKindOfStudy(),
                 getDaysOfWeek(),
                 getTimeSlots(),
-                getKindOfConstraints(),
                 getPeriodTypes(),
                 getOrgUnitTypes(),
                 getAcademicDegrees(),
@@ -166,7 +162,6 @@ public class EnumController {
             List<EnumDto> kindOfStudy,
             List<EnumDto> daysOfWeek,
             List<EnumDto> timeSlots,
-            List<EnumDto> kindOfConstraints,
             List<EnumDto> periodTypes,
             List<EnumDto> orgUnitTypes,
             List<EnumDto> academicDegrees,

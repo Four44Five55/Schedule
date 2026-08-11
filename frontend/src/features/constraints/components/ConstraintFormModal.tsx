@@ -37,7 +37,9 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  const { kindOfConstraints } = useEnums();
+  const { constraintKinds } = useEnums();
+  // Погашенные виды не предлагаем: их оставили ради уже проставленных ограничений.
+  const selectableKinds = constraintKinds.filter((k) => k.active);
 
   const [kind, setKind] = useState<KindOfConstraints | ''>('');
   const [startDate, setStartDate] = useState(defaultStartDate ?? '');
@@ -125,8 +127,8 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
                 autoFocus
               >
                 <option value="">Выберите вид...</option>
-                {kindOfConstraints.map((k) => (
-                  <option key={k.value} value={k.value}>{k.label} ({k.abbreviation})</option>
+                {selectableKinds.map((k) => (
+                  <option key={k.code} value={k.code}>{k.name} ({k.shortName})</option>
                 ))}
               </select>
             </div>

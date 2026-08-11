@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import ru.entity.Group;
-import ru.enums.KindOfConstraints;
+import ru.entity.dictionary.KindOfConstraint;
 import ru.enums.TimeSlotPair;
 
 import java.time.LocalDate;
@@ -22,9 +22,10 @@ public class GroupConstraint {
     @JoinColumn(name = "group_id")
     private Group group;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "kind_of_constraint", nullable = false)
-    private KindOfConstraints kindOfConstraint;
+    /** Вид ограничения — строка справочника. EAGER: см. {@link EducatorConstraint}. */
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "kind_of_constraint", referencedColumnName = "code", nullable = false)
+    private KindOfConstraint kindOfConstraint;
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;

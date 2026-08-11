@@ -4,10 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import ru.dto.constraint.GroupConstraintCreateDto;
 import ru.dto.constraint.GroupConstraintDto;
 import ru.entity.Group;
 import ru.entity.constraints.GroupConstraint;
+import ru.entity.dictionary.KindOfConstraint;
+import ru.repository.dictionary.KindOfConstraintRepository;
 import ru.repository.constraints.GroupConstraintRepository;
 import ru.services.GroupService;
 import java.util.List;
@@ -17,6 +20,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GroupConstraintController {
     private final GroupConstraintRepository repository;
+    private final KindOfConstraintRepository kindRepository;
     private final GroupService groupService;
     @GetMapping
     public ResponseEntity<List<GroupConstraintDto>> getAll() {
@@ -40,7 +44,7 @@ public class GroupConstraintController {
         Group group = groupService.getEntityById(dto.groupId());
         GroupConstraint entity = new GroupConstraint();
         entity.setGroup(group);
-        entity.setKindOfConstraint(dto.kindOfConstraint());
+        entity.setKindOfConstraint(resolveKind(dto.kindOfConstraint()));
         entity.setStartDate(dto.startDate());
         entity.setEndDate(dto.endDate());
         entity.setDescription(dto.description());
@@ -58,13 +62,23 @@ public class GroupConstraintController {
                 c.getId(),
                 c.getGroup().getId(),
                 c.getGroup().getName(),
-                c.getKindOfConstraint(),
-                c.getKindOfConstraint().getAbbreviationName(),
-                c.getKindOfConstraint().getFullName(),
+                c.getKindOfConstraint().getCode(),
+                c.getKindOfConstraint().getShortName(),
+                c.getKindOfConstraint().getName(),
                 c.getStartDate(),
                 c.getEndDate(),
                 c.getDescription(),
                 c.getTimeSlot()
         );
+    }
+
+    /**
+     * Код вида → строка справочника. Виды заводит пользователь, поэтому неизвестный код — это
+     * ошибка запроса (фронт мог отстать от справочника), а не 500 от нарушения внешнего ключа.
+     */
+    private KindOfConstraint resolveKind(String code) {
+        return kindRepository.findById(code)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Неизвестный вид ограничения: " + code));
     }
 }

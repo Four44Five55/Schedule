@@ -18,6 +18,8 @@ import {
   CourseDeletionImpactDto,
   CourseCloneRequestDto,
   EnumDto,
+  ConstraintKindDto,
+  ConstraintKindFormDto,
   StudyStreamDto,
   CurriculumSlotDto,
   CurriculumSlotCreateDto,
@@ -82,13 +84,29 @@ export const EnumService = {
             kindOfStudy: EnumDto[];
             daysOfWeek: EnumDto[];
             timeSlots: EnumDto[];
-            kindOfConstraints: EnumDto[];
             periodTypes: EnumDto[];
             orgUnitTypes: EnumDto[];
             academicDegrees: EnumDto[];
             academicTitles: EnumDto[];
           }>('/enums/all')
           .then((r) => r.data),
+};
+
+/**
+ * Справочник видов ограничений — командировка, отпуск, наряд и что угодно ещё.
+ *
+ * Отдельно от `EnumService`, потому что это уже не enum: перечень ведёт пользователь, а не код
+ * (правило «кто владеет списком» — в CLAUDE.md). Виды ЗАНЯТИЙ, наоборот, остаются в `/enums`.
+ */
+export const ConstraintKindService = {
+  /** Все виды, включая погашенные: уже проставленное ограничение должно чем-то подписываться. */
+  getAll: () => api.get<ConstraintKindDto[]>('/constraint-kinds').then((r) => r.data),
+  create: (form: ConstraintKindFormDto) =>
+      api.post<ConstraintKindDto>('/constraint-kinds', form).then((r) => r.data),
+  update: (code: string, form: ConstraintKindFormDto) =>
+      api.put<ConstraintKindDto>(`/constraint-kinds/${code}`, form).then((r) => r.data),
+  /** 409, если видом что-то размечено или он системный — текст показываем пользователю. */
+  remove: (code: string) => api.delete<void>(`/constraint-kinds/${code}`).then((r) => r.data),
 };
 
 /**

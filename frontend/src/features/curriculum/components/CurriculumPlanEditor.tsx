@@ -7,15 +7,6 @@ import { CurriculumService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
 import { cn } from '../../../utils/cn';
 
-// Аттестационные виды (ЗО/ЗЧ/ЭКЗ): у них нет «своей» темы лекции, поэтому после их
-// добавления тему в строке быстрого добавления НЕ переносим — для остальных видов
-// тема прошлого занятия автоподставляется (обычно тему изучают несколькими занятиями подряд).
-const ASSESSMENT_KINDS = new Set<KindOfStudy>([
-  'CREDIT_WITH_GRADE',
-  'CREDIT_WITHOUT_GRADE',
-  'EXAM',
-]);
-
 export const KIND_LABELS: Record<string, string> = {
   LECTURE: 'Лекция',
   PRACTICAL_WORK: 'Практика',
@@ -93,7 +84,7 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
   const sourceRef = useRef(planSource);
   sourceRef.current = planSource;
 
-  const { kindOfStudy: kindsEnum } = useEnums();
+  const { kindOfStudy: kindsEnum, getStudyCategory } = useEnums();
   // Уникальный id для <datalist>: при нескольких раскрытых редакторах общий id
   // приводил к привязке input'а к чужому списку (темы другой дисциплины).
   const themeListId = useId();
@@ -242,7 +233,9 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       // занятие (автоподстановка), КРОМЕ аттестаций (ЗО/ЗЧ/ЭКЗ) — у них темы нет.
       // Название темы всегда чистим: если номер сохранён и тема уже существует, её
       // название само подставится из quickThemeMatch (поле readonly).
-      if (ASSESSMENT_KINDS.has(quickKind)) setQuickTheme('');
+      // Аттестации (ЗО/ЗЧ/ЭКЗ): у них нет «своей» темы лекции — тему не переносим. Что считать
+      // аттестацией, решает бэк (KindOfStudy.Group), фронт своего списка видов не держит.
+      if (getStudyCategory(quickKind) === 'ASSESSMENT') setQuickTheme('');
       setQuickThemeTitle('');
       await reload();
       onChanged?.();

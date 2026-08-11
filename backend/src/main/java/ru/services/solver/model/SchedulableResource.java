@@ -4,7 +4,7 @@ import lombok.Getter;
 import ru.entity.CellForLesson;
 import ru.entity.ConstraintsGrid;
 import ru.entity.Lesson;
-import ru.enums.KindOfConstraints;
+import ru.entity.constraints.ConstraintKindRef;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -53,7 +53,7 @@ public class SchedulableResource {
      * @param cell ячейка времени, на которую действует ограничение.
      * @param kind тип ограничения.
      */
-    public void addHardConstraint(CellForLesson cell, KindOfConstraints kind) {
+    public void addHardConstraint(CellForLesson cell, ConstraintKindRef kind) {
         this.hardConstraints.getConstraintsGridMap().put(cell, kind);
     }
 
@@ -129,7 +129,7 @@ public class SchedulableResource {
      * @param cell ячейка времени.
      * @return {@link Optional} с типом ограничения, или пустой, если ограничения нет.
      */
-    public Optional<KindOfConstraints> getConstraint(CellForLesson cell) {
+    public Optional<ConstraintKindRef> getConstraint(CellForLesson cell) {
         return Optional.ofNullable(hardConstraints.getConstraintsGridMap().get(cell));
     }
 

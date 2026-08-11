@@ -5,13 +5,14 @@ import {
   ConstraintDto, GroupDto, EducatorDto, AuditoriumDto, KindOfConstraints, TimeSlotPair,
   EducatorConstraintDto, GroupConstraintDto, AuditoriumConstraintDto,
 } from '../../../types/api';
-import { Users, UserSquare2, School, Search, Loader2, ShieldAlert, Plus, Trash2, LayoutGrid, GanttChartSquare, ChevronRight, ChevronDown } from 'lucide-react';
+import { Users, UserSquare2, School, Search, Loader2, ShieldAlert, Plus, Trash2, LayoutGrid, GanttChartSquare, ChevronRight, ChevronDown, Settings2 } from 'lucide-react';
 import { ConstraintsGridSchedule } from './ConstraintsGridSchedule';
 import { ConstraintsGanttEditor } from './ConstraintsGanttEditor';
 import { ConstraintFormModal } from './ConstraintFormModal';
 import { TimelineEntity } from '../../../components/grid/EntityTimelineShell';
-import { CONSTRAINT_STYLES, FALLBACK_CONSTRAINT_STYLE } from '../constraintStyles';
 import { cn } from '../../../utils/cn';
+import { useEnums } from '../../../context/EnumContext';
+import { ConstraintKindsModal } from './ConstraintKindsModal';
 
 type FilterType = 'group' | 'educator' | 'auditorium';
 type ViewMode = 'grid' | 'gantt';
@@ -58,6 +59,10 @@ interface ConstraintsWorkspaceProps {
  * с периодом — без отдельных endpoint'ов на каждый случай.
  */
 export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ startDate, endDate, scope }) => {
+  // Виды ограничений — пользовательский справочник: цвет и подписи берём из него, а не из карты
+  // кодов на фронте (кодов новых видов фронт знать не может).
+  const { getConstraintStyle } = useEnums();
+  const [kindsOpen, setKindsOpen] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>(() => {
     const saved = localStorage.getItem('unischedule.constraints.filterType');
     return saved === 'group' || saved === 'educator' || saved === 'auditorium' ? saved : 'educator';
@@ -308,6 +313,16 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
 
           {loadingConstraints && <Loader2 size={14} className="animate-spin text-blue-600 shrink-0" />}
 
+          {/* Справочник видов: перечень ведёт пользователь, поэтому редактор — рядом с вводом,
+              а не в отдельном разделе настроек. */}
+          <button
+            onClick={() => setKindsOpen(true)}
+            title="Виды ограничений: добавить, переименовать, перекрасить"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+          >
+            <Settings2 size={14} /> Виды
+          </button>
+
           {viewMode === 'grid' && (
             <button
               onClick={openManualCreate}
@@ -325,7 +340,7 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 border-t border-slate-100">
             {legendItems.map((item) => (
               <div key={item.kind} className="flex items-center gap-1.5">
-                <span className={cn('w-2.5 h-2.5 rounded-sm', (CONSTRAINT_STYLES[item.kind] ?? FALLBACK_CONSTRAINT_STYLE).dot)} />
+                <span className={cn('w-2.5 h-2.5 rounded-sm', getConstraintStyle(item.kind).dot)} />
                 <span className="text-[11px] text-slate-600">
                   <span className="font-black">{item.abbreviation}</span> — {item.fullName}
                 </span>
@@ -371,7 +386,7 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
           <ul className="space-y-1.5">
             {constraintGroups.map((g) => {
               const c = g.sample;
-              const dot = (CONSTRAINT_STYLES[c.kindOfConstraint] ?? FALLBACK_CONSTRAINT_STYLE).dot;
+              const dot = getConstraintStyle(c.kindOfConstraint).dot;
               const rangeText = `${format(parseISO(g.minStart), 'dd.MM.yyyy')} – ${format(parseISO(g.maxEnd), 'dd.MM.yyyy')}`;
 
               // Одиночная запись (в т.ч. диапазон-«отпуск») — как раньше, без сворачивания.
@@ -447,6 +462,8 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
           </ul>
         </div>
       )}
+
+      {kindsOpen && <ConstraintKindsModal onClose={() => setKindsOpen(false)} />}
 
       {showModal && selectedEntity && (
         <ConstraintFormModal

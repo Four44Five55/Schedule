@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { EnumService } from '../services/apiServices';
-import type { EnumDto } from '../types/api';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import { EnumService, ConstraintKindService } from '../services/apiServices';
+import type { ConstraintKindDto, EnumDto } from '../types/api';
+import { DEFAULT_KIND_CATEGORY, KindCategory } from '../features/schedule/kindStyles';
+import { ConstraintStyle, constraintStyleOfColor } from '../features/constraints/constraintStyles';
 
 /**
  * Данные всех enum-ов, загруженные с бэкенда.
@@ -10,7 +12,13 @@ interface EnumData {
     kindOfStudy: EnumDto[];
     daysOfWeek: EnumDto[];
     timeSlots: EnumDto[];
-    kindOfConstraints: EnumDto[];
+    /**
+     * Виды ограничений — уже НЕ enum, а пользовательский справочник (`/api/constraint-kinds`).
+     * Живут здесь же, потому что нужны тем же экранам и грузятся тем же разом при старте;
+     * тип другой (`ConstraintKindDto`), и это намеренно: у справочника есть цвет, активность
+     * и число использований, которых у enum-значения не бывает.
+     */
+    constraintKinds: ConstraintKindDto[];
     periodTypes: EnumDto[];
     orgUnitTypes: EnumDto[];
     /** Уровни учёной степени (кандидат/доктор). Отрасль науки — справочник, не enum. */
@@ -38,8 +46,20 @@ interface EnumHelpers {
     getStudyLabel: (value: string) => string;
     /** Получить сокращение вида занятия */
     getStudyShort: (value: string) => string;
-    /** Получить название ограничения */
+    /**
+     * Категория вида занятия (LECTURE / PRACTICE / PROGRESS_CHECK / ASSESSMENT) — приходит с бэка.
+     *
+     * Единственный способ узнать «это аттестация?» на фронте: списки видов здесь не заводим,
+     * классификацией владеет Java-enum `KindOfStudy.Category`. Пока enum-ы грузятся, отдаёт
+     * `DEFAULT_KIND_CATEGORY` — нейтральную категорию, а не пустое значение.
+     */
+    getStudyCategory: (value?: string | null) => KindCategory;
+    /** Получить название вида ограничения по коду */
     getConstraintLabel: (value: string) => string;
+    /** Стиль вида ограничения по коду: цвет берётся из справочника, классы — из палитры фронта. */
+    getConstraintStyle: (value?: string | null) => ConstraintStyle;
+    /** Перечитать справочник видов ограничений — после правок в его редакторе. */
+    reloadConstraintKinds: () => Promise<void>;
     /** Получить название вида подразделения (например, "DEPARTMENT" → "Кафедра") */
     getOrgUnitTypeLabel: (value: string) => string;
     /** Получить сокращение вида подразделения (например, "DEPARTMENT" → "Каф.") */
@@ -62,7 +82,7 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
         kindOfStudy: [],
         daysOfWeek: [],
         timeSlots: [],
-        kindOfConstraints: [],
+        constraintKinds: [],
         periodTypes: [],
         orgUnitTypes: [],
         academicDegrees: [],
@@ -70,24 +90,41 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading: true,
     });
 
+    // Справочник видов ограничений перечитывается отдельно от enum-ов: его правит пользователь,
+    // и после правки список должен обновиться без перезагрузки страницы.
+    const loadConstraintKinds = useCallback(async () => {
+        try {
+            const kinds = await ConstraintKindService.getAll();
+            setData((prev) => ({ ...prev, constraintKinds: kinds }));
+        } catch (err) {
+            console.error('Ошибка загрузки видов ограничений:', err);
+        }
+    }, []);
+
     useEffect(() => {
-        EnumService.getAll()
-            .then((enums) => {
+        // Два источника: enum-ы (значения из кода) и справочник видов ограничений (данные
+        // пользователя). Ждём оба, но падение справочника не должно оставить приложение
+        // в вечной загрузке — отсюда allSettled вместо all.
+        Promise.allSettled([EnumService.getAll(), ConstraintKindService.getAll()])
+            .then(([enumsResult, kindsResult]) => {
+                if (enumsResult.status === 'rejected') {
+                    console.error('Ошибка загрузки enum-ов:', enumsResult.reason);
+                }
+                if (kindsResult.status === 'rejected') {
+                    console.error('Ошибка загрузки видов ограничений:', kindsResult.reason);
+                }
+                const enums = enumsResult.status === 'fulfilled' ? enumsResult.value : null;
                 setData({
-                    kindOfStudy: enums.kindOfStudy,
-                    daysOfWeek: enums.daysOfWeek,
-                    timeSlots: enums.timeSlots,
-                    kindOfConstraints: enums.kindOfConstraints,
-                    periodTypes: enums.periodTypes,
-                    orgUnitTypes: enums.orgUnitTypes ?? [],
-                    academicDegrees: enums.academicDegrees ?? [],
-                    academicTitles: enums.academicTitles ?? [],
+                    kindOfStudy: enums?.kindOfStudy ?? [],
+                    daysOfWeek: enums?.daysOfWeek ?? [],
+                    timeSlots: enums?.timeSlots ?? [],
+                    constraintKinds: kindsResult.status === 'fulfilled' ? kindsResult.value : [],
+                    periodTypes: enums?.periodTypes ?? [],
+                    orgUnitTypes: enums?.orgUnitTypes ?? [],
+                    academicDegrees: enums?.academicDegrees ?? [],
+                    academicTitles: enums?.academicTitles ?? [],
                     loading: false,
                 });
-            })
-            .catch((err) => {
-                console.error('Ошибка загрузки enum-ов:', err);
-                setData((prev) => ({ ...prev, loading: false }));
             });
     }, []);
 
@@ -104,14 +141,21 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
             getSlotTime: (v) => findInList(data.timeSlots, v)?.extra ?? '',
             getStudyLabel: (v) => findInList(data.kindOfStudy, v)?.label ?? v,
             getStudyShort: (v) => findInList(data.kindOfStudy, v)?.abbreviation ?? v,
-            getConstraintLabel: (v) => findInList(data.kindOfConstraints, v)?.label ?? v,
+            getStudyCategory: (v) =>
+                (v ? (findInList(data.kindOfStudy, v)?.category as KindCategory | undefined) : undefined)
+                ?? DEFAULT_KIND_CATEGORY,
+            getConstraintLabel: (v) =>
+                data.constraintKinds.find((k) => k.code === v)?.name ?? v,
+            getConstraintStyle: (v) =>
+                constraintStyleOfColor(v ? data.constraintKinds.find((k) => k.code === v)?.color : null),
+            reloadConstraintKinds: loadConstraintKinds,
             getOrgUnitTypeLabel: (v) => findInList(data.orgUnitTypes, v)?.label ?? v,
             getOrgUnitTypeShort: (v) => findInList(data.orgUnitTypes, v)?.abbreviation ?? v,
             getAcademicDegreeLabel: (v) => findInList(data.academicDegrees, v)?.label ?? v,
             getAcademicTitleLabel: (v) => findInList(data.academicTitles, v)?.label ?? v,
         };
-    }, [data.daysOfWeek, data.timeSlots, data.kindOfStudy, data.kindOfConstraints, data.orgUnitTypes,
-        data.academicDegrees, data.academicTitles]);
+    }, [data.daysOfWeek, data.timeSlots, data.kindOfStudy, data.constraintKinds, data.orgUnitTypes,
+        data.academicDegrees, data.academicTitles, loadConstraintKinds]);
 
     const value = useMemo(() => ({ ...data, ...helpers }), [data, helpers]);
 

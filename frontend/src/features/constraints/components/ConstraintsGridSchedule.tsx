@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Eye, Brush, Eraser } from 'lucide-react';
@@ -7,7 +7,6 @@ import { AcademicGridShell } from '../../../components/grid/AcademicGridShell';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
 import { useConstraintLookup } from '../hooks/useConstraintLookup';
-import { CONSTRAINT_STYLES, FALLBACK_CONSTRAINT_STYLE } from '../constraintStyles';
 
 type Mode = 'view' | 'brush' | 'erase';
 
@@ -76,12 +75,18 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
   onErase,
 }) => {
   const lookup = useConstraintLookup(constraints);
-  const { kindOfConstraints } = useEnums();
+  const { constraintKinds, getConstraintStyle } = useEnums();
+  // В выборе — только действующие виды; погашенные остаются только на уже размеченном.
+  const selectableKinds = useMemo(() => constraintKinds.filter((k) => k.active), [constraintKinds]);
 
   const [mode, setMode] = useState<Mode>('view');
   const [selectedKind, setSelectedKind] = useState<KindOfConstraints>(
-    (kindOfConstraints[0]?.value as KindOfConstraints) ?? 'OTHER'
+    (constraintKinds.find((k) => k.active)?.code as KindOfConstraints) ?? ''
   );
+  // Справочник грузится асинхронно: на первом рендере он пуст, и выбор остался бы пустым.
+  useEffect(() => {
+    if (!selectedKind) setSelectedKind((prev) => prev || (selectableKinds[0]?.code ?? ''));
+  }, [selectableKinds, selectedKind]);
   const [busy, setBusy] = useState(false);
   // Выделенные (за текущую протяжку) ячейки — в state для подсветки и в ref для чтения
   // в обработчиках. Побочные эффекты (создание/удаление) вызываем ВНЕ state-updater,
@@ -143,7 +148,7 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
       anchorRef.current = null;
       const keys = selectedRef.current;
       if (keys.size > 0) {
-        if (mode === 'brush' && onPaintCreate) {
+        if (mode === 'brush' && onPaintCreate && selectedKind) {
           const cells = Array.from(keys).map((k) => {
             const [dateStr, slot] = k.split('|');
             return { dateStr, slot: slot as TimeSlotPair };
@@ -191,8 +196,8 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
           className="bg-slate-800 text-white text-[10px] font-bold rounded px-2 py-1 outline-none border border-slate-700 cursor-pointer disabled:opacity-40"
           title="Вид ограничения для постановки кистью"
         >
-          {kindOfConstraints.map((k) => (
-            <option key={k.value} value={k.value}>{k.abbreviation} — {k.label}</option>
+          {selectableKinds.map((k) => (
+            <option key={k.code} value={k.code}>{k.shortName} — {k.name}</option>
           ))}
         </select>
       )}
@@ -224,7 +229,7 @@ export const ConstraintsGridSchedule: React.FC<ConstraintsGridScheduleProps> = (
         const dayConstraints = lookup.get(dateStr);
         const cellConstraints = dayConstraints?.filter((c) => !c.timeSlot || c.timeSlot === slot.id);
         const primary = cellConstraints?.[0];
-        const style = primary ? CONSTRAINT_STYLES[primary.kindOfConstraint] ?? FALLBACK_CONSTRAINT_STYLE : null;
+        const style = primary ? getConstraintStyle(primary.kindOfConstraint) : null;
         // Равномерный зум (как в расписании): аббревиатура и ширина ячейки из factor.
         const abbrPx = Math.round(13 * factor);
         const cellW = Math.round(40 * factor);

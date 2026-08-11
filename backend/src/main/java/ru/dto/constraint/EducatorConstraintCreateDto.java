@@ -1,13 +1,13 @@
 package ru.dto.constraint;
 
-import ru.enums.KindOfConstraints;
+
 import ru.enums.TimeSlotPair;
 
 import java.time.LocalDate;
 
 public record EducatorConstraintCreateDto(
         Integer educatorId,
-        KindOfConstraints kindOfConstraint,
+        String kindOfConstraint,
         LocalDate startDate,
         LocalDate endDate,
         String description,

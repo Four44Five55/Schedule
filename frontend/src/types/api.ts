@@ -14,7 +14,37 @@ export type KindOfStudy =
     | 'INDEPENDENT_STUDY';
 
 export type TimeSlotPair = 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH';
-export type KindOfConstraints = 'BUSINESS_TRIP' | 'VACATION' | 'EXAM_SESSION' | 'MEDICAL_CARE' | 'LIBRARY' | 'FINAL_STATE_ATTESTATION' | 'OTHER';
+/**
+ * Код вида ограничения. Не union конкретных значений: перечень ведёт пользователь
+ * (`GET /api/constraint-kinds`), и фронт не может знать его заранее — новые виды заводятся
+ * без релиза. Подписи и цвет берутся из справочника, см. `ConstraintKindDto`.
+ */
+export type KindOfConstraints = string;
+
+/** Вид ограничения из пользовательского справочника. */
+export interface ConstraintKindDto {
+  code: string;
+  name: string;
+  shortName: string;
+  /** Ключ палитры (`amber`, `sky`…) — набор классов знает `constraintStyles.ts`. */
+  color: string;
+  sortOrder: number;
+  /** Погашенный не предлагается в выборе, но уже проставленный показывается. */
+  active: boolean;
+  /** Пришёл из кода: удалить нельзя, название и цвет правятся. */
+  system: boolean;
+  /** Сколько ограничений размечено этим видом — цена удаления. */
+  usageCount: number;
+}
+
+/** Тело создания/правки вида ограничения. */
+export interface ConstraintKindFormDto {
+  name: string;
+  shortName: string;
+  color?: string;
+  sortOrder?: number;
+  active?: boolean;
+}
 export type PeriodType = 'FALL_SEMESTER' | 'SPRING_SEMESTER' | 'FALL_EXAM_SESSION' | 'SPRING_EXAM_SESSION';
 /** Уровень учёной степени. Отрасль науки — не здесь: она справочник, её ведёт пользователь. */
 export type AcademicDegree = 'CANDIDATE' | 'DOCTOR';
@@ -27,6 +57,12 @@ export interface EnumDto {
   label: string;
   abbreviation: string;
   extra?: string;
+  /**
+   * Категория значения, если у enum-а есть классификация (у видов занятий — LECTURE / PRACTICE /
+   * PROGRESS_CHECK / ASSESSMENT). Приходит с бэка, чтобы фронт не повторял правила вида «экзамен и
+   * зачёты — это аттестация»: владелец классификации один — Java-enum. Здесь решается только цвет.
+   */
+  category?: string;
 }
 
 // ============ RESOURCES ============

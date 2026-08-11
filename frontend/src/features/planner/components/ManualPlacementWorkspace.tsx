@@ -7,7 +7,8 @@ import { useScheduleStream } from '../../../hooks/useScheduleStream';
 import { useEntityConstraints } from '../../constraints/useEntityConstraints';
 import { useEducatorPriority } from '../../schedule/useEducatorPriority';
 import { AcademicGridSchedule } from '../../schedule/components/AcademicGridSchedule';
-import { kindStyleOf, KIND_STYLES } from '../../schedule/kindStyles';
+import { kindStyleOfCategory, KIND_STYLES } from '../../schedule/kindStyles';
+import { useEnums } from '../../../context/EnumContext';
 import { Users, UserSquare2, ChevronRight, ChevronDown, Loader2, Lock, X, Trash2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
@@ -31,6 +32,8 @@ interface Props {
  * те, у кого остались неразмещённые. Сетка выбранной сущности рисуется из schedule_view.
  */
 export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds }) => {
+  // Класс вида занятия (лекция/практика/контроль/аттестация) — с бэка, фронт его не выводит.
+  const { getStudyCategory } = useEnums();
   const [session, setSession] = useState<ScheduleSessionDto | null>(null);
   const [board, setBoard] = useState<PlacementBoardDto | null>(null);
   const [lessons, setLessons] = useState<ScheduledLessonDto[]>([]);
@@ -396,8 +399,8 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
         </div>
         {/* Легенда видов занятий — из единого источника подсветки (kindStyles), тот же, что у сетки. */}
         <div className="flex items-center gap-2 text-[10px] text-slate-400">
-          {Object.entries(KIND_STYLES).map(([group, s]) => (
-            <span key={group} className="flex items-center gap-1">
+          {Object.entries(KIND_STYLES).map(([category, s]) => (
+            <span key={category} className="flex items-center gap-1">
               <span className={cn('w-2 h-2 rounded-full', s.dot)} />
               {s.label}
             </span>
@@ -475,7 +478,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                                     const isPicked = selectedUnplaced?.assignmentId === u.assignmentId;
                                     // Подсветка вида занятия — из того же источника, что и сетка
                                     // (`kindStyles.ts`): лекцию видно в очереди так же, как в расписании.
-                                    const ks = kindStyleOf(u.kindOfStudy);
+                                    const ks = kindStyleOfCategory(getStudyCategory(u.kindOfStudy));
                                     return (
                                       <button
                                         key={u.assignmentId}
@@ -566,7 +569,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                       {/* Занятия дисциплины (аббревиатура — в заголовке выше) */}
                       {placedOpen && list.map((l) => (
                         <div key={l.placementId} className="flex items-center gap-1.5 pl-4 pr-2 py-1 text-[11px] text-slate-500">
-                          <span className={cn('shrink-0 px-1 py-px rounded font-bold', kindStyleOf(l.kindOfStudy).chip)}>
+                          <span className={cn('shrink-0 px-1 py-px rounded font-bold', kindStyleOfCategory(getStudyCategory(l.kindOfStudy)).chip)}>
                             {l.kindOfStudyAbbr}
                           </span>
                           <span className="truncate">Т.{l.themeNumber || '—'}</span>

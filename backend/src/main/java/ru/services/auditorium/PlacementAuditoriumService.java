@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.entity.constraints.ConstraintKindRef;
 import ru.dto.auditorium.AuditoriumOptionDto;
 import ru.entity.Auditorium;
 import ru.entity.CellForLesson;
@@ -197,7 +198,7 @@ public class PlacementAuditoriumService {
         if (room.hasConstraint(cell)) {
             return new AuditoriumOptionDto(room.getId(), room.getName(), room.capacity(),
                     AuditoriumOptionDto.Status.CONSTRAINED, shortfall,
-                    room.getConstraint(cell).map(Enum::name).orElse("ограничение"), current);
+                    room.getConstraint(cell).map(ConstraintKindRef::code).orElse("ограничение"), current);
         }
 
         // Своё же занятие занятостью не считаем: комната, которая уже назначена этому занятию,

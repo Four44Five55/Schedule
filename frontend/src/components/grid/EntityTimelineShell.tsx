@@ -66,6 +66,12 @@ export interface EntityTimelineShellProps {
    * вызывается {@link onRangeSelect}. Если false — каркас только просматривается.
    */
   paintMode?: boolean;
+  /**
+   * Цвет превью протяжки: `create` — синий (что-то появится), `erase` — красный (что-то
+   * исчезнет). Разные цвета нужны, потому что жест один и тот же, а последствия обратные:
+   * протянуть красным по занятым дням — это удаление, и увидеть это надо ДО отпускания кнопки.
+   */
+  paintTone?: 'create' | 'erase';
   /** Выбран диапазон дней одной сущности (start ≤ end). Одиночный клик: start === end. */
   onRangeSelect?: (entity: TimelineEntity, startDateStr: string, endDateStr: string) => void;
 }
@@ -85,6 +91,7 @@ export const EntityTimelineShell: React.FC<EntityTimelineShellProps> = ({
   renderCell,
   onColumnHeaderClick,
   paintMode = false,
+  paintTone = 'create',
   onRangeSelect,
 }) => {
   const [zoom, setZoom] = useState<ZoomLevel>(0);
@@ -131,7 +138,9 @@ export const EntityTimelineShell: React.FC<EntityTimelineShellProps> = ({
   // Подсветка одним <style> (cross-hair + превью drag) — без ре-рендера ячеек.
   const styleText = useMemo(() => {
     const wash = 'box-shadow: inset 0 0 0 9999px rgba(59,130,246,.07);';
-    const dragWash = 'box-shadow: inset 0 0 0 9999px rgba(37,99,235,.22);';
+    const dragWash = paintTone === 'erase'
+        ? 'box-shadow: inset 0 0 0 9999px rgba(239,68,68,.25);'
+        : 'box-shadow: inset 0 0 0 9999px rgba(37,99,235,.22);';
     const rules: string[] = [];
     if (hover) {
       rules.push(`.${cls} tbody td:nth-child(${hover.col + 2}){${wash}}`);
@@ -145,7 +154,7 @@ export const EntityTimelineShell: React.FC<EntityTimelineShellProps> = ({
       rules.push(`.${cls} tbody tr[data-row="${drag.row}"] td:nth-child(n+${a}):nth-child(-n+${b}){${dragWash}}`);
     }
     return rules.join('\n');
-  }, [hover, drag, cls]);
+  }, [hover, drag, cls, paintTone]);
 
   const borderClass = 'border-slate-300';
   const headerBorderClass = 'border-slate-400';

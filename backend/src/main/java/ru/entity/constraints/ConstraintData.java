@@ -1,13 +1,15 @@
 package ru.entity.constraints;
 
 import ru.entity.CellForLesson;
-import ru.enums.KindOfConstraints;
 
 /**
- * Простой DTO для передачи данных об одном ограничении.
+ * Одно ограничение, развёрнутое на конкретную ячейку (день + пара).
+ *
+ * <p>Вид ограничения приходит снимком {@link ConstraintKindRef}, а не сущностью справочника:
+ * дальше эти данные живут в памяти решателя, которому БД знать не положено.</p>
  */
 public record ConstraintData(
         CellForLesson cell,
-        KindOfConstraints kind
+        ConstraintKindRef kind
 ) {
 }

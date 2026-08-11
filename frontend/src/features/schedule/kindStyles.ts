@@ -14,20 +14,21 @@
  * а не «каждому коду свой оттенок» — иначе сетка превращается в радугу.
  */
 
-/** Группа видов занятий — то, что различается цветом. */
-export type KindGroup = 'LECTURE' | 'ASSESSMENT' | 'QUIZ' | 'PRACTICE';
+/**
+ * Категория вида занятия — приходит с бэка полем `category` в `/api/enums/kind-of-study`.
+ *
+ * Списка «какие коды сюда относятся» здесь НЕТ и быть не должно: классификацией владеет
+ * `ru.enums.KindOfStudy.Category`, фронт получает готовую категорию через
+ * `useEnums().getStudyCategory()`. Раньше правило «экзамен и зачёты — аттестация» было выписано
+ * тут и ещё раз в редакторе плана, то есть новый вид аттестации пришлось бы вносить в три места.
+ *
+ * Не «группа»: группа в этом проекте — учебная (`GroupDto`), а `PROGRESS_CHECK` не назван `QUIZ`,
+ * чтобы категория не совпадала с именем конкретного вида занятия.
+ */
+export type KindCategory = 'LECTURE' | 'ASSESSMENT' | 'PROGRESS_CHECK' | 'PRACTICE';
 
-/** Виды-аттестации: их место в конце курса, и они выделяются отдельно (в т.ч. в правиле порядка). */
-export const ASSESSMENT_KINDS = ['EXAM', 'CREDIT_WITH_GRADE', 'CREDIT_WITHOUT_GRADE'] as const;
-
-/** Вид занятия (код с бэка) → группа подсветки. */
-export const kindGroupOf = (kind?: string | null): KindGroup => {
-  if (!kind) return 'PRACTICE';
-  if (kind === 'LECTURE') return 'LECTURE';
-  if ((ASSESSMENT_KINDS as readonly string[]).includes(kind)) return 'ASSESSMENT';
-  if (kind === 'QUIZ') return 'QUIZ';
-  return 'PRACTICE';
-};
+/** Категория по умолчанию: вид неизвестен или enum-ы ещё не загрузились. */
+export const DEFAULT_KIND_CATEGORY: KindCategory = 'PRACTICE';
 
 export interface KindStyle {
   /** Фон занятия в сетке, когда его дисциплина «активна» (наведение/выделение). */
@@ -42,7 +43,7 @@ export interface KindStyle {
   label: string;
 }
 
-export const KIND_STYLES: Record<KindGroup, KindStyle> = {
+export const KIND_STYLES: Record<KindCategory, KindStyle> = {
   LECTURE: {
     active: 'bg-rose-150 text-slate-900 hover:bg-rose-200',
     resting: 'bg-white text-slate-900 hover:bg-slate-50',
@@ -64,7 +65,7 @@ export const KIND_STYLES: Record<KindGroup, KindStyle> = {
     dot: 'bg-violet-400',
     label: 'Аттестация',
   },
-  QUIZ: {
+  PROGRESS_CHECK: {
     active: 'bg-sky-150 text-slate-900 hover:bg-sky-200',
     resting: 'bg-slate-100 text-slate-900 hover:bg-slate-200',
     chip: 'bg-slate-100 text-slate-700',
@@ -73,5 +74,6 @@ export const KIND_STYLES: Record<KindGroup, KindStyle> = {
   },
 };
 
-/** Стиль по коду вида — короткий путь для компонентов. */
-export const kindStyleOf = (kind?: string | null): KindStyle => KIND_STYLES[kindGroupOf(kind)];
+/** Стиль по категории вида — короткий путь для компонентов (категория берётся из `useEnums()`). */
+export const kindStyleOfCategory = (category?: KindCategory | null): KindStyle =>
+  KIND_STYLES[category ?? DEFAULT_KIND_CATEGORY];

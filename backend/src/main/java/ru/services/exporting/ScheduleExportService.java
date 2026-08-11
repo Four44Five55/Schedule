@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.dto.ScheduledLessonDto;
 import ru.entity.StudyPeriod;
 import ru.entity.constraints.ConstraintData;
+import ru.entity.constraints.ConstraintKindRef;
 import ru.entity.Educator;
 import ru.entity.OrgUnit;
 import ru.entity.read.ScheduleView;
@@ -218,8 +219,12 @@ public class ScheduleExportService {
                 .map(ConstraintData::kind)
                 .filter(Objects::nonNull)
                 .distinct()
-                .sorted() // порядок справочника: enum'ы сравниваются по ordinal
-                .map(k -> new ScheduleWorkbookRenderer.Mark(k.getAbbreviationName(), k.getFullName()))
+                // Порядок справочника — им теперь распоряжается пользователь (sortOrder), а не
+                // ordinal enum-а; при равном порядке сортируем по аббревиатуре, чтобы легенда
+                // не прыгала между выгрузками.
+                .sorted(Comparator.comparingInt(ConstraintKindRef::sortOrder)
+                        .thenComparing(ConstraintKindRef::abbreviation))
+                .map(k -> new ScheduleWorkbookRenderer.Mark(k.abbreviation(), k.fullName()))
                 .toList();
     }
 
@@ -386,17 +391,13 @@ public class ScheduleExportService {
                 .count();
     }
 
-    /** Виды занятий-«отчёты» для колонки «Отчет»: зачёты (с оценкой/без) и экзамен. */
-    private static final Set<KindOfStudy> REPORT_KINDS = EnumSet.of(
-            KindOfStudy.EXAM, KindOfStudy.CREDIT_WITH_GRADE, KindOfStudy.CREDIT_WITHOUT_GRADE);
-
     /** Аббревиатуры зачётов/экзаменов дисциплины (уникальные, через запятую); пусто — если их нет. */
     private static String reportAbbreviations(List<ScheduleView> rows) {
         return rows.stream()
                 .map(ScheduleView::getKindOfStudy)
                 .map(ScheduleExportService::parseKind)
                 .filter(Objects::nonNull)
-                .filter(REPORT_KINDS::contains)
+                .filter(KindOfStudy::isAssessment) // колонка «Отчет» — ровно аттестации курса
                 .distinct()
                 .map(KindOfStudy::getAbbreviationName)
                 .collect(Collectors.joining(", "));
@@ -417,7 +418,7 @@ public class ScheduleExportService {
         for (ConstraintData c : constraints) {
             LocalDate date = c.cell().getDate();
             if (date.isBefore(start) || date.isAfter(end)) continue;
-            map.put(date + "_" + c.cell().getTimeSlotPair().name(), c.kind().getAbbreviationName());
+            map.put(date + "_" + c.cell().getTimeSlotPair().name(), c.kind().abbreviation());
         }
         return map;
     }

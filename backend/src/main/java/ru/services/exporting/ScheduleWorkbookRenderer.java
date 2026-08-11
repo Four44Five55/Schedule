@@ -561,9 +561,7 @@ public class ScheduleWorkbookRenderer {
      */
     private CellStyler.Tint tintForKind(KindOfStudy kind) {
         if (kind == KindOfStudy.QUIZ) return CellStyler.Tint.LIGHT;
-        if (kind == KindOfStudy.EXAM
-                || kind == KindOfStudy.CREDIT_WITH_GRADE
-                || kind == KindOfStudy.CREDIT_WITHOUT_GRADE) return CellStyler.Tint.DARK;
+        if (kind != null && kind.isAssessment()) return CellStyler.Tint.DARK;
         return CellStyler.Tint.NONE;
     }
 

@@ -8,7 +8,8 @@ import {CQRSService} from '../../../services/cqrsApiService';
 import type {AuditoriumFinding, AuditoriumViolationKind, OrderFinding, OrderViolationKind} from '../../../types/cqrs';
 import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
-import {kindStyleOf} from '../kindStyles';
+import {kindStyleOfCategory} from '../kindStyles';
+import {useEnums} from '../../../context/EnumContext';
 
 /** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб; воскресенье не планируется). */
 const WEEKDAY_ID: Record<DayOfWeek, number> = {
@@ -136,6 +137,7 @@ const ScheduleCell = React.memo(({
   pinningEnabled, selectionActive, onLessonClick, onCellMove, onToggleDetach,
   onToggleLock, onHover,
 }: ScheduleCellProps) => {
+  const { getStudyCategory } = useEnums();
   // Пропорциональный зум (как в Excel): базовые кегли/иконки × factor.
   const abbrPx = Math.round(20 * factor);
   const bodyPx = Math.round(13 * factor);
@@ -162,8 +164,9 @@ const ScheduleCell = React.memo(({
 
   // Фон занятой ячейки: жёлтый (скрытая занятость) → цвет по виду для активной
   // дисциплины → нейтральный в покое. Сами цвета — в едином источнике `kindStyles.ts`
-  // (тот же, что у палитры ручной раскладки), здесь только выбор режима.
-  const kindStyle = kindStyleOf(lesson?.kindOfStudy);
+  // (тот же, что у палитры ручной раскладки), здесь только выбор режима. Класс вида
+  // (лекция/практика/контроль/аттестация) приходит с бэка — фронт его не выводит.
+  const kindStyle = kindStyleOfCategory(getStudyCategory(lesson?.kindOfStudy));
   const occupiedBg = isTeacherBusyHidden
       ? 'bg-amber-150 text-slate-900 hover:bg-amber-200'
       : isDisciplineMatch ? kindStyle.active : kindStyle.resting;

@@ -6,7 +6,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import ru.abstracts.AbstractLesson;
 import ru.entity.*;
-import ru.enums.KindOfConstraints;
+import ru.entity.constraints.ConstraintKindRef;
 import ru.enums.TimeSlotPair;
 import ru.inter.IMaterialEntity;
 import ru.services.factories.CellForLessonFactory;
@@ -103,11 +103,11 @@ public class ExcelExportService {
                     getCell(sheet, row, column).setCellValue(listDataLesson.get(2));
                     row++;
                 } else {
-                    Optional<KindOfConstraints> constraintOpt = resource.getConstraint(cell);
+                    Optional<ConstraintKindRef> constraintOpt = resource.getConstraint(cell);
                     if (constraintOpt.isPresent()) {
-                        KindOfConstraints constraint = constraintOpt.get();
+                        ConstraintKindRef constraint = constraintOpt.get();
                         row++;
-                        getCell(sheet, row, column).setCellValue(constraint.getAbbreviationName());
+                        getCell(sheet, row, column).setCellValue(constraint.abbreviation());
                         row += 2;
                     }
                     // Предполагаем, что интерфейс IMaterialEntity имеет такой метод

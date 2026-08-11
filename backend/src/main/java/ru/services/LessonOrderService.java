@@ -80,6 +80,10 @@ public class LessonOrderService {
                     .map(Group::getId)
                     .collect(Collectors.toSet());
 
+            // Аттестации: стоят в конце курса, через месяцы после последней лекции — это норма, а
+            // не дефект, поэтому правило исключает их из проверки ОТРЫВА (иначе загорелись бы все
+            // и утопили полезный сигнал), но в проверке «раньше лекции» они участвуют наравне с
+            // практиками. Сам признак — в KindOfStudy.isAssessment(), единственном его владельце.
             KindOfStudy kind = slot.getKindOfStudy();
             byCourse.computeIfAbsent(courseId, k -> new ArrayList<>())
                     .add(new PlannedLesson(
@@ -87,8 +91,8 @@ public class LessonOrderService {
                             placement.getScheduledDate(),
                             placement.getScheduledSlot(),
                             slot.getPosition(),
-                            kind == KindOfStudy.LECTURE,
-                            ASSESSMENT_KINDS.contains(kind),
+                            kind.isLectureType(),
+                            kind.isAssessment(),
                             groupIds));
         }
 
@@ -112,13 +116,4 @@ public class LessonOrderService {
         return result;
     }
 
-    /**
-     * Аттестации: стоят в конце курса, через месяцы после последней лекции — это норма, а не
-     * дефект. Из проверки ОТРЫВА исключены (иначе загорелись бы все и утопили полезный сигнал),
-     * но в проверке «раньше лекции» участвуют наравне с практиками.
-     */
-    private static final Set<KindOfStudy> ASSESSMENT_KINDS = Set.of(
-            KindOfStudy.EXAM,
-            KindOfStudy.CREDIT_WITH_GRADE,
-            KindOfStudy.CREDIT_WITHOUT_GRADE);
 }

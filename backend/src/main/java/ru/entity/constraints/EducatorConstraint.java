@@ -5,7 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.entity.Educator;
-import ru.enums.KindOfConstraints;
+import ru.entity.dictionary.KindOfConstraint;
 import ru.enums.TimeSlotPair;
 
 import java.time.LocalDate;
@@ -25,9 +25,16 @@ public class EducatorConstraint {
     @JoinColumn(name = "educator_id")
     private Educator educator;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "kind_of_constraint", nullable = false)
-    private KindOfConstraints kindOfConstraint;
+    /**
+     * Вид ограничения — строка справочника, а не enum (перечень ведёт пользователь).
+     *
+     * <p>{@code EAGER}: справочник крошечный (единицы строк), а его подписи нужны при КАЖДОМ
+     * маппинге ограничения в DTO — ленивая загрузка дала бы здесь ровно N+1 запросов на ровном
+     * месте. Ключ соединения строковый, поэтому {@code referencedColumnName} задан явно.</p>
+     */
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "kind_of_constraint", referencedColumnName = "code", nullable = false)
+    private KindOfConstraint kindOfConstraint;
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;

@@ -1,7 +1,7 @@
 package ru.entity;
 
 import ru.abstracts.AbstractGrid;
-import ru.enums.KindOfConstraints;
+import ru.entity.constraints.ConstraintKindRef;
 import ru.services.factories.CellForLessonFactory;
 
 import java.time.DayOfWeek;
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 public class ConstraintsGrid extends AbstractGrid {
-    private final Map<CellForLesson, KindOfConstraints> constraintsGridMap = new HashMap<>();
+    private final Map<CellForLesson, ConstraintKindRef> constraintsGridMap = new HashMap<>();
 
     public ConstraintsGrid() {
         super();
@@ -24,9 +24,9 @@ public class ConstraintsGrid extends AbstractGrid {
     /**
      * Получает карту с ограничениями
      *
-     * @return Map<CellForLesson, KindOfConstraints>
+     * @return Map<CellForLesson, ConstraintKindRef>
      */
-    public Map<CellForLesson, KindOfConstraints> getConstraintsGridMap() {
+    public Map<CellForLesson, ConstraintKindRef> getConstraintsGridMap() {
         return constraintsGridMap;
     }
 
@@ -34,9 +34,9 @@ public class ConstraintsGrid extends AbstractGrid {
      * Получает карту ограничение
      *
      * @param cell ячейка
-     * @return KindOfConstraints
+     * @return ConstraintKindRef
      */
-    public KindOfConstraints getConstraint(CellForLesson cell) {
+    public ConstraintKindRef getConstraint(CellForLesson cell) {
         return constraintsGridMap.get(cell);
     }
 
@@ -47,7 +47,7 @@ public class ConstraintsGrid extends AbstractGrid {
      * @param endDate    конечная дата
      * @param constraint тип ограничения
      */
-    public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, KindOfConstraints constraint) {
+    public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate, ConstraintKindRef constraint) {
         List<CellForLesson> cellForLessons = CellForLessonFactory.getCellsInRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);
@@ -63,7 +63,7 @@ public class ConstraintsGrid extends AbstractGrid {
      * @param dayOfWeek  день недели, для которого применяется ограничение
      */
     public void fillConstraintInRangeForGrid(LocalDate startDate, LocalDate endDate,
-                                             KindOfConstraints constraint, DayOfWeek dayOfWeek) {
+                                             ConstraintKindRef constraint, DayOfWeek dayOfWeek) {
         List<CellForLesson> cellForLessons = CellForLessonFactory.getCellsInRange(startDate, endDate);
         for (CellForLesson cellForLesson : cellForLessons) {
             if (cellForLesson.getDate().getDayOfWeek() == dayOfWeek) {
@@ -78,7 +78,7 @@ public class ConstraintsGrid extends AbstractGrid {
      * @param date       дата ограничения
      * @param constraint тип ограничения
      */
-    private void fillConstraintInDateForGrid(LocalDate date, KindOfConstraints constraint) {
+    private void fillConstraintInDateForGrid(LocalDate date, ConstraintKindRef constraint) {
         List<CellForLesson> cellForLessons = CellForLessonFactory.getCellsForDate(date);
         for (CellForLesson cellForLesson : cellForLessons) {
             constraintsGridMap.put(cellForLesson, constraint);

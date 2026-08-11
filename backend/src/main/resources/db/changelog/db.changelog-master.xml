@@ -69,4 +69,12 @@
          отрасль науки) и учёное звание; справочники ведёт пользователь -->
     <include file="020-create-educator-credentials.sql" relativeToChangelogFile="true"/>
 
+    <!-- Виды занятий: справочник kind_of_study заполнялся только демо-данными из
+         .gitignore'нутого db/values/, и на чистой БД вставка занятия падала по FK -->
+    <include file="021-seed-kind-of-study.sql" relativeToChangelogFile="true"/>
+
+    <!-- Виды ограничений — из Java-enum в пользовательский справочник: код по ним не ветвится,
+         значит перечень принадлежит пользователю, а не релизу -->
+    <include file="022-create-kind-of-constraint.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
