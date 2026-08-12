@@ -3,6 +3,7 @@ package ru.dto.curriculumSlot;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import ru.enums.AssessmentWindow;
 import ru.enums.KindOfStudy;
 
 /**
@@ -26,6 +27,13 @@ public record CurriculumSlotCreateDto(
 
         @NotNull(message = "Вид занятия не может быть пустым")
         KindOfStudy kindOfStudy,
+
+        /**
+         * Где сдаётся аттестация; {@code null} → {@code STUDY_TIME}. Необязательное намеренно:
+         * подавляющее большинство слотов — обычные занятия, и требовать поле от каждого значило бы
+         * ломать существующих клиентов ради поля, которое у них всегда одно и то же.
+         */
+        AssessmentWindow assessmentWindow,
 
         Integer themeLessonId,
         Integer requiredAuditoriumId,

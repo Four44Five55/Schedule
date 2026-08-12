@@ -2,12 +2,15 @@ package ru.entity.dictionary;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.entity.constraints.ConstraintKindRef;
+import ru.enums.ConstraintMode;
 
 /**
  * Вид ограничения: командировка, отпуск, наряд, учения — что угодно, что заводит пользователь.
@@ -15,7 +18,8 @@ import ru.entity.constraints.ConstraintKindRef;
  * <p>Раньше это был Java-enum {@code ru.enums.KindOfConstraints}, и новый вид требовал релиза.
  * Перечень переехал в справочник, потому что код по видам не ветвится: вид ограничения — подпись
  * и цвет, а поведение («ресурс занят в эти дни/пары») одинаково для всех. Виды ЗАНЯТИЙ, наоборот,
- * остаются в коде — от них зависит распределение и порядок изучения (правило — в CLAUDE.md).</p>
+ * остаются в коде — от них зависит распределение и порядок изучения (правило — в
+ * docs/CONVENTIONS.md).</p>
  *
  * <p><b>Ключ строковый, а не {@code SERIAL}.</b> В таблицах ограничений уже лежат коды видов
  * строками; числовой id потребовал бы переписать данные, запросы и фронт. Пользовательские виды
@@ -64,8 +68,22 @@ public class KindOfConstraint {
     @Column(name = "is_system", nullable = false)
     private boolean system = false;
 
+    /**
+     * Что интервал впускает: запрещает всё (дефолт), окно промежуточной аттестации или окно со
+     * свободными днями группы.
+     *
+     * <p>Единственное поле вида, по которому ветвится поведение, — и потому единственное, чей набор
+     * значений принадлежит коду, а не пользователю. Сам вид остаётся пользовательским: заводя
+     * «Сессию зимнюю 2027», человек выбирает режим из готовых, как выбирает категорию вида
+     * занятия.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode", nullable = false, length = 30)
+    private ConstraintMode mode = ConstraintMode.BLOCKING;
+
     /** Снимок для доменного ядра — чтобы решатель не тащил в себя JPA-сущность. */
     public ConstraintKindRef toRef() {
-        return new ConstraintKindRef(code, name, shortName, sortOrder == null ? 0 : sortOrder);
+        return new ConstraintKindRef(code, name, shortName, sortOrder == null ? 0 : sortOrder,
+                mode == null ? ConstraintMode.BLOCKING : mode);
     }
 }

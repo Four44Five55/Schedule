@@ -158,7 +158,9 @@ public class LessonChainMoveService {
             if (cell == null) {
                 throw new LessonMoveConflictException("слот цепочки вне планируемого периода");
             }
-            PlacementOption option = workspace.findPlacementOption(chain.get(k), cell);
+            // HONOR_WINDOWS: цепочку двигает человек — см. LessonMoveService.
+            PlacementOption option = workspace.findPlacementOption(chain.get(k), cell,
+                    ScheduleWorkspace.ConstraintPolicy.HONOR_WINDOWS);
             if (!option.isPossible()) {
                 throw new LessonMoveConflictException(option.failureReason());
             }
@@ -212,7 +214,10 @@ public class LessonChainMoveService {
                               LocalDate date, TimeSlotPair[] slots, int start) {
         for (int k = 0; k < chain.size(); k++) {
             CellForLesson cell = CellForLessonFactory.getCell(date, slots[start + k]);
-            if (cell == null || !workspace.findPlacementOption(chain.get(k), cell).isPossible()) {
+            // Подсказка обязана совпадать с фактическим переносом, иначе зелёная ячейка приведёт
+            // к 409 — поэтому политика здесь та же, что в moveChain.
+            if (cell == null || !workspace.findPlacementOption(chain.get(k), cell,
+                    ScheduleWorkspace.ConstraintPolicy.HONOR_WINDOWS).isPossible()) {
                 return false;
             }
         }

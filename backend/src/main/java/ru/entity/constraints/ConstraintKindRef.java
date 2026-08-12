@@ -1,7 +1,9 @@
 package ru.entity.constraints;
 
+import ru.enums.ConstraintMode;
+
 /**
- * Вид ограничения в том виде, в каком он нужен доменному ядру: код и подписи, ничего больше.
+ * Вид ограничения в том виде, в каком он нужен доменному ядру: код, подписи и режим.
  *
  * <p>Ядро (решатель, сетка занятости, экспорт) читает у вида только аббревиатуру — чтобы показать
  * её в ячейке — и код, чтобы отличить один вид от другого. Тащить туда JPA-сущность
@@ -16,6 +18,11 @@ package ru.entity.constraints;
  * @param sortOrder    порядок в справочнике: раньше легенда экспорта сортировалась по
  *                     {@code ordinal} enum-а, теперь порядок задаёт пользователь — и его надо
  *                     донести до сортировки, иначе легенда поедет по алфавиту случая
+ * @param mode         что интервал впускает: запрещает всё, окно сессии, окно со свободными днями.
+ *                     Единственное, по чему ветвится проверка доступности — код никогда не смотрит
+ *                     на {@code code}, поэтому пользовательский вид с тем же режимом работает без
+ *                     правок. Разбирает {@code ConstraintAdmissionRule}
  */
-public record ConstraintKindRef(String code, String fullName, String abbreviation, int sortOrder) {
+public record ConstraintKindRef(String code, String fullName, String abbreviation, int sortOrder,
+                                ConstraintMode mode) {
 }

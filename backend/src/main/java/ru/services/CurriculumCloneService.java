@@ -100,6 +100,9 @@ public class CurriculumCloneService {
         dst.setDisciplineCourse(targetCourse);
         dst.setPosition(src.getPosition());
         dst.setKindOfStudy(src.getKindOfStudy());
+        // Где сдаётся аттестация — часть замысла плана, а не свойство периода: клон обязан её
+        // перенести, иначе экзамен в новом семестре молча уедет в учебное время.
+        dst.setAssessmentWindow(src.getAssessmentWindow());
         dst.setThemeLesson(src.getThemeLesson());
         dst.setRequiredAuditorium(src.getRequiredAuditorium());
         dst.setPriorityAuditorium(src.getPriorityAuditorium());

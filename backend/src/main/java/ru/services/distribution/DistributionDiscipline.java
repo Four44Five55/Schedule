@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.entity.Educator;
 import ru.entity.Lesson;
+import ru.enums.AssessmentWindow;
 import ru.services.CurriculumSlotService;
 import ru.services.LessonSortingService;
 import ru.services.SlotChainService;
@@ -109,20 +110,33 @@ public class DistributionDiscipline {
      * Разделяет на экзамены и обычные занятия, затем запускает двухфазное распределение.
      */
     public void distributeLessons() {
-        // 1. Разделяем занятия на экзамены и обычные
-        List<Lesson> examLessons = new ArrayList<>();
+        // 1. Отделяем то, что сдаётся в экзаменационную сессию, от занятий учебного времени.
+        //
+        // Признак берётся из ПЛАНА (CurriculumSlot.assessmentWindow), а не из вида занятия. Раньше
+        // здесь стояло `== KindOfStudy.EXAM`, и это было неверно дважды: экзамен по физподготовке
+        // сессии не требует — он молча выбрасывался и не размещался нигде; а зачёт, запланированный
+        // в сессию, наоборот, уходил в общий конвейер и вставал в учебное время.
+        //
+        // Раскладку сессии генерация не делает СОЗНАТЕЛЬНО, а не по недоделке: экзамен принимает
+        // только лектор, групп у него несколько, даты обязаны различаться — это задача с
+        // сериализующим ресурсом и неразрывными блоками подготовки, а не «положить занятие в
+        // свободную ячейку». Такие занятия уходят в очередь неразмещённых (видны в доске раскладки),
+        // и их ставит диспетчер. См. FOLLOWUPS, раздел про экзаменационную сессию.
+        List<Lesson> sessionLessons = new ArrayList<>();
         List<Lesson> regularLessons = new ArrayList<>();
 
         for (Lesson lesson : context.getLessons()) {
-            if (lesson.getKindOfStudy() == ru.enums.KindOfStudy.EXAM) {
-                examLessons.add(lesson);
+            if (lesson.getAssessmentWindow() == AssessmentWindow.SESSION) {
+                sessionLessons.add(lesson);
             } else {
                 regularLessons.add(lesson);
             }
         }
 
-        // TODO: реализовать распределение экзаменов
-        // distributeExams(examLessons);
+        if (!sessionLessons.isEmpty()) {
+            log.info("В сессию запланировано занятий: {} — генерацией не размещаются, ставит диспетчер",
+                    sessionLessons.size());
+        }
 
         // 2. Обновляем контекст только с регулярными занятиями
         context.setLessons(regularLessons);

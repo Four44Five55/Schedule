@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Plus, Trash2, X, Check, Pencil } from 'lucide-react';
-import { ConstraintKindDto, ConstraintKindFormDto } from '../../../types/api';
+import { ConstraintKindDto, ConstraintKindFormDto, ConstraintMode } from '../../../types/api';
 import { ConstraintKindService } from '../../../services/apiServices';
 import { CONSTRAINT_COLOR_KEYS, constraintStyleOfColor } from '../constraintStyles';
 import { useEnums } from '../../../context/EnumContext';
@@ -50,13 +50,13 @@ export const ConstraintKindsModal: React.FC<Props> = ({ onClose }) => {
 
   const startCreate = () => {
     setEditing('');
-    setForm({ name: '', shortName: '', color: 'slate', sortOrder: (kinds.length + 1) * 10, active: true });
+    setForm({ name: '', shortName: '', color: 'slate', sortOrder: (kinds.length + 1) * 10, active: true, mode: 'BLOCKING' });
     setError(null);
   };
 
   const startEdit = (k: ConstraintKindDto) => {
     setEditing(k.code);
-    setForm({ name: k.name, shortName: k.shortName, color: k.color, sortOrder: k.sortOrder, active: k.active });
+    setForm({ name: k.name, shortName: k.shortName, color: k.color, sortOrder: k.sortOrder, active: k.active, mode: k.mode });
     setError(null);
   };
 
@@ -189,6 +189,26 @@ const KindForm: React.FC<{
                 className={cn('w-5 h-5 rounded-sm border-2', constraintStyleOfColor(color).dot,
                   form.color === color ? 'border-slate-800' : 'border-transparent')} />
       ))}
+    </div>
+    {/* Режим — единственное, что меняет ПОВЕДЕНИЕ вида, поэтому набор задан кодом, а не вводится
+        строкой. Подписи говорят о последствиях, а не о константах: диспетчер выбирает не
+        «ASSESSMENT_WINDOW», а «пускать экзамены». */}
+    <div className="space-y-1">
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        Что впускает
+      </label>
+      <select className={inputCls} value={form.mode ?? 'BLOCKING'} disabled={busy}
+              onChange={(e) => setForm({ ...form, mode: e.target.value as ConstraintMode })}>
+        <option value="BLOCKING">Ничего — жёсткий запрет (командировка, отпуск, наряд)</option>
+        <option value="ASSESSMENT_WINDOW">Аттестации, запланированные в сессию (экз. сессия)</option>
+        <option value="ASSESSMENT_WINDOW_OPEN">Любые аттестации — свободные дни группы</option>
+      </select>
+      {form.mode === 'ASSESSMENT_WINDOW_OPEN' && (
+        <p className="text-[10px] text-slate-500 leading-snug">
+          Для дней, освободившихся из-за лесенки лектора: сюда можно поставить и зачёт, который
+          планом стоит в учебном времени. Учебные занятия не пройдут и здесь.
+        </p>
+      )}
     </div>
     <div className="flex items-center gap-3">
       <label className="flex items-center gap-1.5 text-[11px] text-slate-600">

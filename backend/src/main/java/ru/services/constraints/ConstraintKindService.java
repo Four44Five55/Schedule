@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.dto.constraint.ConstraintKindDto;
 import ru.dto.constraint.ConstraintKindFormDto;
 import ru.entity.dictionary.KindOfConstraint;
+import ru.enums.ConstraintMode;
 import ru.repository.constraints.AuditoriumConstraintRepository;
 import ru.repository.constraints.EducatorConstraintRepository;
 import ru.repository.constraints.GroupConstraintRepository;
@@ -22,7 +23,7 @@ import java.util.stream.Stream;
  * Справочник видов ограничений: чтение, заведение, правка, удаление.
  *
  * <p>Перечень ведёт пользователь — вид ограничения это подпись и цвет, код по нему не ветвится
- * (правило «кто владеет списком» — в CLAUDE.md). Поэтому здесь обычный CRUD, а не enum.</p>
+ * (правило «кто владеет списком» — в docs/CONVENTIONS.md). Поэтому здесь обычный CRUD, а не enum.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -125,6 +126,9 @@ public class ConstraintKindService {
         kind.setColor(resolveColor(form.color()));
         kind.setSortOrder(form.sortOrder() == null ? 0 : form.sortOrder());
         kind.setActive(form.active() == null || form.active());
+        // Не задан — запрещает всё. Умолчание строгое намеренно: забытое поле не должно молча
+        // открывать интервал для аттестаций.
+        kind.setMode(form.mode() == null ? ConstraintMode.BLOCKING : form.mode());
     }
 
     private String resolveColor(String color) {
@@ -172,6 +176,7 @@ public class ConstraintKindService {
                 kind.getSortOrder(),
                 kind.isActive(),
                 kind.isSystem(),
-                usageCount);
+                usageCount,
+                kind.getMode());
     }
 }

@@ -116,8 +116,11 @@ public class LessonMoveService {
         workspace.removePlacement(targetLesson);
 
         // 6. Повторная валидация: все участники свободны И есть конкретная свободная
-        //    аудитория. findPlacementOption — тот же примитив, что и при генерации.
-        PlacementOption option = workspace.findPlacementOption(targetLesson, targetCell);
+        //    аудитория. findPlacementOption — тот же примитив, что и при генерации; отличие одно —
+        //    HONOR_WINDOWS: перенос делает человек, поэтому окна промежуточной аттестации пускают
+        //    в себя то, что им положено (генерация окон не видит и в сессию не ходит).
+        PlacementOption option = workspace.findPlacementOption(targetLesson, targetCell,
+                ScheduleWorkspace.ConstraintPolicy.HONOR_WINDOWS);
         if (!option.isPossible()) {
             throw new LessonMoveConflictException(option.failureReason());
         }

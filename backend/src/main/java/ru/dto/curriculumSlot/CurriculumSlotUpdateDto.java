@@ -1,6 +1,7 @@
 package ru.dto.curriculumSlot;
 
 import jakarta.validation.constraints.NotNull;
+import ru.enums.AssessmentWindow;
 import ru.enums.KindOfStudy;
 
 /**
@@ -16,6 +17,9 @@ import ru.enums.KindOfStudy;
 public record CurriculumSlotUpdateDto(
         @NotNull(message = "Вид занятия не может быть пустым")
         KindOfStudy kindOfStudy,
+
+        /** Где сдаётся аттестация; {@code null} → {@code STUDY_TIME} (см. Create-DTO). */
+        AssessmentWindow assessmentWindow,
 
         Integer themeLessonId,
         Integer requiredAuditoriumId,

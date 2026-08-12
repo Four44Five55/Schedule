@@ -21,6 +21,16 @@ export type TimeSlotPair = 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH';
  */
 export type KindOfConstraints = string;
 
+/**
+ * Что впускает интервал, закрытый ограничением. В отличие от кода вида, набор значений принадлежит
+ * бэку (по нему ветвится проверка доступности) — поэтому это union, а не строка.
+ *
+ * - `BLOCKING` — запрещает всё (командировка, отпуск, наряд);
+ * - `ASSESSMENT_WINDOW` — окно сессии: впускает аттестации, запланированные планом в сессию;
+ * - `ASSESSMENT_WINDOW_OPEN` — плюс внеплановые аттестации («свободные дни группы»).
+ */
+export type ConstraintMode = 'BLOCKING' | 'ASSESSMENT_WINDOW' | 'ASSESSMENT_WINDOW_OPEN';
+
 /** Вид ограничения из пользовательского справочника. */
 export interface ConstraintKindDto {
   code: string;
@@ -35,6 +45,8 @@ export interface ConstraintKindDto {
   system: boolean;
   /** Сколько ограничений размечено этим видом — цена удаления. */
   usageCount: number;
+  /** Режим: что интервал впускает. По нему решается, считать ли занятие поверх конфликтом. */
+  mode: ConstraintMode;
 }
 
 /** Тело создания/правки вида ограничения. */
@@ -44,7 +56,17 @@ export interface ConstraintKindFormDto {
   color?: string;
   sortOrder?: number;
   active?: boolean;
+  mode?: ConstraintMode;
 }
+
+/**
+ * Где сдаётся аттестация — норма учебного плана.
+ *
+ * `SESSION` = в экзаменационную сессию: нужны дни подготовки, генерация такое не размещает
+ * (экзамен принимает лектор, и по группам он идёт лесенкой — раскладывает диспетчер).
+ * `STUDY_TIME` = в учебное время, как обычное занятие; сюда же экзамен по физподготовке.
+ */
+export type AssessmentWindow = 'SESSION' | 'STUDY_TIME';
 export type PeriodType = 'FALL_SEMESTER' | 'SPRING_SEMESTER' | 'FALL_EXAM_SESSION' | 'SPRING_EXAM_SESSION';
 /** Уровень учёной степени. Отрасль науки — не здесь: она справочник, её ведёт пользователь. */
 export type AcademicDegree = 'CANDIDATE' | 'DOCTOR';
@@ -415,6 +437,8 @@ export interface CurriculumSlotDto {
   disciplineCourseId: number;
   position: number;
   kindOfStudy: KindOfStudy;
+  /** Где сдаётся аттестация; у обычных занятий всегда `STUDY_TIME`. */
+  assessmentWindow: AssessmentWindow;
   themeLesson?: { id: number; themeNumber: string; title: string };
   requiredAuditorium?: { id: number; name: string };
   priorityAuditorium?: { id: number; name: string };
@@ -425,6 +449,8 @@ export interface CurriculumSlotCreateDto {
   disciplineCourseId: number;
   position: number;
   kindOfStudy: KindOfStudy;
+  /** Не передан — бэк ставит `STUDY_TIME`. */
+  assessmentWindow?: AssessmentWindow;
   themeLessonId?: number;
   requiredAuditoriumId?: number;
   priorityAuditoriumId?: number;
@@ -433,6 +459,8 @@ export interface CurriculumSlotCreateDto {
 
 export interface CurriculumSlotUpdateDto {
   kindOfStudy: KindOfStudy; // на бэке @NotNull
+  /** Не передан — бэк ставит `STUDY_TIME` (правка слота затрёт прежнее значение!). */
+  assessmentWindow?: AssessmentWindow;
   themeLessonId?: number;
   requiredAuditoriumId?: number;
   priorityAuditoriumId?: number;

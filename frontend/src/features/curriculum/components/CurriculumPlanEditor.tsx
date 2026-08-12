@@ -193,6 +193,8 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       await sourceRef.current.create({
         position: slot.position + 1,
         kindOfStudy: slot.kindOfStudy,
+        // Дубль обязан быть идентичным: без этого копия экзамена уехала бы в учебное время.
+        assessmentWindow: slot.assessmentWindow,
         themeLessonId: slot.themeLesson?.id,
         requiredAuditoriumId: slot.requiredAuditorium?.id,
         priorityAuditoriumId: slot.priorityAuditorium?.id,
@@ -347,6 +349,17 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
                   )}>
                     {KIND_LABELS[slot.kindOfStudy] || slot.kindOfStudy}
                   </span>
+
+                  {/* Норма «сдаётся в сессию» — видна в списке, а не только в карточке: от неё
+                      зависит, размещает ли занятие генерация, а это слишком заметное следствие,
+                      чтобы прятать его за кликом. У занятий учебного времени метки нет — она была
+                      бы шумом на каждой строке плана. */}
+                  {slot.assessmentWindow === 'SESSION' && (
+                    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded border border-rose-200 bg-rose-50 text-rose-700"
+                          title="Сдаётся в экзаменационную сессию: нужны дни подготовки, генерация не размещает — ставит диспетчер">
+                      сессия
+                    </span>
+                  )}
 
                   {/* Тема */}
                   <div className="flex-1 min-w-0">

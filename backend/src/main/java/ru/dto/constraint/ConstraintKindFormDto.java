@@ -2,6 +2,7 @@ package ru.dto.constraint;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import ru.enums.ConstraintMode;
 
 /**
  * Тело создания и правки вида ограничения.
@@ -17,11 +18,16 @@ import jakarta.validation.constraints.Size;
  *                  вёрстку не подставить
  * @param sortOrder порядок; {@code null} → 0
  * @param active    активность; {@code null} → true (новый вид сразу доступен в выборе)
+ * @param mode      что интервал впускает; {@code null} → {@code BLOCKING} (запрещает всё).
+ *                  Единственное поле вида, чей набор значений задаёт релиз: по нему ветвится
+ *                  проверка доступности. Пользователь выбирает из готовых — как выбирает
+ *                  категорию вида занятия
  */
 public record ConstraintKindFormDto(
         @NotBlank @Size(max = 255) String name,
         @NotBlank @Size(max = 50) String shortName,
         @Size(max = 20) String color,
         Integer sortOrder,
-        Boolean active
+        Boolean active,
+        ConstraintMode mode
 ) {}

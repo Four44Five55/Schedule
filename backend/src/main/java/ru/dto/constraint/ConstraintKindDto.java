@@ -1,5 +1,7 @@
 package ru.dto.constraint;
 
+import ru.enums.ConstraintMode;
+
 /**
  * Вид ограничения для фронта.
  *
@@ -11,6 +13,10 @@ package ru.dto.constraint;
  * @param active    погашенный вид не предлагается в выборе, но уже проставленный показывается
  * @param system    пришёл из кода: удалить нельзя, название и цвет правятся
  * @param usageCount сколько ограничений им размечено — цена удаления, названная заранее
+ * @param mode      что интервал впускает: {@code BLOCKING} — ничего, {@code ASSESSMENT_WINDOW} —
+ *                  плановые аттестации сессии, {@code ASSESSMENT_WINDOW_OPEN} — и внеплановые.
+ *                  Набор значений принадлежит коду (по нему ветвится проверка), а выбор — за
+ *                  пользователем; фронт по нему решает, красить ли занятие поверх как конфликт
  */
 public record ConstraintKindDto(
         String code,
@@ -20,6 +26,7 @@ public record ConstraintKindDto(
         Integer sortOrder,
         boolean active,
         boolean system,
-        long usageCount
+        long usageCount,
+        ConstraintMode mode
 ) {
 }

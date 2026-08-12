@@ -1,5 +1,6 @@
 package ru.dto.curriculumSlot;
 
+import ru.enums.AssessmentWindow;
 import ru.enums.KindOfStudy;
 
 /**
@@ -9,6 +10,9 @@ import ru.enums.KindOfStudy;
  * @param disciplineCourseId    ID курса, к которому относится слот.
  * @param position              Порядковый номер слота в курсе.
  * @param kindOfStudy           Вид занятия (лекция, практика и т.д.).
+ * @param assessmentWindow      Где сдаётся: {@code SESSION} — в экзаменационную сессию (нужны дни
+ *                              подготовки, генерация не размещает), {@code STUDY_TIME} — в учебное
+ *                              время. Для неаттестационных видов всегда {@code STUDY_TIME}.
  * @param themeLesson           Краткая информация о теме (если есть).
  * @param requiredAuditorium    Краткая информация о жестко требуемой аудитории (если есть).
  * @param priorityAuditorium    Краткая информация о приоритетной аудитории (если есть).
@@ -19,6 +23,7 @@ public record CurriculumSlotDto(
         Integer disciplineCourseId,
         Integer position,
         KindOfStudy kindOfStudy,
+        AssessmentWindow assessmentWindow,
         ThemeLessonBriefDto themeLesson,
         AuditoriumBriefDto requiredAuditorium,
         AuditoriumBriefDto priorityAuditorium,

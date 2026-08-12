@@ -3,6 +3,7 @@ package ru.services.solver;
 import lombok.Getter;
 import ru.entity.*;
 import ru.services.constraints.AllConstraints;
+import ru.services.constraints.ConstraintAdmissionRule;
 import ru.services.solver.availability.ResourceAvailabilityManager;
 import ru.services.solver.model.AuditoriumResource;
 import ru.services.solver.model.SchedulableResource;
@@ -72,12 +73,35 @@ public final class ScheduleWorkspace {
      * @return {@link PlacementOption}, описывающий возможность и детали размещения.
      */
     public PlacementOption findPlacementOption(Lesson lesson, CellForLesson cell) {
+        return findPlacementOption(lesson, cell, ConstraintPolicy.STRICT);
+    }
+
+    /**
+     * То же, но с явно названной политикой отношения к постоянным ограничениям.
+     *
+     * <p>Перегрузка, а не параметр у единственного метода: строгая проверка должна оставаться
+     * дефолтом. Генерация зовёт версию из двух аргументов и о послаблениях не знает — иначе окно
+     * со свободными днями группы открыло бы автоматическую раскладку зачётов в сессию. Послабление
+     * получает только тот, кто назвал {@link ConstraintPolicy#HONOR_WINDOWS}: ручная установка,
+     * перенос и подсказка «куда можно» — то есть пути, где решение принимает человек.</p>
+     *
+     * @param policy {@link ConstraintPolicy#STRICT} — любое ограничение запрещает;
+     *               {@link ConstraintPolicy#HONOR_WINDOWS} — окна аттестации пускают то, что им
+     *               положено (см. {@code ConstraintAdmissionRule})
+     */
+    public PlacementOption findPlacementOption(Lesson lesson, CellForLesson cell, ConstraintPolicy policy) {
         // 1. Собираем всех "статичных" участников занятия (люди и группы)
         List<SchedulableResource> mainParticipants = getStaticParticipants(lesson);
 
+        // Занятие глазами правила допуска: норма плана (где сдаётся) + категория вида. При строгой
+        // политике не вычисляем вовсе — null означает «спрашиваю вообще», и любое ограничение
+        // запрещает, как было до появления окон.
+        ConstraintAdmissionRule.Admission admission =
+                policy == ConstraintPolicy.HONOR_WINDOWS ? ConstraintAdmissionRule.Admission.of(lesson) : null;
+
         // 2. Проверяем их доступность. Это быстрая O(1) проверка.
         for (SchedulableResource participant : mainParticipants) {
-            if (!participant.isFree(cell)) {
+            if (!participant.isFree(cell, admission)) {
                 return PlacementOption.unavailable(lesson, cell, participant.getName() + " занят");
             }
         }
@@ -98,6 +122,19 @@ public final class ScheduleWorkspace {
         int score = calculatePlacementScore(mainParticipants, cell);
 
         return PlacementOption.available(lesson, cell, foundAuditoriums.subList(0, requiredAuditoriumCount), score);
+    }
+
+    /**
+     * Как проверка относится к постоянным ограничениям.
+     *
+     * <p>Не «строгий/мягкий режим вообще»: занятость ресурса другим занятием — физика, она
+     * непреодолима при любой политике. Различие касается только окон промежуточной аттестации.</p>
+     */
+    public enum ConstraintPolicy {
+        /** Любое ограничение запрещает. Так работает генерация — и так было всегда. */
+        STRICT,
+        /** Окна аттестации пускают то, что им положено. Ручные пути: установка, перенос, подсказка. */
+        HONOR_WINDOWS
     }
 
     /**

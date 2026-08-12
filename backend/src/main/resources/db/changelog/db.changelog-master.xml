@@ -77,4 +77,8 @@
          значит перечень принадлежит пользователю, а не релизу -->
     <include file="022-create-kind-of-constraint.sql" relativeToChangelogFile="true"/>
 
+    <!-- Экзаменационная сессия: норма плана «где сдаётся аттестация» (curriculum_slot) и режим
+         интервала «что он впускает» (kind_of_constraint) — два разных вопроса, две колонки -->
+    <include file="023-assessment-window.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

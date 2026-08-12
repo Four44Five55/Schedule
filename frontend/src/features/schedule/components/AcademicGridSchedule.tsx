@@ -10,6 +10,7 @@ import {CurriculumService} from '../../../services/apiServices';
 import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../../components/grid/AcademicGridShell';
 import {kindStyleOfCategory} from '../kindStyles';
 import {useEnums} from '../../../context/EnumContext';
+import {isConstraintConflict} from '../../constraints/constraintAdmission';
 
 /** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб; воскресенье не планируется). */
 const WEEKDAY_ID: Record<DayOfWeek, number> = {
@@ -376,6 +377,14 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
   // Пины (Фича 2) активны только если хост передал обработчик закрепления —
   // в разделе «Расписание» он не передаётся, и сетка выглядит как раньше.
   const pinningEnabled = !!onToggleLock;
+
+  // Справочник видов ограничений: по режиму вида решается, конфликт ли «занятие поверх
+  // ограничения». Экзамен в экзаменационной сессии конфликтом не является.
+  const { constraintKinds, getStudyCategory } = useEnums();
+  const constraintKindByCode = useMemo(
+      () => new Map(constraintKinds.map((k) => [k.code, k])),
+      [constraintKinds]
+  );
 
   // Перенос «по сетке»: выбираем занятие → подсвечиваем зелёным доступные ячейки →
   // клик по зелёной ячейке переносит занятие туда. Без модального окна.
@@ -877,7 +886,13 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
             && (!ci.c.timeSlot || ci.c.timeSlot === slot.id)
     )?.c;
 
-    const isConflict = !!lesson && !!activeConstraint;
+    // Конфликт — не любое совпадение «занятие + ограничение»: окно промежуточной аттестации
+    // для того и существует, чтобы принять экзамен. Решает общее правило (см. constraintAdmission).
+    const isConflict = !!lesson && !!activeConstraint
+        && isConstraintConflict(
+            constraintKindByCode.get(activeConstraint.kindOfConstraint),
+            getStudyCategory(lesson.kindOfStudy)
+        );
     const isMoveTarget = (!!selectedLesson || !!placementCandidate) && !lesson && moveTargets.has(gridKey);
     const isTeacherBusy = selectedEducatorIds.size > 0 && !lesson && !isMoveTarget && teacherBusyCells.has(gridKey);
     const isSourceCell = !!lesson && isSelectedLesson(lesson);

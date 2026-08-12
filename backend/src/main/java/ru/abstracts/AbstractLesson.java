@@ -9,6 +9,7 @@ import ru.entity.logicSchema.AuditoriumPool;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.entity.logicSchema.StudyStream;
+import ru.enums.AssessmentWindow;
 import ru.enums.KindOfStudy;
 
 import java.util.*;
@@ -70,6 +71,19 @@ public abstract class AbstractLesson {
 
     public KindOfStudy getKindOfStudy() {
         return curriculumSlot != null ? curriculumSlot.getKindOfStudy() : null;
+    }
+
+    /**
+     * Где сдаётся аттестация по плану: в сессию или в учебное время.
+     *
+     * <p>Делегат к слоту — рядом с {@link #getKindOfStudy()} и по той же причине: цепочка
+     * {@code getCurriculumSlot().getAssessmentWindow()} разошлась бы по вызывающим (аудит §1.3 про
+     * train wreck). Слота нет — считаем «в учебное время»: это дефолт, а не признак ошибки.</p>
+     */
+    public AssessmentWindow getAssessmentWindow() {
+        return curriculumSlot != null && curriculumSlot.getAssessmentWindow() != null
+                ? curriculumSlot.getAssessmentWindow()
+                : AssessmentWindow.STUDY_TIME;
     }
 
     /**

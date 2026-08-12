@@ -14,6 +14,7 @@ import ru.entity.logicSchema.AuditoriumPool;
 import ru.entity.logicSchema.CurriculumSlot;
 import ru.entity.logicSchema.DisciplineCourse;
 import ru.entity.logicSchema.ThemeLesson;
+import ru.enums.AssessmentWindow;
 import ru.mapper.CurriculumSlotMapper;
 import ru.repository.AssignmentRepository;
 import ru.repository.CurriculumSlotRepository;
@@ -76,6 +77,7 @@ public class CurriculumSlotService {
         newSlot.setPosition(createDto.position());
         newSlot.setDisciplineCourse(course);
         newSlot.setKindOfStudy(createDto.kindOfStudy());
+        newSlot.setAssessmentWindow(resolveWindow(createDto.assessmentWindow()));
 
         // 4. Устанавливаем связи через сервисы
         if (createDto.themeLessonId() != null) {
@@ -98,11 +100,22 @@ public class CurriculumSlotService {
         return curriculumSlotMapper.toDto(curriculumSlotRepository.save(newSlot));
     }
 
+    /**
+     * Где сдаётся аттестация; не задано — «в учебное время».
+     *
+     * <p>Умолчание строгое: {@code SESSION} означает «генерация это не размещает», и получить такое
+     * поведение по забывчивости клиента нельзя — занятие молча исчезло бы из расписания.</p>
+     */
+    private static AssessmentWindow resolveWindow(AssessmentWindow window) {
+        return window == null ? AssessmentWindow.STUDY_TIME : window;
+    }
+
     @Transactional
     public CurriculumSlotDto updateSlot(Integer slotId, CurriculumSlotUpdateDto updateDto) {
         CurriculumSlot slotToUpdate = getEntityById(slotId);
 
         slotToUpdate.setKindOfStudy(updateDto.kindOfStudy());
+        slotToUpdate.setAssessmentWindow(resolveWindow(updateDto.assessmentWindow()));
 
         // Обновляем связи через сервисы, обрабатывая null
         slotToUpdate.setThemeLesson(

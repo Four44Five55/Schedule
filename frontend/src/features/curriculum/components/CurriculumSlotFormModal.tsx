@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Layers, AlertCircle, Info, Plus, Edit2 } from 'lucide-react';
-import { CurriculumSlotDto, KindOfStudy, ThemeLessonDto, AuditoriumDto, AuditoriumPoolDto } from '../../../types/api';
+import { AssessmentWindow, CurriculumSlotDto, KindOfStudy, ThemeLessonDto, AuditoriumDto, AuditoriumPoolDto } from '../../../types/api';
 import { ResourceService, CurriculumService } from '../../../services/apiServices';
 import { SlotFormValues } from '../planSource';
 import { useEnums } from '../../../context/EnumContext';
@@ -24,11 +24,18 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
     onSave
 }) => {
     const isEditMode = slot !== null;
-    const { kindOfStudy: kindsOfStudyEnum } = useEnums();
+    const { kindOfStudy: kindsOfStudyEnum, getStudyCategory } = useEnums();
 
     // Состояние формы
     const [position, setPosition] = useState(slot?.position ?? nextPosition);
     const [kindOfStudy, setKindOfStudy] = useState<KindOfStudy | ''>(slot?.kindOfStudy ?? '');
+    /**
+     * Где сдаётся аттестация. Спрашивается только у аттестаций — у лекции выбора нет.
+     * Умолчание для новой: «в сессию», потому что так сдаётся подавляющее большинство; исключение
+     * (физподготовка) человек снимет здесь же.
+     */
+    const [assessmentWindow, setAssessmentWindow] =
+        useState<AssessmentWindow>(slot?.assessmentWindow ?? 'SESSION');
     const [themeLessonId, setThemeLessonId] = useState<number | null>(slot?.themeLesson?.id ?? null);
     const [requiredAuditoriumId, setRequiredAuditoriumId] = useState<number | null>(slot?.requiredAuditorium?.id ?? null);
     const [priorityAuditoriumId, setPriorityAuditoriumId] = useState<number | null>(slot?.priorityAuditorium?.id ?? null);
@@ -55,6 +62,10 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
     const [editThemeError, setEditThemeError] = useState<string | null>(null);
 
     const selectedTheme = themeLessons.find(t => t.id === themeLessonId) ?? null;
+
+    // Аттестация ли выбранный вид — решает бэк (категория приезжает с ним же), фронт списка
+    // кодов не держит. Только у аттестаций спрашиваем, где они сдаются.
+    const isAssessment = !!kindOfStudy && getStudyCategory(kindOfStudy) === 'ASSESSMENT';
 
     // Состояние отправки
     const [saving, setSaving] = useState(false);
@@ -116,6 +127,9 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
             await onSave({
                 position,
                 kindOfStudy: kindOfStudy as KindOfStudy,
+                // Норму «где сдаётся» передаём только у аттестаций: у обычного занятия она
+                // тривиальна, и отправлять её значило бы делать вид, что у лекции есть выбор.
+                assessmentWindow: isAssessment ? assessmentWindow : 'STUDY_TIME',
                 themeLessonId: themeLessonId || undefined,
                 requiredAuditoriumId: requiredAuditoriumId || undefined,
                 priorityAuditoriumId: priorityAuditoriumId || undefined,
@@ -294,6 +308,31 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                                     </select>
                                     {kindOfStudyError && <p className="text-xs text-red-600 font-medium">{kindOfStudyError}</p>}
                                 </div>
+
+                                {/* Где сдаётся — только у аттестаций: у лекции или практики выбора нет.
+                                    Что считать аттестацией, решает бэк (категория вида), фронт своего
+                                    списка кодов не держит. */}
+                                {isAssessment && (
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+                                            Где сдаётся
+                                        </label>
+                                        <select
+                                            value={assessmentWindow}
+                                            onChange={(e) => setAssessmentWindow(e.target.value as AssessmentWindow)}
+                                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium transition-all outline-none appearance-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                            disabled={saving}
+                                        >
+                                            <option value="SESSION">В экзаменационную сессию</option>
+                                            <option value="STUDY_TIME">В учебное время</option>
+                                        </select>
+                                        <p className="text-[11px] text-slate-500 leading-snug">
+                                            {assessmentWindow === 'SESSION'
+                                                ? 'Нужны дни подготовки, и генерация такое не размещает: экзамен принимает лектор, по группам он идёт лесенкой — ставит диспетчер.'
+                                                : 'Обычное занятие в семестре: дней подготовки не требует и в длину сессии не входит (так сдаётся экзамен по физподготовке).'}
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Разделитель */}
                                 <div className="border-t border-slate-200 my-4" />

@@ -7,6 +7,7 @@ import ru.dto.moveLesson.MoveOptionDto;
 import ru.dto.moveLesson.MoveSuggestionRequest;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
+import ru.services.constraints.ConstraintAdmissionRule;
 import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.ScheduleWorkspace;
 import ru.services.solver.model.SchedulableResource;
@@ -53,15 +54,20 @@ public class MoveLessonSuggestionService {
         // ШАГ 1: Фильтр по корневой сущности (самый быстрый)
         // Если мы смотрим расписание Группы А, то в первую очередь убираем все ячейки,
         // где Группа А уже занята чем-то другим.
+        // Подсказка обязана спрашивать РОВНО то же, что фактический перенос (он идёт с
+        // HONOR_WINDOWS): иначе ячейка окна аттестации либо не подсветится, либо подсветится и
+        // даст 409. Вход правила собирается одним общим сборщиком.
+        ConstraintAdmissionRule.Admission admission = ConstraintAdmissionRule.Admission.of(targetLesson);
+
         SchedulableResource rootResource = getRootResource(workspace, request);
-        candidates.removeIf(cell -> !rootResource.isFree(cell));
+        candidates.removeIf(cell -> !rootResource.isFree(cell, admission));
 
         // ШАГ 2: Фильтр по остальным участникам занятия (Educators + Groups)
         // Если Группа А свободна, проверяем, свободен ли Преподаватель и другие группы потока.
         List<SchedulableResource> otherParticipants = getParticipantsExceptRoot(workspace, targetLesson, request.rootEntityId());
         for (SchedulableResource participant : otherParticipants) {
             if (candidates.isEmpty()) break;
-            candidates.removeIf(cell -> !participant.isFree(cell));
+            candidates.removeIf(cell -> !participant.isFree(cell, admission));
         }
 
         // ШАГ 3: Фильтр по инфраструктуре (самый тяжелый)
@@ -100,13 +106,16 @@ public class MoveLessonSuggestionService {
                                                         String rootType, Integer rootId) {
         List<CellForLesson> candidates = new ArrayList<>(CellForLessonFactory.getAllCells());
 
+        // Как и в findMoveSuggestions: подсветка палитры идёт по тем же правилам, что установка.
+        ConstraintAdmissionRule.Admission admission = ConstraintAdmissionRule.Admission.of(lesson);
+
         SchedulableResource rootResource = getRootResourceByType(workspace, rootType, rootId);
-        candidates.removeIf(cell -> !rootResource.isFree(cell));
+        candidates.removeIf(cell -> !rootResource.isFree(cell, admission));
 
         List<SchedulableResource> otherParticipants = getParticipantsExceptRoot(workspace, lesson, rootId);
         for (SchedulableResource participant : otherParticipants) {
             if (candidates.isEmpty()) break;
-            candidates.removeIf(cell -> !participant.isFree(cell));
+            candidates.removeIf(cell -> !participant.isFree(cell, admission));
         }
 
         if (!candidates.isEmpty()) {

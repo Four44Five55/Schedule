@@ -5,6 +5,7 @@ import ru.entity.CellForLesson;
 import ru.entity.ConstraintsGrid;
 import ru.entity.Lesson;
 import ru.entity.constraints.ConstraintKindRef;
+import ru.services.constraints.ConstraintAdmissionRule;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -66,6 +67,30 @@ public class SchedulableResource {
      */
     public boolean isFree(CellForLesson cell) {
         return hardConstraints.isFreeCell(cell) && !schedule.containsKey(cell);
+    }
+
+    /**
+     * То же, но с учётом того, ЧТО именно пытаются поставить.
+     *
+     * <p>Занятость другим занятием — физика, она непреодолима и проверяется как раньше. А
+     * постоянное ограничение может оказаться окном промежуточной аттестации: тогда экзамен,
+     * запланированный планом в сессию, в свою ячейку проходит, хотя учебное занятие — нет.
+     * Решает {@link ConstraintAdmissionRule}; здесь только применение.</p>
+     *
+     * <p><b>Метод намеренно отдельный, а не замена строгого.</b> Послабления должны доставаться
+     * только тем путям, которые их запросили: генерация продолжает звать {@link #isFree(CellForLesson)}
+     * и о режимах ограничений не знает вовсе. Иначе окно со свободными днями группы открыло бы
+     * автоматическую раскладку зачётов в сессию — ровно тот дрейф, ради предотвращения которого
+     * заводились два уровня.</p>
+     *
+     * @param cell      временной слот
+     * @param admission занятие глазами правила; {@code null} = «спрашиваю вообще» → строгая проверка
+     */
+    public boolean isFree(CellForLesson cell, ConstraintAdmissionRule.Admission admission) {
+        if (schedule.containsKey(cell)) {
+            return false;
+        }
+        return ConstraintAdmissionRule.admits(hardConstraints.getConstraint(cell), admission);
     }
 
     /**

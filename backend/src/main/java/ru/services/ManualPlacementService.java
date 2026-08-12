@@ -162,7 +162,10 @@ public class ManualPlacementService {
         Lesson lesson = placementSeeder.buildLesson(assignment);
 
         // Та же валидация, что и при генерации/переносе: ресурсы свободны + есть аудитория.
-        PlacementOption option = workspace.findPlacementOption(lesson, cell);
+        // HONOR_WINDOWS: ставит человек, поэтому окно промежуточной аттестации пускает в себя
+        // запланированную в сессию аттестацию (генерация окон не видит).
+        PlacementOption option = workspace.findPlacementOption(lesson, cell,
+                ScheduleWorkspace.ConstraintPolicy.HONOR_WINDOWS);
         if (!option.isPossible()) {
             throw new LessonMoveConflictException(option.failureReason());
         }

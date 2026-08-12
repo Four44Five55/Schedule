@@ -1,4 +1,4 @@
-import { CurriculumSlotDto, KindOfStudy, SlotChainDto, SlotDeletionImpactDto } from '../../types/api';
+import { AssessmentWindow, CurriculumSlotDto, KindOfStudy, SlotChainDto, SlotDeletionImpactDto } from '../../types/api';
 import { CurriculumService } from '../../services/apiServices';
 
 /**
@@ -8,6 +8,8 @@ import { CurriculumService } from '../../services/apiServices';
 export interface SlotFormValues {
   position: number;
   kindOfStudy: KindOfStudy;
+  /** Где сдаётся аттестация; не передано — бэк ставит `STUDY_TIME`. */
+  assessmentWindow?: AssessmentWindow;
   themeLessonId?: number;
   requiredAuditoriumId?: number;
   priorityAuditoriumId?: number;
@@ -51,6 +53,9 @@ export const courseSlotSource = (courseId: number): CurriculumPlanSource => ({
   create: (v) => CurriculumService.createSlot({ disciplineCourseId: courseId, ...v }),
   update: (id, v) => CurriculumService.updateSlot(id, {
     kindOfStudy: v.kindOfStudy,
+    // Обязательно передавать: бэк трактует отсутствие поля как STUDY_TIME, поэтому «забыть» его
+    // здесь значит молча выкинуть экзамен из сессии при любой правке слота.
+    assessmentWindow: v.assessmentWindow,
     themeLessonId: v.themeLessonId,
     requiredAuditoriumId: v.requiredAuditoriumId,
     priorityAuditoriumId: v.priorityAuditoriumId,

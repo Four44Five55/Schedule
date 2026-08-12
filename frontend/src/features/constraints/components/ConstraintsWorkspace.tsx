@@ -82,6 +82,8 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
   const [lists, setLists] = useState<ConstraintLists>({ educator: [], group: [], auditorium: [] });
   const [loadingResources, setLoadingResources] = useState(true);
   const [loadingConstraints, setLoadingConstraints] = useState(false);
+  /** Текст об отказе загрузки — молчать нельзя: пустой раздел неотличим от «ограничений нет». */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalPreset, setModalPreset] = useState<{ startDate: string; endDate: string; timeSlot?: TimeSlotPair } | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -115,15 +117,36 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
   }, []);
 
   // Все ограничения трёх типов (master-data) — на монтировании и после правок.
+  //
+  // allSettled, а не all: при `all` отказ ОДНОГО запроса не давал выполниться `.then`, и все три
+  // списка молча оставались пустыми — раздел выглядел как «ограничений нет», хотя они есть
+  // (в расписании те же ограничения продолжали показываться: там свой запрос по сущности).
+  // Пустой экран — худший вид ошибки: он неотличим от правды. Теперь уцелевшие типы
+  // показываются, а про упавший говорится вслух.
   useEffect(() => {
     setLoadingConstraints(true);
     let cancelled = false;
-    Promise.all([
+    Promise.allSettled([
       ConstraintsService.getEducatorConstraints(),
       ConstraintsService.getGroupConstraints(),
       ConstraintsService.getAuditoriumConstraints(),
-    ]).then(([educator, group, auditorium]) => {
-      if (!cancelled) setLists({ educator, group, auditorium });
+    ]).then((results) => {
+      if (cancelled) return;
+      const [educator, group, auditorium] = results;
+      const failed: string[] = [];
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          failed.push(['преподавателей', 'групп', 'аудиторий'][i]);
+          console.error('Не удалось загрузить ограничения:', r.reason);
+        }
+      });
+      setLists({
+        educator: educator.status === 'fulfilled' ? educator.value : [],
+        group: group.status === 'fulfilled' ? group.value : [],
+        auditorium: auditorium.status === 'fulfilled' ? auditorium.value : [],
+      });
+      setLoadError(failed.length === 0 ? null
+        : `Не загрузились ограничения ${failed.join(', ')} — показано неполно. Подробности в консоли браузера.`);
     }).finally(() => { if (!cancelled) setLoadingConstraints(false); });
     return () => { cancelled = true; };
   }, [refreshTick]);
@@ -276,6 +299,13 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+          <span>{loadError}</span>
+        </div>
+      )}
+
       {/* Панель выбора: тип сущности + формат + объект */}
       <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row items-center gap-3">
