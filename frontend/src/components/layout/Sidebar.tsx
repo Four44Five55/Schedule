@@ -11,7 +11,8 @@ import {
   CalendarRange,
   Menu,
   ChevronLeft,
-  Network
+  Network,
+  FileUp
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -26,7 +27,8 @@ export type TabId =
     | 'streams'
     | 'orgUnits'
     | 'constraints'
-    | 'schedule';
+    | 'schedule'
+    | 'import';
 
 interface SidebarProps {
   activeTab: TabId;
@@ -45,6 +47,7 @@ const menuItems: { id: TabId; label: string; icon: React.ElementType; color: str
   { id: 'streams', label: 'Потоки', icon: Layers, color: 'text-teal-500' },
   { id: 'orgUnits', label: 'Оргструктура', icon: Network, color: 'text-sky-500' },
   { id: 'constraints', label: 'Ограничения', icon: ShieldAlert, color: 'text-amber-500' },
+  { id: 'import', label: 'Импорт', icon: FileUp, color: 'text-fuchsia-500' },
 ];
 
 /** Все валидные id вкладок — единый источник для навигации и восстановления состояния. */

@@ -92,14 +92,14 @@ public class Educator implements IMaterialEntity {
 
     /**
      * Уровень учёной степени. Вторая её половина — {@link #scienceBranch}: вместе они дают
-     * «к.т.н.». Готовая строка сокращения не хранится намеренно — это было бы третье
+     * «ктн». Готовая строка сокращения не хранится намеренно — это было бы третье
      * представление одного факта.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "academic_degree", length = 50)
     private ru.enums.AcademicDegree academicDegree;
 
-    /** Отрасль науки учёной степени: «технические» → «к.т.н.». */
+    /** Отрасль науки учёной степени: «технические» → «ктн». */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "science_branch_id")
     private ru.entity.dictionary.ScienceBranch scienceBranch;

@@ -312,7 +312,7 @@ public class ScheduleExportService {
      * колонок лектора и ведущих остальные виды.
      *
      * @param department краткое имя подразделения («ВМ»); пусто — привязки нет
-     * @param titleLine  подпись «п-к юст Иванов И.И., к.т.н., доц»; без регалий равна ФИО
+     * @param titleLine  подпись «п-к юст Иванов И.И., ктн, доц»; без регалий равна ФИО
      */
     private record EducatorLabel(String department, String titleLine) {}
 

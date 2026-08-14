@@ -10,6 +10,7 @@ import { OrgUnitManager } from './features/orgUnit/components/OrgUnitManager';
 import { ConstraintsManager } from './features/constraints/components/ConstraintsManager';
 import { PlannerManager } from './features/planner/components/PlannerManager';
 import { ScheduleManager } from './features/schedule/components/ScheduleManager';
+import { ImportManager } from './features/importing/components/ImportManager';
 import type { GroupDto, EducatorDto, AuditoriumDto, StudyStreamDto, DisciplineDto, StudyPeriodDto } from './types/api';
 import { ResourceService, CurriculumService } from './services/apiServices';
 import { CQRSService } from './services/cqrsApiService';
@@ -213,6 +214,10 @@ function AppShell() {
         // Раздел «Расписание» самодостаточен: период берёт из общего контекста и сам
         // грузит занятия этого периода.
         return <ScheduleManager />;
+      case 'import':
+        // Пробный разбор чужой выгрузки. Периода не спрашивает намеренно: экран ничего не
+        // записывает, а значит и целью записи ему быть нечем (решение И-10).
+        return <ImportManager />;
       default:
         return (
             <div className="flex flex-col items-center justify-center h-96 text-slate-300">

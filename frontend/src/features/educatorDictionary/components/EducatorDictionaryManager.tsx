@@ -78,8 +78,8 @@ export const EducatorDictionaryManager: React.FC<Props> = ({ onClose, onChanged 
                         <div>
                             <h2 className="text-lg font-black text-slate-900">Справочники регалий</h2>
                             <p className="text-[11px] text-slate-500">
-                                Сокращения — без точек: «п-к», «юст», «т». Точки, где нужны по форме («к.т.н.»),
-                                расставляются при выводе.
+                                Сокращения — без точек: «п-к», «юст», «т». Подпись собирается тоже без них:
+                                «т» + кандидат → «ктн». Так же пишут документы, из которых мы читаем данные.
                             </p>
                         </div>
                     </div>

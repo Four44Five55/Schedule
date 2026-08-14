@@ -72,7 +72,10 @@ import {
   OrgUnitDeletionImpactDto,
   DictionaryEntryDto,
   DictionaryEntryFormDto,
-  DictionaryKindDto
+  DictionaryKindDto,
+  ImportReportDto,
+  ImportCreationReportDto,
+  FolderInspectionReportDto
 } from '../types/api';
 import { downloadBlob, filenameFromContentDisposition } from '../utils/download';
 
@@ -90,6 +93,85 @@ export const EnumService = {
             academicTitles: EnumDto[];
           }>('/enums/all')
           .then((r) => r.data),
+};
+
+/**
+ * Импорт расписания из сторонней программы.
+ *
+ * Пока здесь только пробный разбор: он отвечает на вопрос «что программа поняла из файла» и
+ * **ничего не записывает**. Первый прогон импорта сущностей не создаёт намеренно — завести
+ * преподавателя легко, а убрать (когда на него сошлётся назначение) уже нет.
+ */
+export const ImportService = {
+  /**
+   * Пробный разбор файлов выгрузки (HTML любого разреза — группы, преподавателя, аудитории)
+   * вместе со сверкой по справочникам. Не пишет ничего.
+   *
+   * Заголовок `Content-Type` **не задаём вручную**: границу multipart проставляет браузер, а
+   * axios-клиент по умолчанию шлёт `application/json` — с ним бэк не разберёт тело.
+   *
+   * `locationId` — в какой локации искать аудитории. В файле локации нет вовсе, а корпус «3»
+   * законно существует в нескольких кампусах; без параметра одноимённые комнаты вернутся как
+   * «одноимённых несколько», а не будут выбраны наугад.
+   */
+  inspect: (files: File[], locationId?: number | null): Promise<ImportReportDto> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<ImportReportDto>('/import/inspect', form, {
+      headers: { 'Content-Type': undefined },
+      params: locationId != null ? { locationId } : undefined,
+    }).then((r) => r.data);
+  },
+
+  /**
+   * Разобрать каталог выгрузки прямо на диске — путь для полного объёма.
+   *
+   * Файлы не загружаются: бэкенд локальный, выгрузка лежит на той же машине. Каталог должен быть
+   * внутри `import.source-root`, иначе бэк ответит 400 с объяснением.
+   */
+  inspectFolder: (path: string, locationId?: number | null): Promise<FolderInspectionReportDto> =>
+    api.post<FolderInspectionReportDto>('/import/inspect-folder', null, {
+      params: { path, ...(locationId != null ? { locationId } : {}) },
+    }).then((r) => r.data),
+
+  /**
+   * Завести в справочниках то, чего сверка не нашла. Плана и расписания не касается.
+   *
+   * Файлы шлются заново, а не хранятся на сервере: у отчёта нет серверной жизни между запросами,
+   * иначе появилась бы «висящая заявка», которую надо протухать и синхронизировать.
+   *
+   * `groupSize` и `roomCapacity` — то, чего в выгрузке нет, а колонки `NOT NULL`. Вместимость
+   * определяет будущий счёт «перебор в аудитории», поэтому число называет человек, а не константа.
+   */
+  createMissing: (
+    files: File[],
+    settings: { locationId?: number | null; groupSize: number; roomCapacity: number },
+  ): Promise<ImportCreationReportDto> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<ImportCreationReportDto>('/import/create-missing', form, {
+      headers: { 'Content-Type': undefined },
+      params: {
+        groupSize: settings.groupSize,
+        roomCapacity: settings.roomCapacity,
+        ...(settings.locationId != null ? { locationId: settings.locationId } : {}),
+      },
+    }).then((r) => r.data);
+  },
+
+  /** То же заведение, но по каталогу на диске — правила и сервис те же, отличается только вход. */
+  createMissingFromFolder: (
+    path: string,
+    settings: { locationId?: number | null; groupSize: number; roomCapacity: number },
+  ): Promise<ImportCreationReportDto> =>
+    api.post<ImportCreationReportDto>('/import/create-missing-folder', null, {
+      params: {
+        path,
+        groupSize: settings.groupSize,
+        roomCapacity: settings.roomCapacity,
+        ...(settings.locationId != null ? { locationId: settings.locationId } : {}),
+      },
+    }).then((r) => r.data),
 };
 
 /**

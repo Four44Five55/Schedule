@@ -90,7 +90,7 @@ export interface EnumDto {
 // ============ RESOURCES ============
 /**
  * Регалии преподавателя. Все поля необязательны — «не указано» законное состояние.
- * Степень задаётся ДВУМЯ полями (уровень + отрасль): готовой строки «к.т.н.» в модели нет,
+ * Степень задаётся ДВУМЯ полями (уровень + отрасль): готовой строки «ктн» в модели нет,
  * её собирает бэк.
  */
 export interface EducatorCredentialsFields {
@@ -119,7 +119,7 @@ export interface EducatorDto extends EducatorCredentialsFields {
   rankServiceName?: string | null;
   scienceBranchName?: string | null;
   /**
-   * Готовая подпись «п-к юст Иванов И.И., к.т.н., доц» — собрана на бэке.
+   * Готовая подпись «п-к юст Иванов И.И., ктн, доц» — собрана на бэке.
    * Фронт её НЕ склеивает сам: тот же текст нужен бланку выгрузки, и вторая склейка
    * неминуемо разошлась бы с первой. Без регалий равна ФИО.
    */
@@ -147,7 +147,7 @@ export interface EducatorUpdateDto extends EducatorCredentialsFields {
 export interface DictionaryEntryDto {
   id: number;
   name: string;
-  /** Сокращение без точек («п-к»); точки, где нужны по форме («к.т.н.»), расставляет бэк. */
+  /** Сокращение без точек («п-к»); подпись собирается тоже без них («ктн») — склейка на бэке. */
   shortName: string;
   sortOrder: number;
   active: boolean;
@@ -841,4 +841,153 @@ export interface ScheduleResultDto {
   endDate: string;
   totalSlots: number;
   usedSlots: number;
+}
+
+// ============ ИМПОРТ РАСПИСАНИЯ ИЗ СТОРОННЕЙ ПРОГРАММЫ ============
+
+/**
+ * Разрез выгрузки: чьё это расписание. Определяется бэком ПО ШАПКЕ файла, а не по имени —
+ * имена файлов у заказчика («911», «ГоряиновР.И.») ничего не гарантируют.
+ */
+export type ImportCutKind = 'GROUP' | 'EDUCATOR' | 'AUDITORIUM' | 'UNKNOWN';
+
+/** Занятие, как оно прочитано из ячейки: ничего не сопоставлено с нашей базой. */
+export interface ImportLessonEntryDto {
+  date: string | null;
+  slot: TimeSlotPair;
+  kind: string | null;       // «Л», «ЛР», «ПЗ»; null в преподавательском разрезе
+  theme: string | null;      // «Т.4»; только групповой разрез
+  discipline: string | null; // обозначение: «АСКС»
+  /** Групп может быть несколько — потоковое занятие в одной ячейке. */
+  groups: string[];
+  /** Аудиторий тоже: занятие делится по кабинетам. */
+  rooms: string[];
+  educator: string | null;   // только преподавательский разрез
+}
+
+/**
+ * Строка подвала группового файла: дисциплина с преподавателями.
+ * `code` — то, чем дисциплина подписана в ячейках, он же ключ склейки с занятиями.
+ * Подписи преподавателей отдаются как в файле — со званием и степенью, без разбора.
+ */
+export interface ImportFooterRowDto {
+  code: string;
+  name: string;
+  department: string;
+  lecturers: string[];
+  practicians: string[];
+  hours: string;   // «18-30» — как напечатано, не разбирается
+  report: string;  // «ЗО», «ЗЧ», «ЭКЗ» либо пусто
+  stream: string;
+}
+
+/**
+ * Что стало со значением из файла. Заводить можно только `MISSING`:
+ * `AMBIGUOUS` — это незнание, а не отсутствие, и новая строка сделала бы его вечным.
+ */
+export type ImportMatchStatus = 'MATCHED' | 'MISSING' | 'AMBIGUOUS' | 'UNREADABLE';
+
+/** Строка сверки: одно значение из файла и его судьба в нашей базе. */
+export interface ImportMatchRowDto {
+  source: string;              // как в файле: «АСКС», «п/п-к Чащин С.В.», «252-3»
+  detail: string | null;       // что понял разбор: «корпус 3», «ф. 9 · каф. 91 · набор 2025»
+  status: ImportMatchStatus;
+  matchedId: number | null;
+  matchedName: string | null;  // как называется у нас — может отличаться, это и надо увидеть
+  note: string | null;         // причина отказа либо расхождение при совпадении
+}
+
+/** Раздел сверки по одной категории; несопоставленные строки идут первыми. */
+export interface ImportMatchSectionDto {
+  title: string;
+  hint: string;    // чем сопоставляли
+  total: number;
+  matched: number;
+  rows: ImportMatchRowDto[];
+}
+
+/** Сверка со справочниками по всей пачке файлов. Ничего не записывает. */
+export interface ImportMatchReportDto {
+  sections: ImportMatchSectionDto[];
+}
+
+/**
+ * Сводка по одному разобранному файлу — что программа поняла ДО всякого сопоставления.
+ * Ничего не записывается: первый прогон импорта сущностей не создаёт (решение И-10).
+ */
+export interface SheetInspectionDto {
+  file: string;
+  cut: ImportCutKind;
+  owner: string | null;
+  faculty: string | null;
+  department: string | null;
+  studyYear: number | null;
+  semester: string | null;
+  lessons: number;
+  markers: number;
+  firstDate: string | null;
+  lastDate: string | null;
+  disciplines: string[];
+  groups: string[];
+  rooms: string[];
+  markerCodes: string[];
+  footer: ImportFooterRowDto[];
+  problems: string[];
+  sample: ImportLessonEntryDto[];
+}
+
+/**
+ * Ответ пробной загрузки: сводки по файлам плюс одна сверка на всю пачку.
+ * Вместе, потому что дисциплина из подвала одного файла встречается в ячейках другого.
+ */
+export interface ImportReportDto {
+  files: SheetInspectionDto[];
+  matching: ImportMatchReportDto;
+}
+
+/**
+ * Итог разбора каталога на диске — сводка по пачке, а не карточка на файл.
+ * В живой выгрузке 1792 файла: полторы тысячи карточек весили бы десятки мегабайт JSON.
+ */
+export interface FolderInspectionReportDto {
+  path: string;
+  files: number;
+  parsed: number;
+  failed: number;
+  byCut: Partial<Record<ImportCutKind, number>>;
+  lessons: number;
+  markers: number;
+  firstDate: string | null;
+  lastDate: string | null;
+  /**
+   * Замечания схлопнуты по тексту: одинаковая кривизна в 300 файлах — одна строка с числом.
+   * `example` — имя одного из таких файлов: без него замечание про ячейку («Вт 1 колонка 5»)
+   * нечем проверить, искать её пришлось бы вручную по всему каталогу.
+   */
+  problems: { message: string; count: number; example: string | null }[];
+  problemsTotal: number;
+  matching: ImportMatchReportDto;
+}
+
+/** Строка заведения: `id === null` — пропущено, причина в `note`. */
+export interface ImportCreatedRowDto {
+  source: string;
+  id: number | null;
+  name: string | null;
+  note: string | null;
+}
+
+export interface ImportCreationSectionDto {
+  title: string;
+  created: number;
+  skipped: number;
+  rows: ImportCreatedRowDto[];
+}
+
+/**
+ * Что импорт завёл в справочниках. Плана и расписания не касается: справочники заводятся
+ * отдельным шагом, пока на них никто не ссылается и строки ещё удаляемы.
+ */
+export interface ImportCreationReportDto {
+  sections: ImportCreationSectionDto[];
 }

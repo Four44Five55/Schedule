@@ -32,7 +32,7 @@ class EducatorTitlesTest {
         @DisplayName("все регалии: звание и служба приставкой, степень и звание — хвостом")
         void fullLine() {
             Credentials credentials = of("п-к", "юст", "к", "т", "доц");
-            assertEquals("п-к юст Иванов И.И., к.т.н., доц", EducatorTitles.line(credentials, NAME));
+            assertEquals("п-к юст Иванов И.И., ктн, доц", EducatorTitles.line(credentials, NAME));
         }
 
         @Test
@@ -69,7 +69,7 @@ class EducatorTitlesTest {
         @Test
         @DisplayName("только степень — приставки нет, хвост один")
         void degreeOnly() {
-            assertEquals("Иванов И.И., д.т.н.", EducatorTitles.line(of(null, null, "д", "т", null), NAME));
+            assertEquals("Иванов И.И., дтн", EducatorTitles.line(of(null, null, "д", "т", null), NAME));
         }
 
         @Test
@@ -97,7 +97,7 @@ class EducatorTitlesTest {
         }
 
         @Test
-        @DisplayName("уровень без отрасли даёт «канд наук»: записи «к.н.» не существует")
+        @DisplayName("уровень без отрасли даёт «канд наук»: записи «кн» не существует")
         void degreeWithoutBranch() {
             assertEquals("Иванов И.И., канд наук", EducatorTitles.line(of(null, null, "к", null, null), NAME));
             assertEquals("Иванов И.И., д-р наук", EducatorTitles.line(of(null, null, "д", null, null), NAME));
@@ -116,22 +116,25 @@ class EducatorTitlesTest {
     class Format {
 
         @Test
-        @DisplayName("точки расставляет форматтер: в данных сокращения хранятся без них")
-        void dotsBelongToFormatNotData() {
-            assertEquals("к.т.н.", EducatorTitles.degreeAbbreviation(of(null, null, "к", "т", null)));
+        @DisplayName("степень склеивается слитно и без точек: «к» + «т» → «ктн»")
+        void degreeHasNoDots() {
+            assertEquals("ктн", EducatorTitles.degreeAbbreviation(of(null, null, "к", "т", null)));
+            assertEquals("двн", EducatorTitles.degreeAbbreviation(of(null, null, "д", "в", null)));
         }
 
         @Test
-        @DisplayName("составная отрасль сохраняет дефис: «ф-м» → «к.ф-м.н.»")
-        void compoundBranch() {
-            assertEquals("к.ф-м.н.", EducatorTitles.degreeAbbreviation(of(null, null, "к", "ф-м", null)));
+        @DisplayName("отрасль подставляется как есть: «фм» → «кфмн»")
+        void branchGoesAsStored() {
+            // Форматтер отрасль не правит: как записана в справочнике, так и встанет. Значит
+            // конвенцию сокращений держит справочник в одном месте, а не код в двух.
+            assertEquals("кфмн", EducatorTitles.degreeAbbreviation(of(null, null, "к", "фм", null)));
         }
 
         @Test
         @DisplayName("пробелы по краям значений не протекают в подпись")
         void trimsValues() {
             Credentials credentials = new Credentials("  п-к ", " юст ", " к ", "канд наук", " т ", " доц ");
-            assertEquals("п-к юст Иванов И.И., к.т.н., доц", EducatorTitles.line(credentials, "  Иванов И.И. "));
+            assertEquals("п-к юст Иванов И.И., ктн, доц", EducatorTitles.line(credentials, "  Иванов И.И. "));
         }
 
         @Test

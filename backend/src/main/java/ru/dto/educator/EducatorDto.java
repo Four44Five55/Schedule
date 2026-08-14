@@ -26,7 +26,7 @@ import ru.enums.TimeSlotPair;
  * @param rankServiceId      Род службы к званию; почти всегда {@code null}.
  * @param rankServiceName    Имя рода службы («юстиции»).
  * @param academicDegree     Уровень учёной степени (кандидат/доктор).
- * @param scienceBranchId    Отрасль науки степени; вместе с уровнем даёт «к.т.н.».
+ * @param scienceBranchId    Отрасль науки степени; вместе с уровнем даёт «ктн».
  * @param scienceBranchName  Имя отрасли («технические»).
  * @param academicTitle      Учёное звание (доцент/профессор) — <b>не должность</b>.
  * @param titleLine          Готовая подпись: «п-к юст Иванов И.И., к.т.н., доц». Совпадает с ФИО,

@@ -45,7 +45,7 @@ public final class EducatorCredentialsAssembler {
     }
 
     /**
-     * Готовая подпись преподавателя: {@code «п-к юст Иванов И.И., к.т.н., доц»}.
+     * Готовая подпись преподавателя: {@code «п-к юст Иванов И.И., ктн, доц»}.
      * Единственная точка, из которой её берут и карточка, и бланк выгрузки.
      */
     public static String lineOf(Educator educator) {

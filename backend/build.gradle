@@ -64,6 +64,12 @@ dependencies {
     // Библиотека для поддержки .env файлов
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 
+    // Разбор HTML-выгрузки чужой программы (импорт расписания, ru.services.importing).
+    // Полотно табличное, поэтому берём DOM-парсер: select("tr")/select("td") переживает
+    // мусорную вёрстку экспорта, тогда как регулярки ломаются на первом же лишнем теге.
+    // VBA-конвертер заказчика — свидетельство о формате, а не код к переносу (решение И-12).
+    implementation 'org.jsoup:jsoup:1.17.2'
+
     compileOnly("org.projectlombok:lombok:1.18.38")
     annotationProcessor("org.projectlombok:lombok:1.18.38")
 

@@ -81,4 +81,8 @@
          интервала «что он впускает» (kind_of_constraint) — два разных вопроса, две колонки -->
     <include file="023-assessment-window.sql" relativeToChangelogFile="true"/>
 
+    <!-- Сокращение степени пишется слитно и без точек («ктн»): комментарии 020 описывали прежнее
+         правило, а править применённый чейнджлог нельзя — контрольная сумма -->
+    <include file="024-degree-abbreviation-comments.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

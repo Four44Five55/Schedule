@@ -20,7 +20,7 @@ public record EducatorCreateDto(
         Integer orgUnitId,
 
         // Регалии — все необязательны, «не указано» такое же законное состояние.
-        // Степень задаётся ДВУМЯ полями (уровень + отрасль): готовой строки «к.т.н.» в модели нет.
+        // Степень задаётся ДВУМЯ полями (уровень + отрасль): готовой строки «ктн» в модели нет.
         Integer specialRankId,
         Integer rankServiceId,
         AcademicDegree academicDegree,

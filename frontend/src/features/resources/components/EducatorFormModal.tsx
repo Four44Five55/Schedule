@@ -45,7 +45,7 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
 
     // Регалии. Пять независимых полей, любое может остаться пустым: «не указано» — законное
     // состояние, а не незаполненная форма. Степень — ДВА поля (уровень + отрасль): готовой
-    // строки «к.т.н.» в модели нет, её собирает бэк.
+    // строки «ктн» в модели нет, её собирает бэк.
     const [specialRankId, setSpecialRankId] = useState<number | null>(educator?.specialRankId ?? null);
     const [rankServiceId, setRankServiceId] = useState<number | null>(educator?.rankServiceId ?? null);
     const [academicDegree, setAcademicDegree] = useState<AcademicDegree | null>(educator?.academicDegree ?? null);
@@ -258,7 +258,7 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                                     value={scienceBranchId ?? ''}
                                     onChange={(e) => setScienceBranchId(e.target.value ? parseInt(e.target.value) : null)}
                                     disabled={saving || dictsLoading}
-                                    title="Отрасль науки: вместе с уровнем даёт «к.т.н.»"
+                                    title="Отрасль науки: вместе с уровнем даёт «ктн»"
                                     className="px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium outline-none bg-white cursor-pointer focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                                 >
                                     <option value="">— Отрасль науки —</option>
@@ -281,7 +281,7 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                                 </select>
                             </div>
                             <p className="text-[11px] text-slate-400">
-                                Подпись собирается автоматически: «п-к юст Иванов И.И., к.т.н., доц». Перечни званий,
+                                Подпись собирается автоматически: «п-к юст Иванов И.И., ктн, доц». Перечни званий,
                                 родов службы и отраслей правятся в справочниках раздела «Преподаватели».
                             </p>
                         </div>
