@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Разбор подписи преподавателя. Все входные строки — <b>живые</b>: из подвала файла 911, из шапки
- * файла Горяинова и из имени файла выгрузки.
+ * файла Ветрова и из имени файла выгрузки.
  *
  * <p>Список званий здесь тот же, что в справочнике (миграция 020) — функция берёт его входом, а не
  * знает сама.</p>
@@ -27,35 +27,35 @@ class EducatorNameDecoderTest {
     @Test
     @DisplayName("Звание-приставка снимается по справочнику")
     void stripsRank() {
-        EducatorName name = decode("п/п-к Чащин С.В.");
+        EducatorName name = decode("п/п-к Астахов С.В.");
 
         assertThat(name.recognized()).isTrue();
         assertThat(name.rank()).isEqualTo("п/п-к");
-        assertThat(name.surname()).isEqualTo("Чащин");
+        assertThat(name.surname()).isEqualTo("Астахов");
         assertThat(name.initials()).isEqualTo("С.В.");
         assertThat(name.credentials()).isNull();
-        assertThat(name.key()).isEqualTo("Чащин С.В.");
+        assertThat(name.key()).isEqualTo("Астахов С.В.");
     }
 
     @Test
     @DisplayName("Регалии после инициалов уходят хвостом и в ключ не попадают")
     void keepsCredentialsOutOfKey() {
-        EducatorName name = decode("Волков В.Ф. двн проф");
+        EducatorName name = decode("Тополев В.Ф. двн проф");
 
         assertThat(name.rank()).isNull();
-        assertThat(name.surname()).isEqualTo("Волков");
+        assertThat(name.surname()).isEqualTo("Тополев");
         assertThat(name.credentials()).isEqualTo("двн проф");
         // Ключ один и тот же с регалиями и без: звание и степень меняются во времени.
-        assertThat(name.key()).isEqualTo(decode("Волков В.Ф.").key());
+        assertThat(name.key()).isEqualTo(decode("Тополев В.Ф.").key());
     }
 
     @Test
-    @DisplayName("Звание и степень разом: «к-н Горяинов Р.И. ктн»")
+    @DisplayName("Звание и степень разом: «к-н Ветров Р.И. ктн»")
     void stripsRankAndCredentials() {
-        EducatorName name = decode("к-н Горяинов Р.И. ктн");
+        EducatorName name = decode("к-н Ветров Р.И. ктн");
 
         assertThat(name.rank()).isEqualTo("к-н");
-        assertThat(name.surname()).isEqualTo("Горяинов");
+        assertThat(name.surname()).isEqualTo("Ветров");
         assertThat(name.initials()).isEqualTo("Р.И.");
         assertThat(name.credentials()).isEqualTo("ктн");
     }
@@ -63,11 +63,11 @@ class EducatorNameDecoderTest {
     @Test
     @DisplayName("Имя файла без пробела — тот же разбор: якорь это инициалы")
     void readsFileNameForm() {
-        EducatorName name = decode("ГоряиновР.И.");
+        EducatorName name = decode("ВетровР.И.");
 
-        assertThat(name.surname()).isEqualTo("Горяинов");
+        assertThat(name.surname()).isEqualTo("Ветров");
         assertThat(name.initials()).isEqualTo("Р.И.");
-        assertThat(name.key()).isEqualTo("Горяинов Р.И.");
+        assertThat(name.key()).isEqualTo("Ветров Р.И.");
     }
 
     @Test
@@ -80,8 +80,8 @@ class EducatorNameDecoderTest {
     @Test
     @DisplayName("Инициалы через пробел приводятся к «И.О.»")
     void normalizesSpacedInitials() {
-        assertThat(decode("Алексеева А. Ю. кфмн").initials()).isEqualTo("А.Ю.");
-        assertThat(decode("Алексеева А. Ю. кфмн").key()).isEqualTo(decode("Алексеева А.Ю.").key());
+        assertThat(decode("Зорина А. Ю. кфмн").initials()).isEqualTo("А.Ю.");
+        assertThat(decode("Зорина А. Ю. кфмн").key()).isEqualTo(decode("Зорина А.Ю.").key());
     }
 
     @Test
@@ -104,10 +104,10 @@ class EducatorNameDecoderTest {
     @Test
     @DisplayName("Без справочника званий разбор продолжается, звание просто не снимается")
     void worksWithoutRankDictionary() {
-        EducatorName name = EducatorNameDecoder.decode("Борунова Е.В.", List.of());
+        EducatorName name = EducatorNameDecoder.decode("Северова Е.В.", List.of());
 
         assertThat(name.recognized()).isTrue();
-        assertThat(name.surname()).isEqualTo("Борунова");
+        assertThat(name.surname()).isEqualTo("Северова");
     }
 
     @Test
@@ -134,7 +134,7 @@ class EducatorNameDecoderTest {
     void trailingDotIsOptional() {
         assertThat(decode("Иванов И.И").recognized()).isTrue();
         assertThat(decode("Иванов И.И").key()).isEqualTo(decode("Иванов И.И.").key());
-        assertThat(decode("к-н Горяинов Р.И ктн").credentials()).isEqualTo("ктн");
+        assertThat(decode("к-н Ветров Р.И ктн").credentials()).isEqualTo("ктн");
     }
 
     @Test
@@ -149,8 +149,8 @@ class EducatorNameDecoderTest {
         assertThat(EducatorNameDecoder.keyOfStoredName("Иванов И.И.")).isEqualTo("Иванов И.И.");
         assertThat(EducatorNameDecoder.keyOfStoredName("Иванов Иван Иванович")).isEqualTo("Иванов И.И.");
         // Ключ файла и ключ базы сходятся — ради этого обе стороны и приводятся к одной форме.
-        assertThat(EducatorNameDecoder.keyOfStoredName("Горяинов Роман Игоревич"))
-                .isEqualTo(decode("к-н Горяинов Р.И. ктн").key());
+        assertThat(EducatorNameDecoder.keyOfStoredName("Ветров Роман Игоревич"))
+                .isEqualTo(decode("к-н Ветров Р.И. ктн").key());
     }
 
     @Test

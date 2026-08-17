@@ -3,7 +3,7 @@ import { AuditoriumDeletionImpactDto, AuditoriumDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { AuditoriumFormModal } from './AuditoriumFormModal';
-import { Home, Users, Tag, Plus, Pencil, Trash2, Building2 } from 'lucide-react';
+import { Home, Users, Tag, Plus, Pencil, Trash2, Building2, Network } from 'lucide-react';
 
 interface AuditoriumGridProps {
   auditoriums: AuditoriumDto[];
@@ -179,6 +179,17 @@ export const AuditoriumGrid: React.FC<AuditoriumGridProps> = ({
                     {aud.building?.name ?? '—'}
                   </span>
                       </div>
+
+                      {/* Кафедра-владелец: показываем только когда указана — пустая строка
+                          в карточке ничего не сообщает, а места занимает */}
+                      {aud.orgUnitName && (
+                          <div className="flex items-center gap-1.5">
+                            <Network size={12} className="text-slate-400 shrink-0" />
+                            <span className="text-[11px] text-slate-600 truncate" title={aud.orgUnitName}>
+                      {aud.orgUnitName}
+                    </span>
+                          </div>
+                      )}
 
                       {/* Назначение */}
                       {aud.purpose && (

@@ -17,7 +17,7 @@ import java.util.List;
  *
  * @param file        имя файла, как его прислали
  * @param cut         опознанный разрез
- * @param owner       чей это разрез: «911», «252-3», «к-н Горяинов Р.И. ктн»
+ * @param owner       чей это разрез: «911», «252-3», «к-н Ветров Р.И. ктн»
  * @param faculty     факультет из шапки
  * @param department  кафедра из шапки
  * @param studyYear   первый год учебного года

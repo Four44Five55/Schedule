@@ -79,6 +79,14 @@ public class ScheduleSynchronizer {
     private final LessonPlacementRepository placementRepository;
 
     /**
+     * Нужен ровно для одного: сбрасывать пачку перепроекции из памяти ({@code flush} + {@code clear}).
+     * Репозиторий такого не умеет, а держать в контексте всю сессию разом — это десятки тысяч
+     * объектов на импортированном расписании.
+     */
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    /**
      * Публикует {@link ru.events.ScheduleProjectedEvent} — «проекция записана, можно перечитывать».
      * Синхронизатор не знает, кто это слушает (браузеры через SSE — забота
      * {@code ru.services.stream}); он лишь объявляет факт (DIP).
@@ -262,13 +270,67 @@ public class ScheduleSynchronizer {
      */
     @Transactional
     public int reprojectSession(UUID sessionId) {
-        List<LessonPlacement> placements = placementRepository.findBySessionId(sessionId);
-        for (LessonPlacement placement : placements) {
-            syncPlacementViews(placement);
+        List<UUID> ids = placementRepository.findIdsBySessionId(sessionId);
+        if (ids.isEmpty()) {
+            announceProjected(sessionId);
+            return 0;
         }
-        log.info("♻️  Read-модель пересобрана для сессии {}: {} размещений", sessionId, placements.size());
+
+        // ШАГ 1: снести ВСЕ прежние строки сессии — и только потом вставлять. Порядок обязателен:
+        // bulk-delete выполняется немедленно, а INSERT'ы уходят на flush, и «удалить-вставить» по
+        // одному занятию за раз спотыкалось бы о UNIQUE (placement, group, educator).
+        for (List<UUID> chunk : chunks(ids)) {
+            viewRepository.deleteByPlacementIdIn(chunk);
+        }
+
+        // ШАГ 2: собрать заново пачками. По одному размещению за раз это было 5–6 ленивых запросов
+        // НА ЗАНЯТИЕ (дисциплина, слот, тема, поток, группы, преподаватели, аудитории) плюс delete и
+        // insert — на импортированном расписании в тысячи занятий десятки тысяч round-trip'ов, то
+        // есть на экране «зависло». Здесь на пачку приходится четыре запроса независимо от размера.
+        int written = 0;
+        for (List<UUID> chunk : chunks(ids)) {
+            List<LessonPlacement> placements = placementRepository.findByIdInForProjection(chunk);
+            // Коллекции — отдельными запросами: три JOIN FETCH по коллекциям в одном дали бы
+            // декартово произведение. Объекты те же, контекст персистентности их сшивает.
+            placementRepository.findByIdInWithEducators(chunk);
+            placementRepository.findByIdInWithGroups(chunk);
+            placementRepository.findByIdInWithAuditoriums(chunk);
+
+            List<ScheduleView> views = new ArrayList<>();
+            for (LessonPlacement placement : placements) {
+                views.addAll(buildViewsForPlacement(placement));
+            }
+            viewRepository.saveAll(views);
+            written += placements.size();
+
+            // Пачку — на диск и из памяти. Без этого контекст персистентности держал бы все
+            // размещения и все строки проекции сессии разом: на импортированном расписании это
+            // десятки тысяч объектов в одной транзакции.
+            entityManager.flush();
+            entityManager.clear();
+        }
+
+        log.info("♻️  Read-модель пересобрана для сессии {}: {} размещений", sessionId, written);
         announceProjected(sessionId);
-        return placements.size();
+        return written;
+    }
+
+    /**
+     * Размер пачки перепроекции.
+     *
+     * <p>Ограничен не памятью, а <b>числом параметров в {@code IN}</b>: PostgreSQL держит до 65535
+     * на запрос, но длинные списки параметров плохо кэшируются планировщиком, и на них же спотыкались
+     * бы другие СУБД. Пятьсот — размер, на котором round-trip'ы уже не видны, а запрос ещё обычный.</p>
+     */
+    private static final int PROJECTION_CHUNK = 500;
+
+    /** Режет список на пачки — без внешней библиотеки, чтобы не тащить её ради трёх строк. */
+    private static List<List<UUID>> chunks(List<UUID> ids) {
+        List<List<UUID>> parts = new ArrayList<>();
+        for (int from = 0; from < ids.size(); from += PROJECTION_CHUNK) {
+            parts.add(ids.subList(from, Math.min(from + PROJECTION_CHUNK, ids.size())));
+        }
+        return parts;
     }
 
     /**

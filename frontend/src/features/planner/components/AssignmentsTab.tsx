@@ -13,6 +13,7 @@ const KIND_COLORS: Record<string, string> = {
   EXAM: 'bg-red-100 text-red-700',
   LAB_WORK: 'bg-green-100 text-green-700',
   PRACTICAL_WORK: 'bg-blue-100 text-blue-700',
+  COURSE_PROJECT: 'bg-teal-100 text-teal-700',
   CREDIT_WITH_GRADE: 'bg-amber-100 text-amber-700',
   CREDIT_WITHOUT_GRADE: 'bg-amber-100 text-amber-700',
   QUIZ: 'bg-amber-100 text-amber-700',

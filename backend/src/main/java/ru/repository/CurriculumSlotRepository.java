@@ -19,6 +19,9 @@ public interface CurriculumSlotRepository extends JpaRepository<CurriculumSlot, 
      */
     List<CurriculumSlot> findByDisciplineCourseIdOrderByPosition(Integer courseId);
 
+    /** Сколько слотов держит план периода — часть цены отката, названной заранее. */
+    long countByDisciplineCourse_StudyPeriod_Id(Integer periodId);
+
     /**
      * Увеличивает на 1 значение 'position' для всех слотов в указанном курсе,
      * чья позиция больше или равна указанной.

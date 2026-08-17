@@ -52,12 +52,19 @@ public class AuditoriumViolationService {
         Map<Integer, Auditorium> rooms = new HashMap<>();
         Map<UUID, String> describeById = new HashMap<>();
         List<RoomedLesson> roomed = new ArrayList<>();
+        List<AuditoriumFinding> roomless = new ArrayList<>();
 
         for (LessonPlacement placement : placements) {
             describeById.put(placement.getId(), describe(placement));
             Set<Auditorium> assigned = placement.getAssignedAuditoriums();
             if (assigned == null || assigned.isEmpty()) {
-                continue; // занятие без комнаты — отдельный симптом, правилу его не предъявить
+                // Занятие без комнаты правилу не предъявить — оно про ИСПОЛЬЗОВАНИЕ комнаты, а её
+                // нет. Но и молчать нельзя: занятие где-то идёт, а где — неизвестно. У импорта это
+                // массовое состояние (комнату из файла не нашли), и до появления этой находки его
+                // было видно только в отчёте прогона, живущем до перезагрузки вкладки.
+                roomless.add(AuditoriumFinding.noAuditorium(placement.getId(),
+                        placement.getScheduledDate(), placement.getScheduledSlot()));
+                continue;
             }
             int headcount = placement.getAssignment().getStudyStream().calculateTotalSize();
             for (Auditorium room : assigned) {
@@ -67,7 +74,8 @@ public class AuditoriumViolationService {
             }
         }
 
-        List<AuditoriumFinding> findings = rule.check(roomed);
+        List<AuditoriumFinding> findings = new ArrayList<>(rule.check(roomed));
+        findings.addAll(roomless);
         List<AuditoriumViolationDto> result = new ArrayList<>(findings.size());
         for (AuditoriumFinding finding : findings) {
             Auditorium room = rooms.get(finding.auditoriumId());

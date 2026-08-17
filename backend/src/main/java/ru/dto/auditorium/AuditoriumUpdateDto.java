@@ -12,6 +12,8 @@ public record AuditoriumUpdateDto(
         @Min(1) int capacity,
         @NotNull Integer buildingId,
         Integer purposeId,
-        List<Integer> featureIds
+        List<Integer> featureIds,
+        /* Кафедра-владелец; null — открепить. */
+        Integer orgUnitId
 ) {
 }

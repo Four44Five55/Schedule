@@ -101,6 +101,10 @@ public final class AuditoriumSelector {
      *   <li><b>Приоритетная из плана</b> — но среди тех, куда поток влезает. Осознанно сажать в
      *       тесноту, когда рядом свободна подходящая, алгоритм не должен. (Раньше приоритетная
      *       бралась безусловно, даже если мала.)</li>
+     *   <li><b>Комната своей кафедры</b> — кафедра преподавателя владеет своими аудиториями
+     *       (миграция 025) и ведёт в них занятия. Ниже приоритетной намеренно: план — сказанное
+     *       пожелание, принадлежность — выведенное. Пока кафедра у комнат не заполнена, ключ
+     *       не различает ничего и порядок остаётся прежним.</li>
      *   <li><b>Домашняя аудитория группы</b> — привычная комната лучше случайной.</li>
      *   <li><b>Меньшая из достаточных</b> — чтобы не занять зал на 400 под семинар на 20 и не
      *       оставить без него поток, которому больше некуда.</li>
@@ -111,13 +115,44 @@ public final class AuditoriumSelector {
                 ? lesson.getPriorityAuditorium().getId()
                 : null;
         Set<Integer> homeIds = homeAuditoriumIds(lesson);
+        Set<Integer> ownUnitIds = educatorOrgUnitIds(lesson);
 
         return Comparator
                 .comparingInt((AuditoriumResource room) -> room.shortfall(headcount))
                 .thenComparingInt(room -> room.getId().equals(priorityId) ? 0 : 1)
+                .thenComparingInt(room -> isOwn(room, ownUnitIds) ? 0 : 1)
                 .thenComparingInt(room -> homeIds.contains(room.getId()) ? 0 : 1)
                 .thenComparingInt(AuditoriumResource::capacity)
                 .thenComparingInt(AuditoriumResource::getId); // стабильный порядок при равенстве
+    }
+
+    /**
+     * Комната своей кафедры: владелец комнаты совпал с подразделением кого-то из ведущих.
+     *
+     * <p>Комната без владельца «своей» не считается никогда — иначе незаполненное поле работало бы
+     * предпочтением. Это и делает ключ безвредным на базе, где кафедры у комнат ещё не проставлены.</p>
+     */
+    private static boolean isOwn(AuditoriumResource room, Set<Integer> ownUnitIds) {
+        Integer owner = room.orgUnitId();
+        return owner != null && ownUnitIds.contains(owner);
+    }
+
+    /**
+     * Подразделения ведущих занятие.
+     *
+     * <p>Берём кафедру преподавателя, а не группы: комнатами владеет кафедра, и занятие идёт там,
+     * где стоит её оборудование. У занятия преподавателей бывает несколько (парное ведение) —
+     * тогда своей считается комната любого из них: предпочтение мягкое, выбирать между ними
+     * незачем.</p>
+     */
+    private static Set<Integer> educatorOrgUnitIds(Lesson lesson) {
+        if (lesson.getEducators() == null) {
+            return Set.of();
+        }
+        return lesson.getEducators().stream()
+                .map(educator -> educator.getOrgUnit() == null ? null : educator.getOrgUnit().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
     }
 
     /** Сколько человек придёт. Поток без групп — 0: тогда влезает любая комната. */

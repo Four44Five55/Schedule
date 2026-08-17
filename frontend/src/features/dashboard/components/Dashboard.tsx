@@ -323,6 +323,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         </div>
       )}
 
+      {/* Третий баннер того же датчика. Тоже про физику, но с другой причиной: комнаты нет вовсе,
+          и «где идёт занятие» ответа не имеет. У импортированного расписания это массовое
+          состояние — комната напечатана в файле, а у нас её нет либо одноимённых несколько. */}
+      {rooms && rooms.withoutAuditorium > 0 && (
+        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 text-sm text-red-900">
+              <span className="font-bold">Без аудитории:</span>{' '}
+              {rooms.withoutAuditorium} занятий стоят в расписании, но комната у них не назначена —
+              где они идут, неизвестно. Так бывает, если комнату удалили либо расписание пришло
+              импортом и комнаты из файла у нас не нашлось. В сетке такие занятия помечены «?».
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* KPI готовности расписания — «всего» из набора генерации бэка (не query-сторона) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi

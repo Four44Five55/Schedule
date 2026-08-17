@@ -59,17 +59,17 @@ class DisciplineFooterParserTest {
     @DisplayName("Строка подвала читается целиком, перечень преподавателей делится по «;»")
     void readsRow() {
         List<FooterRow> footer = parse(row(
-                "АСКС", "Автоматизированные системы управления КС", "91",
-                "Волков В.Ф. двн проф; п/п-к Чащин С.В.",
-                "Алексеева А.Ю. кфмн ; к-н Горяинов Р.И. ктн",
+                "АСКС", "Автоматизированные системы", "91",
+                "Табакеркин В.Ф. двн проф; п/п-к Иванов С.В.",
+                "Муркина А.Ю. кфмн ; к-н Сидоров Р.И. ктн",
                 "18-30", "ЭКЗ", "911", "", "", ""));
 
         assertThat(footer).singleElement().satisfies(discipline -> {
             assertThat(discipline.code()).isEqualTo("АСКС");
-            assertThat(discipline.name()).isEqualTo("Автоматизированные системы управления КС");
+            assertThat(discipline.name()).isEqualTo("Автоматизированные системы");
             assertThat(discipline.department()).isEqualTo("91");
-            assertThat(discipline.lecturers()).containsExactly("Волков В.Ф. двн проф", "п/п-к Чащин С.В.");
-            assertThat(discipline.practicians()).containsExactly("Алексеева А.Ю. кфмн", "к-н Горяинов Р.И. ктн");
+            assertThat(discipline.lecturers()).containsExactly("Табакеркин В.Ф. двн проф", "п/п-к Иванов С.В.");
+            assertThat(discipline.practicians()).containsExactly("Муркина А.Ю. кфмн", "к-н Сидоров Р.И. ктн");
             assertThat(discipline.hours()).isEqualTo("18-30");
             assertThat(discipline.report()).isEqualTo("ЭКЗ");
             assertThat(discipline.stream()).isEqualTo("911");
@@ -83,11 +83,11 @@ class DisciplineFooterParserTest {
     void keepsValuesAsPrinted() {
         List<FooterRow> footer = parse(row(
                 "НИР", "Научно-исследовательская работа", "91",
-                "", "Борунова Е.В.", "0-24", "ЗО", "", "", "", ""));
+                "", "Северова Е.В.", "0-24", "ЗО", "", "", "", ""));
 
         assertThat(footer).singleElement().satisfies(discipline -> {
             assertThat(discipline.lecturers()).isEmpty();
-            assertThat(discipline.practicians()).containsExactly("Борунова Е.В.");
+            assertThat(discipline.practicians()).containsExactly("Северова Е.В.");
             assertThat(discipline.hours()).isEqualTo("0-24");
         });
         assertThat(problems).isEmpty();
@@ -105,7 +105,7 @@ class DisciplineFooterParserTest {
     void reportsPlanIndexInsteadOfName() {
         List<FooterRow> footer = parse(row(
                 "Математическое обеспечение АССН", "ДС.1.О", "91",
-                "п/п-к Чащин С.В.", "Алексеева А.Ю. кфмн", "50-70", "", "", "", "", ""));
+                "п/п-к Астахов С.В.", "Зорина А.Ю. кфмн", "50-70", "", "", "", "", ""));
 
         // Поля остаются как в файле: толковать их — дело слоя сопоставления, а не разбора.
         assertThat(footer).singleElement().satisfies(discipline -> {
@@ -139,7 +139,7 @@ class DisciplineFooterParserTest {
     void countsRowsWithoutCode() {
         List<FooterRow> footer = parse(
                 row("", "", "", "", "", "", "", "", "", "", ""),
-                row("НИР", "Научно-исследовательская работа", "91", "", "Борунова Е.В.", "0-24", "ЗО", "", "", "", ""));
+                row("НИР", "Научно-исследовательская работа", "91", "", "Северова Е.В.", "0-24", "ЗО", "", "", "", ""));
 
         assertThat(footer).hasSize(1);
         assertThat(problems).anyMatch(p -> p.contains("1 строк") && p.contains("без обозначения"));

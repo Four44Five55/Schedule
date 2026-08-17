@@ -129,7 +129,8 @@ export const OrgUnitManager: React.FC<OrgUnitManagerProps> = ({ educators, group
         if (blocked) {
             return (
                 `На «${name}» ссылаются: вложенных подразделений — ${impact.childUnits}, ` +
-                `преподавателей — ${impact.educators}, групп — ${impact.groups}. ` +
+                `преподавателей — ${impact.educators}, групп — ${impact.groups}, ` +
+                `аудиторий — ${impact.auditoriums}. ` +
                 'Поэтому удалить нельзя: сначала перепривяжите их. ' +
                 'Если подразделение просто расформировано — снимите флаг «действующее», ' +
                 'тогда исторические связи сохранятся.'

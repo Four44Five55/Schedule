@@ -19,23 +19,45 @@ import java.util.List;
  * {@link GroupNumberDecoder}: первый прогон импорта заведомо кривой, и отчёт о кривизне ценнее
  * стектрейса.</p>
  *
+ * @param source  имя файла, из которого этот разбор; {@code null} — источник не назван
  * @param header  шапка файла: чей разрез, факультет, кафедра, учебный год
  * @param cells   непустые ячейки полотна (пустые не выдаются вовсе)
  * @param footer  строки подвала — дисциплины с преподавателями; пусто у негрупповых разрезов
  * @param problems замечания разбора, по одному на находку
  */
 public record ParsedSheet(
+        String source,
         SheetHeader header,
         List<SheetCell> cells,
         List<DisciplineFooterParser.FooterRow> footer,
         List<String> problems
 ) {
 
+    /** Имя источника для отчёта: файл мог приехать и без имени, но строка отчёта без него бесполезна. */
+    public static final String UNNAMED = "(без имени)";
+
+    /**
+     * Тот же разбор, но с именем файла.
+     *
+     * <p>Имя приклеивается <b>после</b> разбора, а не протаскивается сквозь него: разбор — чистая
+     * функция от содержимого, и знать, как называется файл на диске, ему незачем. А сверке —
+     * наоборот: она сводит значения из полутора тысяч файлов, и «в базе нет» без указания источника
+     * нечем проверить.</p>
+     */
+    public ParsedSheet withSource(String source) {
+        return new ParsedSheet(source, header, cells, footer, problems);
+    }
+
+    /** Имя файла, никогда не {@code null} — для строк отчёта. */
+    public String sourceName() {
+        return source == null || source.isBlank() ? UNNAMED : source;
+    }
+
     /** Какой разрез выгрузки перед нами. Определяется по тексту шапки. */
     public enum CutKind {
         /** «Расписание учебных занятий» + «Учебная группа 911». */
         GROUP,
-        /** «Преподаватель: к-н Горяинов Р.И. ктн». */
+        /** «Преподаватель: к-н Ветров Р.И. ктн». */
         EDUCATOR,
         /** «Загрузка учебной аудитории 252-3». */
         AUDITORIUM,
@@ -47,7 +69,7 @@ public record ParsedSheet(
      * Шапка файла.
      *
      * @param kind       разрез
-     * @param owner      чьё это расписание: «911», «к-н Горяинов Р.И. ктн», «252-3»
+     * @param owner      чьё это расписание: «911», «к-н Ветров Р.И. ктн», «252-3»
      * @param faculty    факультет из шапки: «9Ф»; {@code null}, если не указан
      * @param department кафедра из шапки: «91 кафедра»; {@code null} у группового файла
      * @param startYear  первый год учебного года: 2025 из «2025/2026 учебный год»

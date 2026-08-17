@@ -334,9 +334,11 @@ export interface OrderFinding {
 /**
  * Вид находки по аудитории:
  * - DOUBLE_BOOKED — комната занята в этой ячейке другим занятием (физика, допустимо только 0);
- * - OVER_CAPACITY — поток не помещается в комнату (суждение; excess — на сколько человек).
+ * - OVER_CAPACITY — поток не помещается в комнату (суждение; excess — на сколько человек);
+ * - NO_AUDITORIUM — комнаты нет вовсе: занятие где-то идёт, а где, неизвестно. У импортированного
+ *   расписания это массовое состояние (комнату из файла не нашли), а не редкость.
  */
-export type AuditoriumViolationKind = 'DOUBLE_BOOKED' | 'OVER_CAPACITY';
+export type AuditoriumViolationKind = 'DOUBLE_BOOKED' | 'OVER_CAPACITY' | 'NO_AUDITORIUM';
 
 /**
  * Находка по аудитории конкретного занятия (по образцу OrderViolationDto).
@@ -344,7 +346,8 @@ export type AuditoriumViolationKind = 'DOUBLE_BOOKED' | 'OVER_CAPACITY';
  */
 export interface AuditoriumViolationDto {
   placementId: string;
-  auditoriumId: number;
+  /** null у NO_AUDITORIUM — комнаты нет, подставлять сюда нечего. */
+  auditoriumId: number | null;
   auditoriumName: string | null;
   kind: AuditoriumViolationKind;
   excess: number;              // на сколько человек не хватает мест (для OVER_CAPACITY)
@@ -355,6 +358,7 @@ export interface AuditoriumViolationDto {
 export interface AuditoriumFinding {
   doubleBooked: boolean;
   overCapacity: boolean;
+  noAuditorium: boolean;       // комнаты нет вовсе — занятие идёт неизвестно где
   excess: number;              // макс. перебор по людям
   sharedWith: string[];        // соседи по комнате (для тултипа)
 }

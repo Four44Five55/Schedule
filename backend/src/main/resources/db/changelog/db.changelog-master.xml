@@ -85,4 +85,8 @@
          правило, а править применённый чейнджлог нельзя — контрольная сумма -->
     <include file="024-degree-abbreviation-comments.sql" relativeToChangelogFile="true"/>
 
+    <!-- Кафедра-владелец аудитории: в аудиторном файле выгрузки она напечатана, а импорт её
+         выбрасывал; заодно даёт подбору предпочтение «своя комната» -->
+    <include file="025-auditorium-org-unit.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

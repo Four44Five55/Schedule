@@ -61,26 +61,28 @@ public class AuditoriumHealthService {
         List<ScheduleSession> active =
                 sessionRepository.findActiveSessionsByPeriod(periodId, SessionStatus.ARCHIVED);
         if (active.isEmpty()) {
-            return new AuditoriumHealthDto(null, 0, 0, 0, 0, List.of());
+            return new AuditoriumHealthDto(null, 0, 0, 0, 0, 0, List.of());
         }
 
         ScheduleSession session = active.get(0);
         List<LessonPlacement> placements = placementRepo.findBySessionId(session.getId());
         if (placements.isEmpty()) {
-            return new AuditoriumHealthDto(session.getId(), 0, 0, 0, 0, List.of());
+            return new AuditoriumHealthDto(session.getId(), 0, 0, 0, 0, 0, List.of());
         }
 
         Map<Integer, Auditorium> rooms = new HashMap<>();
         List<RoomedLesson> roomed = new ArrayList<>();
         int checked = 0;
+        int withoutAuditorium = 0;
 
         for (LessonPlacement placement : placements) {
             Set<Auditorium> assigned = placement.getAssignedAuditoriums();
             if (assigned == null || assigned.isEmpty()) {
-                // Занятие без комнаты — реальное состояние (аудиторию удалили, связь ушла
-                // каскадом), но это отдельный симптом с отдельной причиной. Правилу его не
-                // предъявить: его вход — пары «занятие × комната». Сюда добавим, когда займёмся
-                // именно им.
+                // Занятие без комнаты правилу не предъявить: его вход — пары «занятие × комната».
+                // Но и потерять его нельзя — оно где-то идёт, а где, неизвестно. Причины две:
+                // комнату удалили (связь ушла каскадом) либо расписание пришло импортом и комнату
+                // из файла у нас не нашли. Для импорта это массовое состояние, а не редкость.
+                withoutAuditorium++;
                 continue;
             }
             checked++;
@@ -98,17 +100,19 @@ public class AuditoriumHealthService {
         }
 
         List<AuditoriumFinding> findings = rule.check(roomed);
-        AuditoriumHealthDto health = aggregate(session.getId(), checked, findings, rooms);
+        AuditoriumHealthDto health = aggregate(session.getId(), checked, withoutAuditorium, findings, rooms);
 
-        if (health.conflictingCells() > 0) {
-            log.warn("⚠️ Аудитории: сессия {} — двойных бронирований {} в {} ячейках, не помещается {} занятий",
-                    session.getId(), health.doubleBooked(), health.conflictingCells(), health.overCapacity());
+        if (health.conflictingCells() > 0 || health.withoutAuditorium() > 0) {
+            log.warn("⚠️ Аудитории: сессия {} — двойных бронирований {} в {} ячейках, "
+                            + "не помещается {} занятий, без комнаты {}",
+                    session.getId(), health.doubleBooked(), health.conflictingCells(),
+                    health.overCapacity(), health.withoutAuditorium());
         }
         return health;
     }
 
     /** Находки → счётчики. Считаем занятия и ячейки, а не находки: у занятия их может быть две. */
-    private static AuditoriumHealthDto aggregate(UUID sessionId, int checked,
+    private static AuditoriumHealthDto aggregate(UUID sessionId, int checked, int withoutAuditorium,
                                                  List<AuditoriumFinding> findings,
                                                  Map<Integer, Auditorium> rooms) {
         Set<UUID> doubleBooked = new LinkedHashSet<>();
@@ -156,7 +160,7 @@ public class AuditoriumHealthService {
                 .thenComparing(r -> r.name() != null ? r.name() : ""));
 
         return new AuditoriumHealthDto(sessionId, checked, conflictingCells.size(),
-                doubleBooked.size(), overCapacity.size(), List.copyOf(breakdown));
+                doubleBooked.size(), overCapacity.size(), withoutAuditorium, List.copyOf(breakdown));
     }
 
     /** Ячейка конкретной комнаты — единица счёта конфликтов. */

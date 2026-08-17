@@ -77,6 +77,39 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
     List<LessonPlacement> findByIdInWithEducators(@Param("ids") java.util.Collection<UUID> ids);
 
     /**
+     * Размещения пачкой со всем, из чего строится строка проекции, — <b>кроме коллекций</b>.
+     *
+     * <p><b>Зачем отдельный запрос.</b> Проекция читает у каждого размещения дисциплину, вид, тему и
+     * поток; при ленивой загрузке это 5–6 запросов <b>на занятие</b>, и перепроекция импортированного
+     * расписания (тысячи занятий) превращалась в десятки тысяч round-trip'ов — на экране это
+     * выглядело зависанием. Здесь всё «к одному» подтягивается одним запросом на пачку.</p>
+     *
+     * <p>Коллекции (преподаватели, группы, аудитории) сюда намеренно <b>не</b> входят: три
+     * {@code JOIN FETCH} по коллекциям дали бы декартово произведение. Их инициализируют соседние
+     * запросы той же пачки — Hibernate сшивает объекты в общем контексте персистентности.</p>
+     */
+    @Query("SELECT DISTINCT lp FROM LessonPlacement lp "
+            + "JOIN FETCH lp.assignment a "
+            + "JOIN FETCH a.curriculumSlot s "
+            + "JOIN FETCH s.disciplineCourse c "
+            + "JOIN FETCH c.discipline "
+            + "LEFT JOIN FETCH s.themeLesson "
+            + "LEFT JOIN FETCH a.studyStream "
+            + "WHERE lp.id IN :ids")
+    List<LessonPlacement> findByIdInForProjection(@Param("ids") java.util.Collection<UUID> ids);
+
+    /** Та же пачка, но с группами потока: отдельным запросом, чтобы не множить строки. */
+    @Query("SELECT DISTINCT lp FROM LessonPlacement lp "
+            + "JOIN FETCH lp.assignment a JOIN FETCH a.studyStream st LEFT JOIN FETCH st.groups "
+            + "WHERE lp.id IN :ids")
+    List<LessonPlacement> findByIdInWithGroups(@Param("ids") java.util.Collection<UUID> ids);
+
+    /** Та же пачка, но с аудиториями размещения. */
+    @Query("SELECT DISTINCT lp FROM LessonPlacement lp "
+            + "LEFT JOIN FETCH lp.assignedAuditoriums WHERE lp.id IN :ids")
+    List<LessonPlacement> findByIdInWithAuditoriums(@Param("ids") java.util.Collection<UUID> ids);
+
+    /**
      * Id всех размещений курса (через слот → назначение). Нужны при удалении курса,
      * чтобы синхронно вычистить строки read-модели {@code schedule_view} (у неё нет FK
      * на {@code lesson_placement}), захватив их ДО FK-каскадного удаления write-стороны.
@@ -300,4 +333,28 @@ public interface LessonPlacementRepository extends org.springframework.data.jpa.
            "  WHERE a MEMBER OF lp2.assignedAuditoriums" +
            ")")
     List<LessonPlacement> findConflictingPlacements();
+
+    /**
+     * Сколько размещений держит план периода — цена отката, названная заранее.
+     *
+     * <p>Снос курсов периода доводит каскад до размещений, и человек должен узнать об этом
+     * <b>до</b> нажатия, а не по факту исчезнувшего расписания.</p>
+     */
+    @Query("SELECT COUNT(lp) FROM LessonPlacement lp " +
+           "WHERE lp.assignment.curriculumSlot.disciplineCourse.studyPeriod.id = :periodId")
+    long countByPeriod(@Param("periodId") Integer periodId);
+
+    /**
+     * Сессии периода, в которых есть размещения указанного происхождения, и их число.
+     *
+     * <p>Так и опознаётся импортная сессия — по её размещениям, а не по колонке-признаку (И-15):
+     * колонка может соврать, а {@code source = IMPORTED} на строках — нет.</p>
+     *
+     * @return пары «id сессии, число размещений»
+     */
+    @Query("SELECT lp.session.id, COUNT(lp) FROM LessonPlacement lp " +
+           "WHERE lp.source = :source AND lp.session.studyPeriod.id = :periodId " +
+           "GROUP BY lp.session.id")
+    List<Object[]> countBySourceAndPeriod(@Param("source") ru.enums.PlacementSource source,
+                                          @Param("periodId") Integer periodId);
 }

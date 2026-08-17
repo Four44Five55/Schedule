@@ -44,6 +44,18 @@ public class Auditorium implements IMaterialEntity {
     @JoinColumn(name = "building_id")
     private Building building;
 
+    /**
+     * Подразделение-владелец (кафедра); {@code null} — не указано.
+     *
+     * <p>Где комната стоит физически, говорит {@link #building}; кому она принадлежит — это другой
+     * вопрос и другая связь: кафедра держит лабораторию в чужом корпусе штатно. В выгрузке
+     * сторонней программы владелец напечатан в шапке аудиторного файла, оттуда его и заполняет
+     * импорт.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "org_unit_id")
+    private OrgUnit orgUnit;
+
     @ManyToMany(mappedBy = "auditoriums")
     private Set<AuditoriumPool> pools = new HashSet<>();
 

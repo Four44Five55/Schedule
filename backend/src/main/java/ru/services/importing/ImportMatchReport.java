@@ -1,5 +1,6 @@
 package ru.services.importing;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -20,6 +21,20 @@ import java.util.List;
 public record ImportMatchReport(List<MatchSection> sections) {
 
     /**
+     * Заголовки разделов.
+     *
+     * <p>Не украшение: по ним <b>заведение находит свой список строк</b>, и с появлением ручной
+     * привязки к подразделению заголовок стал ещё и ключом в запросе с фронта. Три копии одного
+     * литерала разъехались бы при первой правке — и раздел молча перестал бы заводиться.</p>
+     */
+    public static final String ORG_UNITS = "Подразделения";
+    public static final String EDUCATORS = "Преподаватели";
+    public static final String GROUPS = "Группы";
+    public static final String STREAMS = "Потоки";
+    public static final String DISCIPLINES = "Дисциплины";
+    public static final String ROOMS = "Аудитории";
+
+    /**
      * Раздел сверки по одной категории.
      *
      * @param title   заголовок: «Преподаватели»
@@ -27,13 +42,33 @@ public record ImportMatchReport(List<MatchSection> sections) {
      * @param total   сколько разных значений встретилось в файлах
      * @param matched сколько из них нашлось
      * @param rows    строки; несопоставленные идут первыми — это то, что требует действия
+     * @param orgUnitColumn     показывать ли столбец «Входит в». Отношение одно и то же у всех
+     *                          трёх разделов, где оно есть: преподаватель и группа входят в
+     *                          кафедру, кафедра — в факультет. Поэтому столбец один, а не три
+     *                          разных
+     * @param orgUnitAssignable можно ли <b>проставить</b> это вхождение вручную. Уже — чем
+     *                          {@link #orgUnitColumn}: у подразделения родитель берётся из шапки
+     *                          того же файла, и ручной выбор там пока не заведён.
+     *                          <b>Признак ставит бэк</b> (то же правило, что у
+     *                          {@link MatchRow#derived}): список разделов с принадлежностью —
+     *                          классификация, её место рядом со значениями, а не в перечне
+     *                          заголовков на фронте
+     * @param prerequisite      раздел — <b>предусловие остальных</b>: пока он не сведён, заводить
+     *                          зависимые бессмысленно. Сегодня такой один — подразделения: к ним
+     *                          крепятся и преподаватель, и группа, и комната, а незаведённая кафедра
+     *                          означает не отказ, а <b>тихо не проставленную привязку</b> у сотен
+     *                          зависимых строк. Признак тоже бэковский: «что от чего зависит» —
+     *                          знание о предметной области, а не о вёрстке
      */
     public record MatchSection(
             String title,
             String hint,
             int total,
             int matched,
-            List<MatchRow> rows
+            List<MatchRow> rows,
+            boolean orgUnitColumn,
+            boolean orgUnitAssignable,
+            boolean prerequisite
     ) {
     }
 
@@ -58,12 +93,24 @@ public record ImportMatchReport(List<MatchSection> sections) {
     /**
      * Одно значение из файла и его судьба.
      *
-     * @param source      значение как в файле: «АСКС», «п/п-к Чащин С.В.», «252-3», «911»
+     * @param source      значение как в файле: «АСКС», «п/п-к Астахов С.В.», «252-3», «911»
      * @param detail      что о нём понял разбор: «корпус 3», «ф. 9, набор 2025, каф. 91»
      * @param status      сопоставлено / нет / неоднозначно / не прочитано
      * @param matchedId   id нашей сущности либо {@code null}
      * @param matchedName как она называется у нас (может отличаться от файла — это и надо увидеть)
      * @param note        причина, по которой не сопоставлено, либо расхождение при совпадении
+     * @param files       файлы, откуда значение приехало — не больше {@link #FILES_SHOWN}
+     * @param fileCount   во скольких файлах всего встретилось: показанные — только начало списка
+     * @param derived     строка следует из другой и решения не требует — см. {@link #asDerived()}
+     * @param orgUnitHint <b>во что входит</b> — имя подразделения либо {@code null}, если разбор
+     *                    его не вывел (см. {@link #withOrgUnit}). Отношение одно на все разделы,
+     *                    где оно есть: у преподавателя и группы это их кафедра, у кафедры — её
+     *                    факультет. У уже сопоставленной строки — где она числится <b>у нас</b>,
+     *                    у новой — куда попадёт при заведении
+     * @param orgUnitOptions варианты, из которых человек выбирает вхождение, <b>названные самими
+     *                    файлами</b>. Нужны там, где нужного узла ещё нет в базе: спорные факультеты
+     *                    заводятся этим же прогоном, и выбрать их из справочника нельзя. Пусто —
+     *                    выбирать не из чего, кроме справочника
      */
     public record MatchRow(
             String source,
@@ -71,26 +118,108 @@ public record ImportMatchReport(List<MatchSection> sections) {
             MatchStatus status,
             Integer matchedId,
             String matchedName,
-            String note
+            String note,
+            List<String> files,
+            int fileCount,
+            boolean derived,
+            String orgUnitHint,
+            List<String> orgUnitOptions
     ) {
+        /**
+         * Сколько имён файлов отдавать строке.
+         *
+         * <p>Список неограниченной длины бесполезен ровно так же, как пустой: группа «911»
+         * встречается в сотне файлов, и сотня имён на строку — это мегабайты JSON, которые никто не
+         * прочтёт. Двух десятков хватает, чтобы открыть файл и посмотреть глазами; сколько их
+         * всего, говорит {@code fileCount}. В таблице список и не показывается — он разворачивается
+         * по требованию.</p>
+         */
+        public static final int FILES_SHOWN = 20;
+
         public boolean isMatched() {
             return status == MatchStatus.MATCHED;
         }
 
+        /**
+         * Та же строка, но с указанием, откуда значение приехало.
+         *
+         * <p>Провенанс приклеивается отдельным шагом, потому что источников у одной строки бывает
+         * несколько: «Иванов Т.В. дин» и «Иванов Т.В. дин доц» — один человек из двух разных файлов,
+         * и строка отчёта у них общая. Значит и файлы у неё общие — объединение по всем вариантам
+         * подписи, а не по тому из них, который случайно стал представителем.</p>
+         *
+         * @param all все файлы, где встретился хоть один вариант значения
+         */
+        public MatchRow withFiles(Collection<String> all) {
+            List<String> shown = all.stream().limit(FILES_SHOWN).toList();
+            return new MatchRow(source, detail, status, matchedId, matchedName, note,
+                    shown, all.size(), derived, orgUnitHint, orgUnitOptions);
+        }
+
+        /**
+         * Та же строка, но с указанием, в какое подразделение попадёт значение при заведении.
+         *
+         * <p>Отдельным полем, а не текстом в замечании: <b>по нему ветвится интерфейс</b> — где
+         * подсказки нет, там человеку предлагается проставить кафедру руками. Разбирать для этого
+         * текст замечания значило бы завести второго владельца правила на фронте.</p>
+         *
+         * <p>Показывать это обязательно ровно по той же причине, по какой заведение отделено от
+         * сверки (И-10): решение «куда попадёт человек» принимается ДО записи, а не выясняется
+         * после неё.</p>
+         *
+         * @param unit имя нашего подразделения либо {@code null} — «разбор не вывел»
+         */
+        public MatchRow withOrgUnit(String unit) {
+            return new MatchRow(source, detail, status, matchedId, matchedName, note,
+                    files, fileCount, derived, unit, orgUnitOptions);
+        }
+
+        /**
+         * Варианты вхождения, названные файлами, — вход для выбора человеком.
+         *
+         * <p>Отдельно от справочника: спорный факультет может быть ещё не заведён (его создаст этот
+         * же прогон), и в выпадающем списке из базы его просто нет. Тогда выбирать было бы не из
+         * чего — вопрос задан, а ответить нечем.</p>
+         */
+        public MatchRow withOrgUnitOptions(List<String> options) {
+            return new MatchRow(source, detail, status, matchedId, matchedName, note,
+                    files, fileCount, derived, orgUnitHint, List.copyOf(options));
+        }
+
+        /**
+         * Пометить строку как <b>производную</b>: она механически следует из строки другого раздела
+         * и решения человека не требует.
+         *
+         * <p>Единственный случай сегодня — поток из одной группы: он есть у каждой группы, называется
+         * так же, как она, и заводится вместе с ней. В отчёте таких строк столько же, сколько групп,
+         * то есть сотни — и они вытесняют с экрана то, ради чего отчёт читают: сводные потоки,
+         * несопоставленных людей, неоднозначные комнаты.</p>
+         *
+         * <p><b>Отдельным признаком, а не исчезновением строки:</b> заводится только то, что
+         * названо в отчёте (И-10), и одногруппный поток тоже заводится — без него занятие группы не
+         * к чему привязать. Значит он обязан в отчёте быть, просто не на первом плане. И признак
+         * ставит бэк: «что здесь рутина» — это классификация, а её место рядом со значениями, а не
+         * в разборе строки на фронте.</p>
+         */
+        public MatchRow asDerived() {
+            return new MatchRow(source, detail, status, matchedId, matchedName, note,
+                    files, fileCount, true, orgUnitHint, orgUnitOptions);
+        }
+
         static MatchRow matched(String source, String detail, Integer id, String name, String note) {
-            return new MatchRow(source, detail, MatchStatus.MATCHED, id, name, note);
+            return new MatchRow(source, detail, MatchStatus.MATCHED, id, name, note, List.of(), 0, false, null, List.of());
         }
 
         static MatchRow missing(String source, String detail, String note) {
-            return new MatchRow(source, detail, MatchStatus.MISSING, null, null, note);
+            return new MatchRow(source, detail, MatchStatus.MISSING, null, null, note, List.of(), 0, false, null, List.of());
         }
 
         static MatchRow ambiguous(String source, String detail, String note) {
-            return new MatchRow(source, detail, MatchStatus.AMBIGUOUS, null, null, note);
+            return new MatchRow(source, detail, MatchStatus.AMBIGUOUS, null, null, note, List.of(), 0, false, null, List.of());
         }
 
         static MatchRow unreadable(String source, String detail, String note) {
-            return new MatchRow(source, detail, MatchStatus.UNREADABLE, null, null, note);
+            return new MatchRow(source, detail, MatchStatus.UNREADABLE, null, null, note, List.of(), 0, false, null, List.of());
         }
     }
 }

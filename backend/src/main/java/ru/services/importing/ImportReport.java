@@ -14,9 +14,11 @@ import java.util.List;
  *
  * @param files    сводка по каждому файлу в порядке загрузки
  * @param matching сверка со справочниками по всей пачке
+ * @param merged   сведение разрезов в занятия — оно и отвечает, хватает ли данных для записи
  */
 public record ImportReport(
         List<SheetInspection> files,
-        ImportMatchReport matching
+        ImportMatchReport matching,
+        MergeReport merged
 ) {
 }

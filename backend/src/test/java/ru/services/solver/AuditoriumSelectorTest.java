@@ -4,8 +4,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.entity.Auditorium;
 import ru.entity.CellForLesson;
+import ru.entity.Educator;
 import ru.entity.Group;
 import ru.entity.Lesson;
+import ru.entity.OrgUnit;
 import ru.entity.logicSchema.AuditoriumPool;
 import ru.entity.logicSchema.StudyStream;
 import ru.enums.TimeSlotPair;
@@ -69,6 +71,25 @@ class AuditoriumSelectorTest {
         Lesson l = new Lesson();
         l.setStudyStream(stream);
         return l;
+    }
+
+    /** Комната, закреплённая за кафедрой (миграция 025). */
+    private static Auditorium ownedBy(Auditorium a, int orgUnitId) {
+        OrgUnit unit = new OrgUnit();
+        unit.setId(orgUnitId);
+        unit.setName("кафедра " + orgUnitId);
+        a.setOrgUnit(unit);
+        return a;
+    }
+
+    /** Занятие, которое ведёт преподаватель указанной кафедры. */
+    private static Lesson taughtBy(Lesson lesson, int orgUnitId) {
+        OrgUnit unit = new OrgUnit();
+        unit.setId(orgUnitId);
+        Educator educator = new Educator();
+        educator.setOrgUnit(unit);
+        lesson.getEducators().add(educator);
+        return lesson;
     }
 
     private static List<String> names(List<AuditoriumResource> rooms) {
@@ -217,6 +238,55 @@ class AuditoriumSelectorTest {
 
         assertThat(names(selector.select(target, CELL, List.of(res(stranger), res(home)))))
                 .containsExactly("206-3", "205-3");
+    }
+
+    // ===================== Своя кафедра =====================
+
+    @Test
+    @DisplayName("Комната своей кафедры предпочтительнее чужой при прочих равных")
+    void ownDepartmentRoomPreferred() {
+        Auditorium own = ownedBy(room(1, "206-3", 30), 7);
+        Auditorium foreign = ownedBy(room(2, "205-3", 30), 8);
+
+        Lesson target = taughtBy(lesson(group(10, "46", 22, null)), 7);
+
+        assertThat(names(selector.select(target, CELL, List.of(res(foreign), res(own)))))
+                .containsExactly("206-3", "205-3");
+    }
+
+    @Test
+    @DisplayName("Комната без кафедры своей не считается — незаполненное поле не должно предпочитать")
+    void roomWithoutDepartmentIsNeverOwn() {
+        // Иначе на базе, где кафедры у комнат ещё не проставлены, ключ начал бы двигать порядок.
+        Auditorium unowned = room(1, "205-3", 30);
+        Auditorium own = ownedBy(room(2, "206-3", 30), 7);
+
+        Lesson target = taughtBy(lesson(group(10, "46", 22, null)), 7);
+
+        assertThat(names(selector.select(target, CELL, List.of(res(unowned), res(own)))))
+                .containsExactly("206-3", "205-3");
+    }
+
+    @Test
+    @DisplayName("Своя кафедра НЕ перебивает тесноту: чужая просторная лучше своей тесной")
+    void ownDepartmentDoesNotBeatShortfall() {
+        Auditorium ownTight = ownedBy(room(1, "206-3", 20), 7);
+        Auditorium foreignRoomy = ownedBy(room(2, "306-4", 100), 8);
+
+        Lesson target = taughtBy(lesson(group(10, "46", 60, null)), 7);
+
+        assertThat(names(selector.select(target, CELL, List.of(res(ownTight), res(foreignRoomy)))))
+                .containsExactly("306-4", "206-3");
+    }
+
+    @Test
+    @DisplayName("Преподаватель без кафедры — просто нет предпочтения, не падаем")
+    void educatorWithoutDepartment() {
+        Auditorium owned = ownedBy(room(1, "206-3", 30), 7);
+        Lesson target = lesson(group(10, "46", 22, null));
+        target.getEducators().add(new ru.entity.Educator());
+
+        assertThat(names(selector.select(target, CELL, List.of(res(owned))))).containsExactly("206-3");
     }
 
     // ===================== Область поиска =====================

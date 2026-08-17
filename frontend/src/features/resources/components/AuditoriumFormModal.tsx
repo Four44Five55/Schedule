@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, AlertCircle, Home, Building2, Tag, Sparkles } from 'lucide-react';
+import { X, Save, Loader2, AlertCircle, Home, Building2, Tag, Sparkles, Network } from 'lucide-react';
 import { AuditoriumDto, AuditoriumCreateDto, AuditoriumUpdateDto, BuildingDto, FeatureDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
+import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
 import { cn } from '../../../utils/cn';
 
 interface AuditoriumFormModalProps {
@@ -30,12 +31,16 @@ export const AuditoriumFormModal: React.FC<AuditoriumFormModalProps> = ({
     const [featureIds, setFeatureIds] = useState<Set<number>>(
         new Set(auditorium?.features?.map((f) => f.id) ?? [])
     );
+    // Кафедра-владелец: корпус говорит, где комната стоит, кафедра — чья она. Подбор комнат
+    // предпочитает своей кафедре, поэтому поле не косметическое.
+    const [orgUnitId, setOrgUnitId] = useState<number | null>(auditorium?.orgUnitId ?? null);
 
     // Справочники
     const [buildings, setBuildings] = useState<BuildingDto[]>([]);
     const [purposes, setPurposes] = useState<PurposeOption[]>([]);
     const [features, setFeatures] = useState<FeatureDto[]>([]);
     const [loadingRefs, setLoadingRefs] = useState(true);
+    const { flat: orgUnits, loading: orgUnitsLoading } = useOrgUnits();
 
     // Состояние отправки
     const [saving, setSaving] = useState(false);
@@ -102,6 +107,7 @@ export const AuditoriumFormModal: React.FC<AuditoriumFormModalProps> = ({
                 buildingId: buildingId!,
                 purposeId: purposeId ?? null,
                 featureIds: Array.from(featureIds),
+                orgUnitId: orgUnitId ?? null,
             };
 
             console.log('📤 Отправка аудитории:', JSON.stringify(payload, null, 2));
@@ -249,6 +255,35 @@ export const AuditoriumFormModal: React.FC<AuditoriumFormModalProps> = ({
                             {errors.buildingId && (
                                 <p className="text-xs text-red-600 font-medium">{errors.buildingId}</p>
                             )}
+                        </div>
+
+                        {/* Кафедра-владелец */}
+                        <div className="space-y-1.5">
+                            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider">
+                                <Network size={12} />
+                                Кафедра
+                            </label>
+                            <select
+                                value={orgUnitId ?? ''}
+                                onChange={(e) => setOrgUnitId(e.target.value ? parseInt(e.target.value) : null)}
+                                disabled={saving || orgUnitsLoading}
+                                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium transition-all outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer bg-white"
+                            >
+                                <option value="">— Не указана —</option>
+                                {orgUnits
+                                    // Расформированные не предлагаем, но уже выбранное показываем:
+                                    // иначе правка карточки молча стёрла бы привязку.
+                                    .filter((u) => u.active || u.id === orgUnitId)
+                                    .map((u) => (
+                                        <option key={u.id} value={u.id}>
+                                            {' '.repeat(u.depth * 4)}
+                                            {u.name}
+                                        </option>
+                                    ))}
+                            </select>
+                            <p className="text-[11px] text-slate-400">
+                                Чья это комната. Подбор аудиторий предпочитает комнату кафедры преподавателя
+                            </p>
                         </div>
 
                         {/* Назначение */}

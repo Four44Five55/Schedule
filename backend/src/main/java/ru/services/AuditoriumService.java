@@ -12,11 +12,13 @@ import ru.entity.Auditorium;
 import ru.entity.AuditoriumPurpose;
 import ru.entity.Building;
 import ru.entity.Feature;
+import ru.entity.OrgUnit;
 import ru.mapper.AuditoriumMapper;
 import ru.repository.AuditoriumRepository;
 import ru.repository.CurriculumSlotRepository;
 import ru.repository.GroupRepository;
 import ru.repository.write.LessonPlacementRepository;
+import ru.services.orgunit.OrgUnitService;
 import ru.services.projection.ProjectionMaintenance;
 import ru.services.projection.ProjectionSource;
 
@@ -38,6 +40,7 @@ public class AuditoriumService {
     private final FeatureService featureService;
     private final AuditoriumMapper auditoriumMapper;
     private final ProjectionMaintenance projectionMaintenance;
+    private final OrgUnitService orgUnitService;
     // Репозитории, а не сервисы: GroupService сам зависит от AuditoriumService — через сервисы
     // получился бы цикл бинов. Здесь нужны только счётчики.
     private final CurriculumSlotRepository curriculumSlotRepository;
@@ -75,6 +78,7 @@ public class AuditoriumService {
             List<Feature> features = featureService.getAllEntitiesByIds(createDto.featureIds());
             newAuditorium.setFeatures(new HashSet<>(features));
         }
+        newAuditorium.setOrgUnit(resolveOrgUnit(createDto.orgUnitId()));
 
         return auditoriumMapper.toDto(auditoriumRepository.save(newAuditorium));
     }
@@ -118,6 +122,9 @@ public class AuditoriumService {
             List<Feature> newFeatures = featureService.getAllEntitiesByIds(updateDto.featureIds());
             auditoriumToUpdate.getFeatures().addAll(newFeatures);
         }
+        // null — открепить. Перепроекции не требует: подразделения в schedule_view нет вовсе
+        // (CQRS_ARCHITECTURE, «Что в проекцию НЕ кладут»), денормализовано только имя комнаты.
+        auditoriumToUpdate.setOrgUnit(resolveOrgUnit(updateDto.orgUnitId()));
 
         AuditoriumDto updated = auditoriumMapper.toDto(auditoriumRepository.save(auditoriumToUpdate));
         // Название аудитории в read-модели — снимок (сетка, тултипы, Excel).
@@ -189,6 +196,16 @@ public class AuditoriumService {
         // read-модель должна честно это показать, а не старое название удалённой аудитории.
         projectionMaintenance.announce(ProjectionSource.AUDITORIUM, id);
         auditoriumRepository.deleteById(id);
+    }
+
+    /**
+     * Подразделение по id; {@code null} — комната не закреплена ни за какой кафедрой.
+     *
+     * <p>Через сервис, а не репозиторий: 404 на несуществующем id — его правило, и второй вход,
+     * который об этом не знает, отдал бы вместо него нарушение внешнего ключа.</p>
+     */
+    private OrgUnit resolveOrgUnit(Integer orgUnitId) {
+        return orgUnitId == null ? null : orgUnitService.getEntityById(orgUnitId);
     }
 
     // === СЛУЖЕБНЫЕ МЕТОДЫ (для других сервисов) ===

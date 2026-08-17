@@ -66,6 +66,42 @@ class GroupNumberDecoderTest {
             assertThat(number.facultyCode()).isEqualTo("11");
             assertThat(number.departmentShortName()).isEqualTo("52");
             assertThat(number.enrollmentDigit()).isNull();
+            assertThat(number.shortCourse()).isTrue();
+        }
+
+        @Test
+        @DisplayName("11434 — факультет 11 пятизначный: короткий курс, ни года набора, ни кафедры")
+        void fiveDigitEleventhFacultyCarriesNeitherYearNorDepartment() {
+            // Пятизначная форма была одна — десятого факультета, — и «11434» уходило в «номер не по
+            // стандарту». Остаток «434» кафедрой не объявляем: что он кодирует, неизвестно, а
+            // выдуманное краткое имя завело бы кафедру-призрак (её предлагает чтение оргструктуры).
+            GroupNumber number = GroupNumberDecoder.decode("11434");
+
+            assertThat(number.recognized()).isTrue();
+            assertThat(number.facultyCode()).isEqualTo("11");
+            assertThat(number.enrollmentDigit()).isNull();
+            assertThat(number.departmentShortName()).isNull();
+            assertThat(number.shortCourse()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Пятизначные формы не мешают друг другу: 10593 — десятый, 11434 — одиннадцатый")
+        void fiveDigitFormsAreChosenByFaculty() {
+            assertThat(GroupNumberDecoder.decode("10593").facultyCode()).isEqualTo("10");
+            assertThat(GroupNumberDecoder.decode("10593").shortCourse()).isFalse();
+            assertThat(GroupNumberDecoder.isShortCourse("11434")).isTrue();
+            assertThat(GroupNumberDecoder.isShortCourse("10593")).isFalse();
+            assertThat(GroupNumberDecoder.isShortCourse("951")).isFalse();
+        }
+
+        @Test
+        @DisplayName("Короткий курс с суффиксом: «11434/2» — та же форма")
+        void shortCourseKeepsSuffix() {
+            GroupNumber number = GroupNumberDecoder.decode("11434/2");
+
+            assertThat(number.recognized()).isTrue();
+            assertThat(number.suffix()).isEqualTo("2");
+            assertThat(number.shortCourse()).isTrue();
         }
     }
 
@@ -164,6 +200,30 @@ class GroupNumberDecoderTest {
             GroupNumber number = GroupNumberDecoder.decode("955/1/2");
 
             assertThat(number.recognized()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Дефис вместо «/»: «101-1» — та же группа, что «101/1»")
+        void dashIsTheSameSeparator() {
+            // «/» в именах файлов запрещён, и чужая программа подменяет его дефисом. Не узнать
+            // одно в другом — значит завести две группы на одну.
+            GroupNumber dash = GroupNumberDecoder.decode("101-1");
+            GroupNumber slash = GroupNumberDecoder.decode("101/1");
+
+            assertThat(dash.recognized()).isTrue();
+            assertThat(dash.suffix()).isEqualTo("1");
+            assertThat(dash.facultyCode()).isEqualTo(slash.facultyCode());
+            assertThat(dash.departmentShortName()).isEqualTo(slash.departmentShortName());
+            assertThat(GroupNumberDecoder.key("101-1")).isEqualTo(GroupNumberDecoder.key("101/1"));
+        }
+
+        @Test
+        @DisplayName("Написание выбирает человек: «101-1» → «101/1» и обратно")
+        void renderFollowsChosenStyle() {
+            assertThat(GroupNumberDecoder.render("101-1", GroupNumberDecoder.SuffixStyle.SLASH)).isEqualTo("101/1");
+            assertThat(GroupNumberDecoder.render("101/1", GroupNumberDecoder.SuffixStyle.DASH)).isEqualTo("101-1");
+            // Номер без суффикса написанием не затрагивается вовсе.
+            assertThat(GroupNumberDecoder.render("911", GroupNumberDecoder.SuffixStyle.DASH)).isEqualTo("911");
         }
 
         @Test

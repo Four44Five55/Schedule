@@ -12,6 +12,9 @@ public record AuditoriumCreateDto(
         @Min(1) int capacity,
         @NotNull Integer buildingId,
         Integer purposeId,
-        List<Integer> featureIds
+        List<Integer> featureIds,
+        /* Кафедра-владелец; null — не указана. Обязательной не делаем: у большинства комнат в базе
+           владельца нет, и требование сломало бы заведение аудитории «как раньше». */
+        Integer orgUnitId
 ) {
 }

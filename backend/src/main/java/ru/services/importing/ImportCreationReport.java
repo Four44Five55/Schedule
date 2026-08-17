@@ -23,11 +23,32 @@ public record ImportCreationReport(List<CreationSection> sections) {
     }
 
     /**
-     * @param source значение из файла, ради которого строка заводилась
-     * @param id     id заведённой сущности; {@code null} — пропущено
-     * @param name   как назвали
-     * @param note   чего не хватает у заведённой строки либо причина пропуска
+     * @param source    значение из файла, ради которого строка заводилась
+     * @param id        id заведённой сущности; {@code null} — пропущено
+     * @param name      как назвали
+     * @param note      чего не хватает у заведённой строки либо причина пропуска
+     * @param files     файлы, откуда значение приехало (первые несколько)
+     * @param fileCount во скольких файлах всего встретилось
+     * @param derived   строка производная (поток из одной группы) — на экране сворачивается
      */
-    public record CreatedRow(String source, Integer id, String name, String note) {
+    public record CreatedRow(String source, Integer id, String name, String note,
+                             List<String> files, int fileCount, boolean derived) {
+
+        /**
+         * Строка о судьбе значения из сверки.
+         *
+         * <p>Через фабрику, а не конструктором: провенанс должен доехать <b>из той же строки
+         * сверки</b>, по которой заведение и решалось, — иначе «заведено как X» приходится
+         * сверять с файлом вручную, а именно этого мы и избегаем. Забыть его так нельзя.</p>
+         *
+         * @param from строка сверки, по которой шло заведение
+         * @param id   id заведённой сущности; {@code null} — пропущено
+         * @param name как назвали
+         * @param note чего не хватает либо почему пропущено
+         */
+        public static CreatedRow of(ImportMatchReport.MatchRow from, Integer id, String name, String note) {
+            return new CreatedRow(from.source(), id, name, note,
+                    from.files(), from.fileCount(), from.derived());
+        }
     }
 }

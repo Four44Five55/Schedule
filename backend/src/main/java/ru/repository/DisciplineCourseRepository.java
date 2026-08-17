@@ -38,4 +38,10 @@ public interface DisciplineCourseRepository extends JpaRepository<DisciplineCour
      * Сортировка по дисциплине и семестру — стабильный порядок для UI.
      */
     List<DisciplineCourse> findByStudyPeriodIdOrderByDiscipline_NameAscSemesterAsc(Integer studyPeriodId);
+
+    /** Все курсы периода — вход отката: снос курса каскадом уносит слоты, назначения и размещения. */
+    List<DisciplineCourse> findByStudyPeriodId(Integer studyPeriodId);
+
+    /** Сколько курсов у периода — часть цены отката, названной заранее. */
+    long countByStudyPeriodId(Integer studyPeriodId);
 }

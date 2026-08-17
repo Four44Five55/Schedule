@@ -102,14 +102,30 @@ class ScheduleSheetParserTest {
         }
 
         @Test
+        @DisplayName("Файл на объединённые группы: шапка не обрезается по первому пробелу")
+        void jointGroupHeader() {
+            // Живой случай (2026-08-15): файл выписан сразу на две группы. Прежняя регулярка
+            // обрывалась на пробеле и отдавала «10073/19,» — номер с запятой, то есть группу,
+            // которой не существует. Перечень разбирает CellDialect, шапка отдаёт его целиком.
+            ParsedSheet sheet = ScheduleSheetParser.parse(sheet(
+                    "Расписание учебных занятий на осенний семестр | Учебная группа 10073/19, 10073/22",
+                    datesRow(1) + dayRow("Пн", "1-2", "9.00-10.35", cell("Л/Т.4", "УПМВ", "416-3"))));
+
+            assertThat(sheet.header().kind()).isEqualTo(CutKind.GROUP);
+            assertThat(sheet.header().owner()).isEqualTo("10073/19, 10073/22");
+            assertThat(CellDialect.readAll(sheet).get(0).groups())
+                    .containsExactly("10073/19", "10073/22");
+        }
+
+        @Test
         @DisplayName("Преподавательский разрез: звание и степень остаются частью подписи")
         void educatorHeader() {
             ParsedSheet sheet = ScheduleSheetParser.parse(sheet(
-                    "Преподаватель: к-н Горяинов Р.И. ктн Семестр: осенний",
+                    "Преподаватель: к-н Ветров Р.И. ктн Семестр: осенний",
                     datesRow(1) + dayRow("Пн", "1-2", "9.00-10.35", cell("252-3", "911", "АСКС"))));
 
             assertThat(sheet.header().kind()).isEqualTo(CutKind.EDUCATOR);
-            assertThat(sheet.header().owner()).isEqualTo("к-н Горяинов Р.И. ктн");
+            assertThat(sheet.header().owner()).isEqualTo("к-н Ветров Р.И. ктн");
         }
 
         @Test
@@ -168,7 +184,7 @@ class ScheduleSheetParserTest {
             // Так выглядит преподавательский файл: первая учебная неделя пустая и выброшена,
             // а нумерация колонок осталась сплошной.
             ParsedSheet sheet = ScheduleSheetParser.parse(sheet(
-                    "Преподаватель: к-н Горяинов Р.И. ктн Семестр: осенний",
+                    "Преподаватель: к-н Ветров Р.И. ктн Семестр: осенний",
                     datesRow(8, 15) + dayRow("Пн", "1-2", "9.00-10.35",
                             cell("252-3", "911", "АСКС"), cell("252-3", "911", "АСКС"))));
 
@@ -205,11 +221,24 @@ class ScheduleSheetParserTest {
         }
 
         @Test
-        @DisplayName("Разрыв больше окна поиска не угадывается: дата остаётся пустой, колонка — в замечаниях")
+        @DisplayName("Разрыв в 15 недель законен: «30 сентября → 13 января» — это сессия того же семестра")
+        void gapAcrossTheWholeSemesterIsResolved() {
+            // Окно поиска — полугодие (было 12 недель, поднято 2026-08-15 по живому прогону).
+            // Квартал промахивался мимо законных дат: у преподавателя с занятиями от конца ноября
+            // первая же колонка — тринадцатая неделя от начала года, а осенний семестр кончается
+            // сессией в январе.
+            assertThat(ScheduleSheetParser.nextDate(LocalDate.of(2025, 9, 30), DayOfWeek.TUESDAY, 13))
+                    .isEqualTo(LocalDate.of(2026, 1, 13));
+            assertThat(ScheduleSheetParser.nextDate(LocalDate.of(2025, 9, 2), DayOfWeek.MONDAY, 1))
+                    .isEqualTo(LocalDate.of(2025, 12, 1));
+        }
+
+        @Test
+        @DisplayName("Дальше полугодия не угадывается: дата остаётся пустой, колонка — в замечаниях")
         void gapBeyondSearchWindowIsNotGuessed() {
-            // Ближайший понедельник первого числа после 2 сентября — только 1 декабря, это
-            // тринадцатая неделя. Молча прыгнуть туда опаснее, чем признать, что дата не выведена.
-            assertThat(ScheduleSheetParser.nextDate(LocalDate.of(2025, 9, 2), DayOfWeek.MONDAY, 1)).isNull();
+            // Понедельника 31-го числа в пределах семестра не бывает вовсе. Молча прыгнуть на
+            // 31 августа следующего года опаснее, чем признать, что дата не выведена.
+            assertThat(ScheduleSheetParser.nextDate(LocalDate.of(2025, 9, 2), DayOfWeek.MONDAY, 31)).isNull();
         }
     }
 
@@ -385,7 +414,7 @@ class ScheduleSheetParserTest {
         void geometryIsSharedAcrossCuts() {
             List<String> owners = List.of(
                     "Расписание учебных занятий на осенний семестр | Учебная группа 911",
-                    "Преподаватель: к-н Горяинов Р.И. ктн Семестр: осенний",
+                    "Преподаватель: к-н Ветров Р.И. ктн Семестр: осенний",
                     "Загрузка учебной аудитории 252-3 на осенний семестр");
 
             for (String owner : owners) {

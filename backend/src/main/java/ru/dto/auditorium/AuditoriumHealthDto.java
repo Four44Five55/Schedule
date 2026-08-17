@@ -29,6 +29,12 @@ import java.util.UUID;
  * @param conflictingCells всего ячеек, где комната занята больше чем одним занятием
  * @param doubleBooked     занятий, делящих комнату с кем-то ещё
  * @param overCapacity     занятий, не помещающихся в свою комнату
+ * @param withoutAuditorium занятий <b>без комнаты вовсе</b>: они где-то идут, а где — неизвестно.
+ *                         Считаются отдельно от {@code placements}, потому что правилу их не
+ *                         предъявить (его вход — пары «занятие × комната»), и до появления этого
+ *                         счётчика они не попадали никуда: ни в проверенные, ни в находки. Причин
+ *                         две — комнату удалили либо расписание пришло <b>импортом</b> и комнату из
+ *                         файла у нас не нашли; для импорта это массовое состояние
  * @param rooms            разбивка по комнатам, худшие первыми; чистые комнаты не попадают
  */
 public record AuditoriumHealthDto(
@@ -37,6 +43,7 @@ public record AuditoriumHealthDto(
         int conflictingCells,
         int doubleBooked,
         int overCapacity,
+        int withoutAuditorium,
         List<RoomHealthDto> rooms
 ) {
 }

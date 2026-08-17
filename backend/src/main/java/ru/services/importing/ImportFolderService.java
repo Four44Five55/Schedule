@@ -46,6 +46,7 @@ import java.util.stream.Stream;
 public class ImportFolderService {
 
     private final ImportMatchingService matchingService;
+    private final ImportMergeService mergeService;
 
     /** Корень, внутри которого разрешено читать. Пусто — чтение с диска выключено. */
     @Value("${import.source-root:}")
@@ -58,11 +59,15 @@ public class ImportFolderService {
      * Разбирает все файлы выгрузки в каталоге (включая вложенные — выгрузка разложена по папкам
      * подразделений) и сверяет результат со справочниками.
      *
-     * @param folder     каталог; должен лежать внутри {@code import.source-root}
-     * @param locationId локация для сверки аудиторий (И-17)
+     * @param folder          каталог; должен лежать внутри {@code import.source-root}
+     * @param locationId      локация для сверки аудиторий (И-17)
+     * @param groupNameStyle  написание суффикса группы для наших имён («101/1» или «101-1»)
+     * @param periodId        период импорта; по нему считаются выбросы за границы (И-8)
      * @throws IllegalArgumentException если чтение выключено или каталог вне разрешённого корня
      */
-    public FolderInspectionReport inspectFolder(String folder, Integer locationId) {
+    public FolderInspectionReport inspectFolder(String folder, Integer locationId,
+                                                GroupNumberDecoder.SuffixStyle groupNameStyle,
+                                                Integer periodId) {
         Parsed parsed = parseFolder(folder);
 
         Map<CutKind, Integer> byCut = new EnumMap<>(CutKind.class);
@@ -97,7 +102,8 @@ public class ImportFolderService {
                 last,
                 topProblems(parsed),
                 parsed.problems().values().stream().mapToInt(Integer::intValue).sum(),
-                matchingService.match(parsed.sheets(), locationId)
+                matchingService.match(parsed.sheets(), locationId, groupNameStyle),
+                mergeService.merge(parsed.sheets(), periodId, groupNameStyle)
         );
     }
 
@@ -145,7 +151,9 @@ public class ImportFolderService {
             try {
                 // Байты живут ровно до разбора: в памяти остаётся ParsedSheet — непустые ячейки и
                 // подвал, то есть проценты от исходного HTML. Иначе 390 МБ приехали бы целиком.
-                sheet = ScheduleSheetParser.parse(Files.readAllBytes(file));
+                // Имя — путь относительно каталога: в выгрузке файлы разложены по папкам
+                // подразделений, и «911.html» без папки не найти среди полутора тысяч.
+                sheet = ScheduleSheetParser.parse(Files.readAllBytes(file), name);
             } catch (IOException e) {
                 unreadable++;
                 remember(problems, examples, "файл не прочитан: " + e.getMessage(), name);

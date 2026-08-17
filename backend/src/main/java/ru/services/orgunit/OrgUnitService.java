@@ -11,6 +11,7 @@ import ru.dto.orgUnit.OrgUnitUpdateDto;
 import ru.entity.OrgUnit;
 import ru.enums.OrgUnitType;
 import ru.mapper.OrgUnitMapper;
+import ru.repository.AuditoriumRepository;
 import ru.repository.EducatorRepository;
 import ru.repository.GroupRepository;
 import ru.repository.OrgUnitRepository;
@@ -44,6 +45,9 @@ public class OrgUnitService {
     // Репозитории, а не сервисы: нужны только счётчики цены удаления (по образцу BuildingService).
     private final EducatorRepository educatorRepository;
     private final GroupRepository groupRepository;
+    // Репозиторий, а не AuditoriumService: тот сам зависит от OrgUnitService (кафедра-владелец
+    // комнаты) — через сервисы получился бы цикл бинов.
+    private final AuditoriumRepository auditoriumRepository;
 
     private final OrgUnitHierarchyRule hierarchyRule = new OrgUnitHierarchyRule();
 
@@ -110,14 +114,18 @@ public class OrgUnitService {
         long childUnits = orgUnitRepository.countByParentId(id);
         long educators = educatorRepository.countByOrgUnitId(id);
         long groups = groupRepository.countByOrgUnitId(id);
+        long auditoriums = auditoriumRepository.countByOrgUnitId(id);
 
         return new OrgUnitDeletionImpactDto(
                 unit.getId(),
                 unit.getName(),
-                childUnits == 0 && educators == 0 && groups == 0, // deletable считается ЗДЕСЬ
+                // deletable считается ЗДЕСЬ. Четвёртый счётчик появился вместе с миграцией 025:
+                // забыть его значило бы вернуть сырой 500 из БД на кафедре с комнатами.
+                childUnits == 0 && educators == 0 && groups == 0 && auditoriums == 0,
                 childUnits,
                 educators,
-                groups);
+                groups,
+                auditoriums);
     }
 
     /**
@@ -133,7 +141,8 @@ public class OrgUnitService {
                     "Подразделение «" + impact.name() + "» нельзя удалить: на него ссылаются "
                             + "вложенные подразделения (" + impact.childUnits() + "), "
                             + "преподаватели (" + impact.educators() + "), "
-                            + "группы (" + impact.groups() + "). "
+                            + "группы (" + impact.groups() + "), "
+                            + "аудитории (" + impact.auditoriums() + "). "
                             + "Сначала перепривяжите их или снимите флаг «действующее».");
         }
         orgUnitRepository.deleteById(id);

@@ -38,7 +38,7 @@ import java.util.regex.Pattern;
  * Оба «очевидных» пути в живых файлах врут:
  * <ul>
  *   <li><b>номер недели</b> — в преподавательском разрезе пустые недели вырезаны, а нумерация
- *       остаётся сплошной 1…26: у Горяинова первая колонка это 8 сентября, а подписана единицей;</li>
+ *       остаётся сплошной 1…26: у Ветрова первая колонка это 8 сентября, а подписана единицей;</li>
  *   <li><b>строка «Месяц»</b> — в групповом файле у сентября {@code colspan=4} при пяти
  *       сентябрьских понедельниках, а в преподавательском покрыто 11 колонок из 26.</li>
  * </ul>
@@ -58,7 +58,15 @@ public final class ScheduleSheetParser {
     private ScheduleSheetParser() {
     }
 
-    private static final Pattern GROUP_OWNER = Pattern.compile("Учебная\\s+группа\\s+([^\\s<]+)");
+    /**
+     * Владелец группового файла — <b>до конца графы шапки</b>, а не до первого пробела.
+     *
+     * <p>Файл бывает выписан на <b>объединённые группы</b>: «Учебная группа 10073/19, 10073/22».
+     * Прежний {@code [^\s<]+} обрезал такую шапку по пробелу и отдавал «10073/19,» — номер с
+     * запятой на конце, то есть новую группу-призрак в справочнике. Графы шапки склеены «|», по
+     * нему и проходит граница; перечень разбирает {@link CellDialect}.</p>
+     */
+    private static final Pattern GROUP_OWNER = Pattern.compile("Учебная\\s+группа\\s+([^|<]+)");
     private static final Pattern EDUCATOR_OWNER = Pattern.compile("Преподаватель:\\s*(.+?)\\s*(?:Семестр:|\\||$)");
     private static final Pattern AUDITORIUM_OWNER = Pattern.compile("Загрузка\\s+учебной\\s+аудитории\\s+([^\\s|]+)");
     private static final Pattern FACULTY = Pattern.compile("Факультет\\s+([^\\s|]+)");
@@ -97,6 +105,19 @@ public final class ScheduleSheetParser {
     }
 
     /**
+     * То же, но с именем файла — оно доезжает до сверки и до строк отчёта.
+     *
+     * <p>Отдельная перегрузка, а не параметр разбора: на сам разбор имя не влияет никак (разрез
+     * определяется по шапке, а не по имени файла), и путать эти две роли не стоит.</p>
+     *
+     * @param html   содержимое файла
+     * @param source имя файла — то, что человек увидит в отчёте и найдёт на диске
+     */
+    public static ParsedSheet parse(byte[] html, String source) {
+        return parse(html).withSource(source);
+    }
+
+    /**
      * Разбирает файл из строки.
      *
      * @param html содержимое файла
@@ -116,10 +137,10 @@ public final class ScheduleSheetParser {
         Element grid = findGrid(doc);
         if (grid == null) {
             problems.add("не найдено полотно расписания (таблицы со строками дней)");
-            return new ParsedSheet(header, List.of(), footer, List.copyOf(problems));
+            return new ParsedSheet(null, header, List.of(), footer, List.copyOf(problems));
         }
 
-        return new ParsedSheet(header, readCells(grid, header, problems), footer, List.copyOf(problems));
+        return new ParsedSheet(null, header, readCells(grid, header, problems), footer, List.copyOf(problems));
     }
 
     // =======================================================================
@@ -147,7 +168,7 @@ public final class ScheduleSheetParser {
             owner = educator.group(1);
         } else if (group.find()) {
             kind = CutKind.GROUP;
-            owner = group.group(1);
+            owner = group.group(1).trim();
         } else {
             problems.add("шапка не опознана: ни группа, ни преподаватель, ни аудитория");
         }
@@ -497,6 +518,7 @@ public final class ScheduleSheetParser {
 
     private static ParsedSheet empty(String problem) {
         return new ParsedSheet(
+                null,
                 new SheetHeader(CutKind.UNKNOWN, null, null, null, null, null),
                 List.of(),
                 List.of(),

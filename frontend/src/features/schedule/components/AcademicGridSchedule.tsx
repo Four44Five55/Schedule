@@ -174,11 +174,14 @@ const ScheduleCell = React.memo(({
 
   // Цвет имени аудитории: красный — комната занята другим занятием (физика), янтарный — поток
   // не помещается (суждение), иначе — как было (приглушённо). По образцу двух баннеров дашборда.
+  // Комнаты нет вовсе — красный пунктир: это тоже физика, но красить нечего, имени комнаты нет.
   const auditoriumClass = auditoriumIssueKind === 'DOUBLE_BOOKED'
       ? 'text-red-600'
-      : auditoriumIssueKind === 'OVER_CAPACITY'
-          ? 'text-amber-600'
-          : 'opacity-80';
+      : auditoriumIssueKind === 'NO_AUDITORIUM'
+          ? 'text-red-500 underline decoration-dotted'
+          : auditoriumIssueKind === 'OVER_CAPACITY'
+              ? 'text-amber-600'
+              : 'opacity-80';
 
   return (
       <td
@@ -317,7 +320,9 @@ const ScheduleCell = React.memo(({
                       {lesson.groupNames.join(', ') || '—'}
                     </div>
                     <div className={cn('font-mono font-black text-right', auditoriumClass)} style={{ fontSize: bodyPx }}>
-                      {lesson.auditoriumNames.join(', ')}
+                      {/* Комнаты нет — рисуем «?», иначе занятие выглядит нормальным: пустое место
+                          в углу ячейки не читается как находка, а именно ею и является. */}
+                      {lesson.auditoriumNames.join(', ') || (auditoriumIssueKind === 'NO_AUDITORIUM' ? '?' : '')}
                     </div>
                   </>
               ) : (
@@ -329,7 +334,7 @@ const ScheduleCell = React.memo(({
                       {lesson.disciplineAbbreviation}
                     </div>
                     <div className={cn('font-mono font-black text-right', auditoriumClass)} style={{ fontSize: bodyPx }}>
-                      {lesson.auditoriumNames[0]}
+                      {lesson.auditoriumNames[0] ?? (auditoriumIssueKind === 'NO_AUDITORIUM' ? '?' : '')}
                     </div>
                   </>
               )}
@@ -917,8 +922,12 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
     // какой дисциплиной сейчас занят диспетчер). Двойное бронирование важнее тесноты — им и красим.
     const auditoriumFinding = lesson?.placementId
         ? auditoriumViolations?.get(lesson.placementId) : undefined;
-    const auditoriumIssueKind: AuditoriumViolationKind | undefined = auditoriumFinding
-        ? (auditoriumFinding.doubleBooked ? 'DOUBLE_BOOKED' : 'OVER_CAPACITY') : undefined;
+    // Порядок важен: двойное бронирование и отсутствие комнаты — про физику, теснота — суждение.
+    const auditoriumIssueKind: AuditoriumViolationKind | undefined = !auditoriumFinding
+        ? undefined
+        : auditoriumFinding.doubleBooked ? 'DOUBLE_BOOKED'
+            : auditoriumFinding.noAuditorium ? 'NO_AUDITORIUM'
+                : 'OVER_CAPACITY';
     let auditoriumIssueNote: string | undefined;
     if (auditoriumFinding) {
       const notes: string[] = [];
@@ -926,6 +935,9 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         notes.push(auditoriumFinding.sharedWith.length
             ? `⚠ Аудитория занята: ${auditoriumFinding.sharedWith.join(', ')}`
             : '⚠ Аудитория занята другим занятием');
+      }
+      if (auditoriumFinding.noAuditorium) {
+        notes.push('⚠ Аудитория не назначена — занятие идёт неизвестно где');
       }
       if (auditoriumFinding.overCapacity) {
         notes.push(`⚠ В аудиторию не помещается: +${auditoriumFinding.excess} чел.`);

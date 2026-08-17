@@ -63,12 +63,12 @@ class CellDialectTest {
     @DisplayName("Преподаватель: «252-3 · 911 · АСКС» — вида занятия в ячейке НЕТ")
     void educatorCell() {
         LessonEntry entry = CellDialect.EDUCATOR.read(
-                cell("252-3", "911", "АСКС"), header(CutKind.EDUCATOR, "к-н Горяинов Р.И. ктн"));
+                cell("252-3", "911", "АСКС"), header(CutKind.EDUCATOR, "к-н Ветров Р.И. ктн"));
 
         assertThat(entry.rooms()).containsExactly("252-3");
         assertThat(entry.groups()).containsExactly("911");
         assertThat(entry.discipline()).isEqualTo("АСКС");
-        assertThat(entry.educator()).isEqualTo("к-н Горяинов Р.И. ктн");
+        assertThat(entry.educator()).isEqualTo("к-н Ветров Р.И. ктн");
         assertThat(entry.kind()).isNull();
         assertThat(entry.theme()).isNull();
     }
@@ -144,6 +144,28 @@ class CellDialectTest {
         assertThat(entry.kind()).isEqualTo("Л");
         assertThat(entry.groups()).isEmpty();
         assertThat(entry.discipline()).isEqualTo("АСКС");
+    }
+
+    @Test
+    @DisplayName("Объединённые группы в одной строке: «10073/19, 10073/22» — это две группы")
+    void jointGroupsInOneLine() {
+        // Живой случай (2026-08-15). Без разбиения строка доезжала до справочника целиком:
+        // декодер отвечал «больше одного „/“ в номере», сверка — «в базе нет», а заведение
+        // создало бы третью группу с запятой в имени. На деле это поток из двух групп.
+        LessonEntry fromCell = CellDialect.EDUCATOR.read(
+                cell("338-7", "10073/19, 10073/22", "ОВО"), header(CutKind.EDUCATOR, "п-к Иванов Т.В. дин"));
+        assertThat(fromCell.groups()).containsExactly("10073/19", "10073/22");
+
+        LessonEntry fromHeader = CellDialect.GROUP.read(
+                cell("Л/Т.4", "УПМВ", "416-3"), header(CutKind.GROUP, "10073/19, 10073/22"));
+        assertThat(fromHeader.groups()).containsExactly("10073/19", "10073/22");
+    }
+
+    @Test
+    @DisplayName("Одиночная группа перечнем не становится: разделителей нет — строка как есть")
+    void singleGroupIsUntouched() {
+        assertThat(CellDialect.AUDITORIUM.read(cell("Л", "1155-1", "ОВО"),
+                header(CutKind.AUDITORIUM, "338-7")).groups()).containsExactly("1155-1");
     }
 
     @Test

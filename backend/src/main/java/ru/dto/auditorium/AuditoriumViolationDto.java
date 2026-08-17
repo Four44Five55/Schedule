@@ -15,10 +15,12 @@ import java.util.List;
  * и занята, и мала) — они приходят двумя элементами с одним {@code placementId}.</p>
  *
  * @param placementId   занятие
- * @param auditoriumId  комната, о которой находка
+ * @param auditoriumId  комната, о которой находка; {@code null} у {@code NO_AUDITORIUM} — комнаты
+ *                      нет, и подставлять сюда нечего
  * @param auditoriumName имя комнаты (для показа/тултипа)
  * @param kind          {@code DOUBLE_BOOKED} — комната занята другим занятием (физика, только 0
- *                      допустимо); {@code OVER_CAPACITY} — поток не помещается (суждение)
+ *                      допустимо); {@code OVER_CAPACITY} — поток не помещается (суждение);
+ *                      {@code NO_AUDITORIUM} — комнаты нет вовсе (занятие идёт неизвестно где)
  * @param excess        на сколько человек не хватает мест (осмысленно для {@code OVER_CAPACITY})
  * @param sharedWith    другие занятия в этой комнате и ячейке — человекочитаемо («Фил · 954»),
  *                      для {@code DOUBLE_BOOKED}; иначе пусто

@@ -542,20 +542,38 @@ public class ScheduleGenerationService {
     /**
      * Получить сессию «живого» расписания, пригодную для редактирования.
      *
-     * <p>Берёт самую свежую неархивную сессию, у которой есть размещения
-     * (т.е. реально отображаемое расписание), и при необходимости переоткрывает
-     * её для редактирования (статус → READY_FOR_EDIT). Это позволяет править
-     * расписание в любой момент учебного процесса <b>без повторной генерации</b>.</p>
+     * <p>Берёт самую свежую неархивную сессию, у которой есть размещения (т.е. реально отображаемое
+     * расписание), и при необходимости переоткрывает её для редактирования (статус →
+     * READY_FOR_EDIT). Это позволяет править расписание в любой момент учебного процесса <b>без
+     * повторной генерации</b>.</p>
      *
-     * @param user пользователь, выполняющий действие
+     * <h3>Период — не фильтр «для удобства», а условие правильности</h3>
+     * <p>Раньше кандидат искался по <b>всем</b> периодам сразу: «самая свежая сессия с
+     * размещениями». Пока сессия в базе была фактически одна, это работало. С появлением импорта
+     * (он создаёт новую сессию на каждый прогон) самой свежей становится <b>импортная</b>, и экран
+     * расписания любого периода связывался с ней: находки по аудиториям считались по чужой сессии,
+     * а перегенерация, замок и перенос целились в неё же.</p>
+     *
+     * <p>Само правило выбора — в {@link ru.services.session.EditableSessionChoice}: это знание о
+     * предметной области («сессия принадлежит периоду»), и живёт оно чистой функцией, а здесь
+     * остаётся выборка и переоткрытие статуса.</p>
+     *
+     * @param periodId учебный период экрана; {@code null} — период не выбран, работает прежний
+     *                 поиск «самая свежая с размещениями»
+     * @param user     пользователь, выполняющий действие
      * @return Сессия, готовая к редактированию, или пустой Optional, если расписания нет
      */
     @Transactional
-    public java.util.Optional<ru.entity.write.ScheduleSession> getOrCreateEditableSession(String user) {
-        java.util.Optional<ru.entity.write.ScheduleSession> candidate =
+    public java.util.Optional<ru.entity.write.ScheduleSession> getOrCreateEditableSession(
+            Integer periodId, String user) {
+        // findActiveSessions отсортирован по updatedAt DESC — «свежая» берётся из порядка списка.
+        List<ru.entity.write.ScheduleSession> withPlacements =
                 sessionRepo.findActiveSessions(ru.enums.SessionStatus.ARCHIVED).stream()
                         .filter(s -> placementRepo.countBySessionId(s.getId()) > 0)
-                        .findFirst(); // findActiveSessions отсортирован по updatedAt DESC
+                        .toList();
+
+        java.util.Optional<ru.entity.write.ScheduleSession> candidate =
+                ru.services.session.EditableSessionChoice.pick(withPlacements, periodId);
 
         candidate.ifPresent(session -> {
             // Переоткрываем для редактирования, если сессия не в редактируемом статусе.

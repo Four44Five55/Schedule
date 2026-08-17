@@ -42,6 +42,16 @@ public final class AuditoriumResource extends SchedulableResource {
     }
 
     /**
+     * Кафедра-владелец комнаты; {@code null} — не указана (миграция 025).
+     *
+     * <p>Только id: у ленивого прокси он читается без обращения к БД, а больше подбору ничего и не
+     * нужно — вопрос «своя ли комната» решается сравнением идентификаторов.</p>
+     */
+    public Integer orgUnitId() {
+        return auditorium.getOrgUnit() == null ? null : auditorium.getOrgUnit().getId();
+    }
+
+    /**
      * Помещается ли столько людей.
      *
      * @param headcount сколько человек придёт (суммарный размер групп потока)

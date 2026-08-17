@@ -29,6 +29,7 @@ import java.util.Map;
  * @param problems      замечания с числом повторов, самые частые первыми
  * @param problemsTotal сколько замечаний всего (до схлопывания)
  * @param matching      сверка со справочниками по всей пачке
+ * @param merged        сведение разрезов в занятия по всей пачке
  */
 public record FolderInspectionReport(
         String path,
@@ -42,7 +43,8 @@ public record FolderInspectionReport(
         LocalDate lastDate,
         List<ProblemCount> problems,
         int problemsTotal,
-        ImportMatchReport matching
+        ImportMatchReport matching,
+        MergeReport merged
 ) {
 
     /**

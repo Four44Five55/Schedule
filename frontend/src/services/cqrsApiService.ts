@@ -313,10 +313,16 @@ export const CQRSService = {
    * Находит сессию текущего расписания и при необходимости переоткрывает её
    * для редактирования — без повторной генерации. Возвращает null, если
    * расписания ещё нет (HTTP 204).
+   *
+   * ⚠️ `periodId` передавать ОБЯЗАТЕЛЬНО, когда период известен. Без него бэк берёт самую свежую
+   * сессию по всем периодам, а импорт создаёт новую на каждый прогон — и экран любого периода
+   * связался бы с импортной сессией: находки считались бы по чужой, а перегенерация, замок и
+   * перенос целились бы в неё же.
    */
-  getEditableSession: (): Promise<ScheduleSessionDto | null> => {
+  getEditableSession: (periodId?: number): Promise<ScheduleSessionDto | null> => {
     return api
-      .post<ScheduleSessionDto>('/schedule/command/sessions/editable')
+      .post<ScheduleSessionDto>('/schedule/command/sessions/editable', null,
+        periodId != null ? { params: { periodId } } : undefined)
       .then(r => (r.status === 204 ? null : r.data))
       .catch(() => null);
   },
@@ -519,9 +525,10 @@ export function buildAuditoriumFindingMap(
   const map = new Map<string, AuditoriumFinding>();
   for (const v of violations) {
     const cur = map.get(v.placementId) ?? {
-      doubleBooked: false, overCapacity: false, excess: 0, sharedWith: [] as string[],
+      doubleBooked: false, overCapacity: false, noAuditorium: false, excess: 0, sharedWith: [] as string[],
     };
     if (v.kind === 'DOUBLE_BOOKED') cur.doubleBooked = true;
+    else if (v.kind === 'NO_AUDITORIUM') cur.noAuditorium = true;
     else cur.overCapacity = true;
     cur.excess = Math.max(cur.excess, v.excess);
     for (const s of v.sharedWith) if (!cur.sharedWith.includes(s)) cur.sharedWith.push(s);

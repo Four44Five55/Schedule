@@ -84,4 +84,7 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
      * (они уйдут каскадом вместе с размещениями).
      */
     long countByCurriculumSlotId(Integer slotId);
+
+    /** Сколько назначений держит план периода — часть цены отката, названной заранее. */
+    long countByCurriculumSlot_DisciplineCourse_StudyPeriod_Id(Integer periodId);
 }

@@ -8,6 +8,7 @@ export type KindOfStudy =
     | 'GROUP_EXERCISE'
     | 'QUIZ'
     | 'INDIVIDUAL_REVIEW_INTERVIEW'
+    | 'COURSE_PROJECT'
     | 'CREDIT_WITH_GRADE'
     | 'CREDIT_WITHOUT_GRADE'
     | 'EXAM'
@@ -271,6 +272,8 @@ export interface OrgUnitDeletionImpactDto {
   childUnits: number;
   educators: number;
   groups: number;
+  /** Аудиторий закреплено за подразделением (миграция 025) — четвёртая ссылка под RESTRICT. */
+  auditoriums: number;
 }
 
 export interface AuditoriumDto {
@@ -280,6 +283,9 @@ export interface AuditoriumDto {
   building: { id: number; name: string; location: { id: number; name: string } };
   purpose?: { id: number; name: string } | null;
   features: { id: number; name: string; code: string }[];
+  /** Кафедра-владелец; null — не указана. Корпус говорит, где комната, кафедра — чья она. */
+  orgUnitId?: number | null;
+  orgUnitName?: string | null;
 }
 
 export interface AuditoriumCreateDto {
@@ -288,6 +294,7 @@ export interface AuditoriumCreateDto {
   buildingId: number;
   purposeId?: number | null;
   featureIds?: number[];
+  orgUnitId?: number | null;
 }
 
 export interface AuditoriumUpdateDto {
@@ -296,6 +303,7 @@ export interface AuditoriumUpdateDto {
   buildingId: number;
   purposeId?: number | null;
   featureIds?: number[];
+  orgUnitId?: number | null;
 }
 
 export interface LocationDto {
@@ -746,6 +754,12 @@ export interface AuditoriumHealthDto {
   conflictingCells: number;
   doubleBooked: number;
   overCapacity: number;
+  /**
+   * Занятий без комнаты вовсе — они где-то идут, а где, неизвестно. Считаются отдельно от
+   * `placements`: правилу их не предъявить (его вход — пары «занятие × комната»). У импортированного
+   * расписания это массовое состояние: комната напечатана в файле, но у нас её нет.
+   */
+  withoutAuditorium: number;
   rooms: RoomHealthDto[];
 }
 
@@ -847,7 +861,7 @@ export interface ScheduleResultDto {
 
 /**
  * Разрез выгрузки: чьё это расписание. Определяется бэком ПО ШАПКЕ файла, а не по имени —
- * имена файлов у заказчика («911», «ГоряиновР.И.») ничего не гарантируют.
+ * имена файлов у заказчика («911», «ВетровР.И.») ничего не гарантируют.
  */
 export type ImportCutKind = 'GROUP' | 'EDUCATOR' | 'AUDITORIUM' | 'UNKNOWN';
 
@@ -889,12 +903,28 @@ export type ImportMatchStatus = 'MATCHED' | 'MISSING' | 'AMBIGUOUS' | 'UNREADABL
 
 /** Строка сверки: одно значение из файла и его судьба в нашей базе. */
 export interface ImportMatchRowDto {
-  source: string;              // как в файле: «АСКС», «п/п-к Чащин С.В.», «252-3»
+  source: string;              // как в файле: «АСКС», «п/п-к Астахов С.В.», «252-3»
   detail: string | null;       // что понял разбор: «корпус 3», «ф. 9 · каф. 91 · набор 2025»
   status: ImportMatchStatus;
   matchedId: number | null;
   matchedName: string | null;  // как называется у нас — может отличаться, это и надо увидеть
   note: string | null;         // причина отказа либо расхождение при совпадении
+  files: string[];             // откуда приехало: первые несколько имён файлов
+  fileCount: number;           // во скольких файлах всего — показанные это только начало
+  derived: boolean;            // строка следует из другой (поток из одной группы = сама группа)
+  /**
+   * Во что входит: имя подразделения либо null — разбор его не вывел.
+   *
+   * У преподавателя и группы это их кафедра, у кафедры — её факультет. У сопоставленной строки —
+   * где она числится У НАС, у новой — куда попадёт при заведении. По нему ветвится интерфейс:
+   * null в редактируемом разделе → в строке встаёт выбор вручную.
+   */
+  orgUnitHint: string | null;
+  /**
+   * Варианты вхождения, названные самими файлами. Нужны там, где нужного узла ещё нет в базе:
+   * спорный факультет заводится этим же прогоном, и в справочнике его пока не найти.
+   */
+  orgUnitOptions: string[];
 }
 
 /** Раздел сверки по одной категории; несопоставленные строки идут первыми. */
@@ -904,6 +934,22 @@ export interface ImportMatchSectionDto {
   total: number;
   matched: number;
   rows: ImportMatchRowDto[];
+  /**
+   * Показывать ли столбец «Входит в». Отношение одно и то же у всех разделов, где оно есть:
+   * преподаватель и группа входят в кафедру, кафедра — в факультет.
+   */
+  orgUnitColumn: boolean;
+  /**
+   * Можно ли проставить это вхождение вручную — уже, чем `orgUnitColumn`: у подразделения родитель
+   * берётся из шапки того же файла. Признак ставит бэк: это классификация, и фронт её не повторяет.
+   */
+  orgUnitAssignable: boolean;
+  /**
+   * Раздел — предусловие остальных: пока он не сведён, заводить зависимые бессмысленно.
+   * Сегодня такой один — подразделения. Признак ставит бэк: «что от чего зависит» — знание о
+   * предметной области, а не о вёрстке.
+   */
+  prerequisite: boolean;
 }
 
 /** Сверка со справочниками по всей пачке файлов. Ничего не записывает. */
@@ -943,6 +989,52 @@ export interface SheetInspectionDto {
 export interface ImportReportDto {
   files: SheetInspectionDto[];
   matching: ImportMatchReportDto;
+  merged: MergeReportDto;
+}
+
+/** Занятие, сведённое из всех разрезов, которые его видели. */
+export interface MergedLessonDto {
+  date: string;
+  slot: TimeSlotPair;
+  discipline: string;
+  disciplineName: string | null;
+  groups: string[];
+  rooms: string[];
+  kind: string | null;
+  theme: string | null;
+  educators: string[];
+  cuts: ImportCutKind[];
+  files: string[];
+  outsidePeriod: boolean;
+}
+
+/**
+ * Итог сведения разрезов. Цифры отвечают на один вопрос: хватает ли данных для записи.
+ *
+ * `withoutEducator` — такие занятия не разрешатся в назначение (у дисциплины их несколько, по одному
+ * на преподавателя и состав потока). `missedByGroupCut` — датчик полноты: занятие видно у
+ * преподавателя или аудитории, а у группы стёрто маркером «ЭкзС» либо вышло за границы периода.
+ */
+export interface MergeReportDto {
+  lessons: number;
+  entries: number;
+  seenInGroupCut: number;
+  seenInRoomCut: number;
+  seenInEducatorCut: number;
+  missedByGroupCut: number;
+  withoutKind: number;
+  withoutTheme: number;
+  withoutEducator: number;
+  outsidePeriod: number;
+  undatedEntries: number;
+  /** Разведённые параллельные занятия: одна дисциплина в одно время, но занятий несколько (И-29). */
+  parallelSplit: number;
+  /** Занятий с двумя ведущими: ведут вместе или один запасной — решает человек (вопрос 1a). */
+  coTaught: number;
+  firstDate: string | null;
+  lastDate: string | null;
+  findings: { message: string; count: number; example: string | null }[];
+  sample: MergedLessonDto[];
 }
 
 /**
@@ -967,6 +1059,46 @@ export interface FolderInspectionReportDto {
   problems: { message: string; count: number; example: string | null }[];
   problemsTotal: number;
   matching: ImportMatchReportDto;
+  merged: MergeReportDto;
+}
+
+/**
+ * Итог записи расписания. Смотреть надо не на «записано N», а на остаток: импорт фиксирует факт,
+ * а не просит разрешения, поэтому успех записи ничего не говорит о качестве расписания.
+ */
+export interface ScheduleWriteReportDto {
+  sessionId: string;
+  sessionName: string;
+  placements: number;
+  /** Записаны без аудитории: комната из файла не нашлась либо одноимённых несколько. */
+  withoutRoom: number;
+  /** Вне периода — не размещаем (И-8), уходят в очередь неразмещённых. */
+  outsidePeriod: number;
+  /** Не доведены до назначения — причины в `blockers`. */
+  notResolved: number;
+  /** Строк read-модели; 0 — проекция не запрашивалась, смотреть можно только датчиками. */
+  projected: number;
+  plan: PlanReportDto;
+  blockers: { message: string; count: number; example: string | null }[];
+}
+
+/** Импортная сессия периода: опознаётся по своим размещениям, а не по колонке-признаку. */
+export interface ImportedSessionDto {
+  id: string;
+  name: string;
+  createdAt: string;
+  placements: number;
+}
+
+/** Цена отката плана периода — называется до нажатия. */
+export interface RollbackImpactDto {
+  courses: number;
+  slots: number;
+  assignments: number;
+  /** Сколько занятий расписания исчезнет вместе с планом. */
+  placements: number;
+  /** Потоки, оставшиеся без назначений: имя уникально глобально, без уборки второй прогон упрётся. */
+  orphanStreams: number;
 }
 
 /** Строка заведения: `id === null` — пропущено, причина в `note`. */
@@ -975,6 +1107,9 @@ export interface ImportCreatedRowDto {
   id: number | null;
   name: string | null;
   note: string | null;
+  files: string[];     // те же источники, что и в сверке: заведённое проверяется по файлу
+  fileCount: number;
+  derived: boolean;    // производная строка (поток из одной группы) — сворачивается
 }
 
 export interface ImportCreationSectionDto {
@@ -988,6 +1123,46 @@ export interface ImportCreationSectionDto {
  * Что импорт завёл в справочниках. Плана и расписания не касается: справочники заводятся
  * отдельным шагом, пока на них никто не ссылается и строки ещё удаляемы.
  */
+/**
+ * Во что превратится сведённое занятие: строка цепочки плана.
+ * `newCourse`/`newSlot` — импорт заведёт их сам (И-18).
+ */
+export interface PlanRowDto {
+  date: string;
+  slot: TimeSlotPair;
+  discipline: string;
+  semester: number;
+  kind: KindOfStudy;
+  position: number;
+  theme: string | null;
+  stream: string;
+  educators: string[];
+  newCourse: boolean;
+  newSlot: boolean;
+}
+
+/**
+ * Что импорт сделает с учебным планом — ДО записи. Ничего не создаётся: заводится не одна строка,
+ * а четыре уровня (курс → тема → слот → назначение), и каждая потом окажется под ссылкой размещения.
+ */
+export interface PlanReportDto {
+  lessons: number;
+  resolved: number;
+  coursesToCreate: number;
+  themesToCreate: number;
+  slotsToCreate: number;
+  assignmentsToCreate: number;
+  coursesExisting: number;
+  slotsExisting: number;
+  assignmentsExisting: number;
+  /** Позиций слота выведено из номера темы (И-20) — основной путь. */
+  positionsByTheme: number;
+  /** Позиций выведено хронологией — там, где темы в ячейке нет. */
+  positionsByOrder: number;
+  blockers: { message: string; count: number; example: string | null }[];
+  sample: PlanRowDto[];
+}
+
 export interface ImportCreationReportDto {
   sections: ImportCreationSectionDto[];
 }

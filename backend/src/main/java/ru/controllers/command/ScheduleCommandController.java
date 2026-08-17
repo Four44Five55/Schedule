@@ -259,10 +259,18 @@ public class ScheduleCommandController {
      * <p>Находит сессию текущего расписания и при необходимости переоткрывает её
      * для редактирования — без повторной генерации. Возвращает 204, если расписания
      * (ни одной сессии с размещениями) ещё нет.</p>
+     *
+     * <p><b>Период обязателен по смыслу, хотя и необязателен в контракте.</b> Без него берётся
+     * самая свежая сессия по всем периодам, а это ошибка: импорт создаёт новую сессию на каждый
+     * прогон, и экран любого периода связывался бы с ней. Параметр оставлен необязательным ради
+     * легаси-вызовов; правило поиска — в {@code getOrCreateEditableSession}.</p>
+     *
+     * @param periodId учебный период экрана
      */
     @PostMapping("/sessions/editable")
-    public ResponseEntity<ScheduleSessionDto> getEditableSession() {
-        return generationService.getOrCreateEditableSession("user")
+    public ResponseEntity<ScheduleSessionDto> getEditableSession(
+            @RequestParam(value = "periodId", required = false) Integer periodId) {
+        return generationService.getOrCreateEditableSession(periodId, "user")
             .map(session -> ResponseEntity.ok(sessionMapper.toDto(session)))
             .orElseGet(() -> ResponseEntity.noContent().build());
     }

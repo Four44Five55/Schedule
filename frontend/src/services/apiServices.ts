@@ -74,6 +74,10 @@ import {
   DictionaryEntryFormDto,
   DictionaryKindDto,
   ImportReportDto,
+  PlanReportDto,
+  ScheduleWriteReportDto,
+  ImportedSessionDto,
+  RollbackImpactDto,
   ImportCreationReportDto,
   FolderInspectionReportDto
 } from '../types/api';
@@ -102,6 +106,55 @@ export const EnumService = {
  * **ничего не записывает**. Первый прогон импорта сущностей не создаёт намеренно — завести
  * преподавателя легко, а убрать (когда на него сошлётся назначение) уже нет.
  */
+/**
+ * Каким знаком писать суффикс номера группы у нас: «101/1» или «101-1».
+ *
+ * В выгрузке встречаются оба: дефис появляется там, где номер попал в ИМЯ ФАЙЛА — «/» в именах
+ * файлов запрещён. На опознание группы выбор не влияет (оба написания — одна группа), только на то,
+ * как мы её назовём.
+ */
+export type GroupNameStyle = 'SLASH' | 'DASH';
+
+/** Параметры прогона, которых в выгрузке нет: их называет человек. */
+export interface ImportSettings {
+  locationId?: number | null;
+  groupSize: number;
+  roomCapacity: number;
+  groupNameStyle: GroupNameStyle;
+  /**
+   * Ручные привязки к подразделению: раздел отчёта → значение строки → id кафедры.
+   *
+   * Нужны там, где разбор кафедру не вывел: у преподавателя нет своего файла, номер группы не по
+   * стандарту, кафедра в базе не заведена. Выбор человека сильнее вывода из файла — он для того и
+   * делается, что файл ответа не дал. Раздел едет ключом: какие из них про преподавателей, а какие
+   * про группы, знает бэк — фронт эту классификацию не повторяет.
+   */
+  orgUnits?: Record<string, Record<string, number>>;
+  /**
+   * Родитель, выбранный для самого подразделения: имя строки → имя родителя.
+   *
+   * Именем, а не id: спорный факультет может быть ещё не заведён — его создаёт этот же прогон,
+   * и id у него нет. Выбор из одного справочника был бы вопросом, на который нечем ответить.
+   */
+  orgUnitParents?: Record<string, string>;
+}
+
+/**
+ * Ручные привязки — JSON-строкой в параметре запроса.
+ *
+ * Ключ здесь — значение как оно показано в отчёте («п/п-к Астахов С.В.», «10073/19»), в нём законно
+ * есть и пробелы, и точки, и косая черта: любой разделитель вида «ключ=значение» рано или поздно
+ * попал бы внутрь ключа. `undefined` axios из параметров выбрасывает сам.
+ */
+/** Плоская карта имён — то же правило: пустую не шлём. */
+const namesParam = (map?: Record<string, string>): string | undefined =>
+  map && Object.keys(map).length > 0 ? JSON.stringify(map) : undefined;
+
+const orgUnitsParam = (map?: Record<string, Record<string, number>>): string | undefined => {
+  const filled = Object.entries(map ?? {}).filter(([, rows]) => Object.keys(rows).length > 0);
+  return filled.length > 0 ? JSON.stringify(Object.fromEntries(filled)) : undefined;
+};
+
 export const ImportService = {
   /**
    * Пробный разбор файлов выгрузки (HTML любого разреза — группы, преподавателя, аудитории)
@@ -114,12 +167,21 @@ export const ImportService = {
    * законно существует в нескольких кампусах; без параметра одноимённые комнаты вернутся как
    * «одноимённых несколько», а не будут выбраны наугад.
    */
-  inspect: (files: File[], locationId?: number | null): Promise<ImportReportDto> => {
+  inspect: (
+    files: File[],
+    locationId?: number | null,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+    periodId?: number | null,
+  ): Promise<ImportReportDto> => {
     const form = new FormData();
     files.forEach((file) => form.append('files', file));
     return api.post<ImportReportDto>('/import/inspect', form, {
       headers: { 'Content-Type': undefined },
-      params: locationId != null ? { locationId } : undefined,
+      params: {
+        groupNameStyle,
+        ...(locationId != null ? { locationId } : {}),
+        ...(periodId != null ? { periodId } : {}),
+      },
     }).then((r) => r.data);
   },
 
@@ -129,9 +191,49 @@ export const ImportService = {
    * Файлы не загружаются: бэкенд локальный, выгрузка лежит на той же машине. Каталог должен быть
    * внутри `import.source-root`, иначе бэк ответит 400 с объяснением.
    */
-  inspectFolder: (path: string, locationId?: number | null): Promise<FolderInspectionReportDto> =>
+  inspectFolder: (
+    path: string,
+    locationId?: number | null,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+    periodId?: number | null,
+  ): Promise<FolderInspectionReportDto> =>
     api.post<FolderInspectionReportDto>('/import/inspect-folder', null, {
-      params: { path, ...(locationId != null ? { locationId } : {}) },
+      params: {
+        path,
+        groupNameStyle,
+        ...(locationId != null ? { locationId } : {}),
+        ...(periodId != null ? { periodId } : {}),
+      },
+    }).then((r) => r.data),
+
+  /**
+   * Завести ТОЛЬКО подразделения — шаг раньше всех остальных.
+   *
+   * Отдельно от `createMissing` потому, что на подразделения ссылаются и преподаватель, и группа,
+   * и комната: незаведённая кафедра не отменяет заведение зависимых, а тихо оставляет их без
+   * привязки. Разобрать спорное дерево дешевле до того, как появились сотни ссылающихся строк.
+   *
+   * Повторный запуск безопасен: уже заведённое пропускается по ключу.
+   */
+  createOrgUnits: (
+    files: File[],
+    parents?: Record<string, string>,
+  ): Promise<ImportCreationReportDto> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<ImportCreationReportDto>('/import/create-org-units', form, {
+      headers: { 'Content-Type': undefined },
+      params: { orgUnitParents: namesParam(parents) },
+    }).then((r) => r.data);
+  },
+
+  /** То же по каталогу на диске. */
+  createOrgUnitsFromFolder: (
+    path: string,
+    parents?: Record<string, string>,
+  ): Promise<ImportCreationReportDto> =>
+    api.post<ImportCreationReportDto>('/import/create-org-units-folder', null, {
+      params: { path, orgUnitParents: namesParam(parents) },
     }).then((r) => r.data),
 
   /**
@@ -145,7 +247,7 @@ export const ImportService = {
    */
   createMissing: (
     files: File[],
-    settings: { locationId?: number | null; groupSize: number; roomCapacity: number },
+    settings: ImportSettings,
   ): Promise<ImportCreationReportDto> => {
     const form = new FormData();
     files.forEach((file) => form.append('files', file));
@@ -154,24 +256,142 @@ export const ImportService = {
       params: {
         groupSize: settings.groupSize,
         roomCapacity: settings.roomCapacity,
+        groupNameStyle: settings.groupNameStyle,
+        orgUnits: orgUnitsParam(settings.orgUnits),
+        orgUnitParents: namesParam(settings.orgUnitParents),
         ...(settings.locationId != null ? { locationId: settings.locationId } : {}),
       },
     }).then((r) => r.data);
   },
 
+  /**
+   * Что импорт сделает с учебным планом. Не пишет ничего.
+   *
+   * Отдельным шагом, а не вместе с разбором: план считается уже ПОСЛЕ заведения справочников (без
+   * заведённой дисциплины и потока занятие не разрешается), а период здесь обязателен — от него
+   * зависит семестр курса.
+   */
+  planPreview: (
+    files: File[],
+    periodId: number,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+  ): Promise<PlanReportDto> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<PlanReportDto>('/import/plan-preview', form, {
+      headers: { 'Content-Type': undefined },
+      params: { periodId, groupNameStyle },
+    }).then((r) => r.data);
+  },
+
+  /**
+   * Завести учебный план по тому же расчёту. Расписания не касается.
+   *
+   * Идёт ПОСЛЕ «Завести» (справочники): без заведённых дисциплины, группы и потока занятие в план
+   * не разрешается. Повторный запуск безопасен — заведённое считается «уже есть».
+   */
+  createPlan: (
+    files: File[],
+    periodId: number,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+  ): Promise<PlanReportDto> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<PlanReportDto>('/import/create-plan', form, {
+      headers: { 'Content-Type': undefined },
+      params: { periodId, groupNameStyle },
+    }).then((r) => r.data);
+  },
+
+  /** То же по каталогу на диске. */
+  createPlanFromFolder: (
+    path: string,
+    periodId: number,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+  ): Promise<PlanReportDto> =>
+    api.post<PlanReportDto>('/import/create-plan-folder', null, {
+      params: { path, periodId, groupNameStyle },
+    }).then((r) => r.data),
+
+  /** То же по каталогу на диске. */
+  planPreviewFromFolder: (
+    path: string,
+    periodId: number,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+  ): Promise<PlanReportDto> =>
+    api.post<PlanReportDto>('/import/plan-preview-folder', null, {
+      params: { path, periodId, groupNameStyle },
+    }).then((r) => r.data),
+
   /** То же заведение, но по каталогу на диске — правила и сервис те же, отличается только вход. */
   createMissingFromFolder: (
     path: string,
-    settings: { locationId?: number | null; groupSize: number; roomCapacity: number },
+    settings: ImportSettings,
   ): Promise<ImportCreationReportDto> =>
     api.post<ImportCreationReportDto>('/import/create-missing-folder', null, {
       params: {
         path,
         groupSize: settings.groupSize,
         roomCapacity: settings.roomCapacity,
+        groupNameStyle: settings.groupNameStyle,
+        orgUnits: orgUnitsParam(settings.orgUnits),
+        orgUnitParents: namesParam(settings.orgUnitParents),
         ...(settings.locationId != null ? { locationId: settings.locationId } : {}),
       },
     }).then((r) => r.data),
+
+  /**
+   * Записать расписание: план и размещения в НОВУЮ сессию. Последний шаг импорта.
+   *
+   * Живое расписание не двигается — сессия всегда новая, и неудачный прогон сносится одной
+   * командой. Размещения пишутся закреплёнными (`locked`), иначе первая же перегенерация их снесёт.
+   *
+   * `project` — писать ли read-модель. В экспериментальном периоде можно и полезно: импорт видно
+   * в обычной сетке. В ЖИВОМ периоде нельзя, пока `schedule_view` не несёт `session_id`.
+   */
+  createSchedule: (
+    files: File[],
+    periodId: number,
+    locationId: number | null,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+    project = false,
+  ): Promise<ScheduleWriteReportDto> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    return api.post<ScheduleWriteReportDto>('/import/create-schedule', form, {
+      headers: { 'Content-Type': undefined },
+      params: { periodId, groupNameStyle, project, ...(locationId != null ? { locationId } : {}) },
+    }).then((r) => r.data);
+  },
+
+  /** То же по каталогу на диске — путь для полного объёма. */
+  createScheduleFromFolder: (
+    path: string,
+    periodId: number,
+    locationId: number | null,
+    groupNameStyle: GroupNameStyle = 'SLASH',
+    project = false,
+  ): Promise<ScheduleWriteReportDto> =>
+    api.post<ScheduleWriteReportDto>('/import/create-schedule-folder', null, {
+      params: { path, periodId, groupNameStyle, project, ...(locationId != null ? { locationId } : {}) },
+    }).then((r) => r.data),
+
+  /** Импортные сессии периода: без списка кнопка удаления теряет объект после F5. */
+  importedSessions: (periodId: number): Promise<ImportedSessionDto[]> =>
+    api.get<ImportedSessionDto[]>('/import/sessions', { params: { periodId } }).then((r) => r.data),
+
+  /** Цена отката плана — ДО нажатия, а не по факту исчезнувшего расписания. */
+  rollbackImpact: (periodId: number): Promise<RollbackImpactDto> =>
+    api.get<RollbackImpactDto>('/import/rollback-impact', { params: { periodId } }).then((r) => r.data),
+
+  /**
+   * Снести учебный план периода: курсы → слоты → назначения → размещения и осиротевшие потоки.
+   *
+   * Нужен, когда кривым оказался разбор ПЛАНА. Если кривой оказалась только раскладка, достаточно
+   * снести сессию — план переживёт.
+   */
+  rollbackPlan: (periodId: number): Promise<RollbackImpactDto> =>
+    api.delete<RollbackImpactDto>('/import/plan', { params: { periodId } }).then((r) => r.data),
 };
 
 /**

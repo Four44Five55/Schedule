@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -46,6 +47,26 @@ class ScheduleSheetParserSamplesTest {
         Path file = SAMPLES.resolve(name);
         Assumptions.assumeTrue(Files.exists(file), "нет образца " + name + " — тест пропущен");
         return ScheduleSheetParser.parse(Files.readAllBytes(file));
+    }
+
+    /**
+     * Любой образец нужного разреза — <b>найденный, а не названный по имени файла</b>.
+     *
+     * <p>Имя преподавательского файла это фамилия живого человека, и держать её в репозитории
+     * незачем: разрез объявлен в шапке, значит и искать файл надо по шапке. Заодно тест перестал
+     * зависеть от того, чьи именно образцы лежат в каталоге.</p>
+     */
+    private static ParsedSheet anySample(CutKind kind) throws IOException {
+        Assumptions.assumeTrue(SAMPLES != null, "нет каталога docs/samples — тест пропущен");
+        try (Stream<Path> files = Files.list(SAMPLES)) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".html")).toList()) {
+                ParsedSheet sheet = ScheduleSheetParser.parse(Files.readAllBytes(file));
+                if (sheet.header().kind() == kind) {
+                    return sheet;
+                }
+            }
+        }
+        return Assumptions.abort("нет образца разреза " + kind + " — тест пропущен");
     }
 
     private static Optional<SheetCell> at(ParsedSheet sheet, LocalDate date, TimeSlotPair slot) {
@@ -84,17 +105,20 @@ class ScheduleSheetParserSamplesTest {
         assertThat(footerRow(sheet, "АСКС")).satisfies(discipline -> {
             assertThat(discipline.name()).isEqualTo("Автоматизированные системы управления КС");
             assertThat(discipline.department()).isEqualTo("91");
-            assertThat(discipline.lecturers()).containsExactly("Волков В.Ф. двн проф", "п/п-к Чащин С.В.");
+            // Подписи здесь — живые люди, поэтому проверяется ЧИСЛО, а не имена: тесту важно
+            // ровно оно. Разбор самих подписей (звание, инициалы, регалии) закреплён на
+            // синтетических данных в EducatorNameDecoderTest.
+            assertThat(discipline.lecturers()).hasSize(2);
             // Находка 1: два практика у одной дисциплины в одной группе — блокирующий вопрос 1a
             // получил ответ «не ноль» на первом же живом файле.
-            assertThat(discipline.practicians()).containsExactly("Алексеева А.Ю. кфмн", "к-н Горяинов Р.И. ктн");
+            assertThat(discipline.practicians()).hasSize(2);
             assertThat(discipline.hours()).isEqualTo("18-30");
         });
 
         // У НИР лектора нет вовсе — пустой перечень это законное значение, а не сбой разбора.
         assertThat(footerRow(sheet, "НИР")).satisfies(discipline -> {
             assertThat(discipline.lecturers()).isEmpty();
-            assertThat(discipline.practicians()).containsExactly("Борунова Е.В.");
+            assertThat(discipline.practicians()).hasSize(1);
             assertThat(discipline.report()).isEqualTo("ЗО");
         });
 
@@ -112,10 +136,10 @@ class ScheduleSheetParserSamplesTest {
     @Test
     @DisplayName("Преподавательский файл: вырезанная первая неделя не сдвигает даты")
     void educatorSampleKeepsRealDates() throws IOException {
-        ParsedSheet sheet = sample("ГоряиновР.И..html");
+        ParsedSheet sheet = anySample(CutKind.EDUCATOR);
 
-        assertThat(sheet.header().kind()).isEqualTo(CutKind.EDUCATOR);
-        assertThat(sheet.header().owner()).isEqualTo("к-н Горяинов Р.И. ктн");
+        // Владелец — подпись живого человека, поэтому проверяется её наличие, а не текст.
+        assertThat(sheet.header().owner()).isNotBlank();
         assertThat(sheet.header().department()).isEqualTo("91 кафедра");
 
         // Первая колонка подписана единицей, но это 8 сентября: неделя 1 сентября вырезана.

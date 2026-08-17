@@ -129,14 +129,22 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
     if (sessionProp) setCurrentSession(sessionProp);
   }, [sessionProp]);
 
-  // При открытии расписания подтягиваем сессию «живого» расписания (и при
-  // необходимости переоткрываем её), чтобы редактирование было доступно сразу.
+  // При открытии расписания подтягиваем сессию «живого» расписания (и при необходимости
+  // переоткрываем её), чтобы редактирование было доступно сразу.
+  //
+  // ⚠️ Сессия спрашивается ДЛЯ ВЫБРАННОГО ПЕРИОДА, а не «самая свежая». Импорт создаёт новую
+  // сессию на каждый прогон, и без периода экран связался бы с ней: находки по аудиториям
+  // считались бы по чужой сессии, а перегенерация, замок и перенос целились бы в неё же.
+  // Смена периода сбрасывает сессию, иначе от прежнего периода осталась бы чужая.
   useEffect(() => {
     if (sessionProp) return;
-    CQRSService.getEditableSession().then((s) => {
-      if (s) setCurrentSession(s);
+    let outdated = false;
+    setCurrentSession(null);
+    CQRSService.getEditableSession(selectedPeriod?.id).then((s) => {
+      if (!outdated && s) setCurrentSession(s);
     });
-  }, [sessionProp]);
+    return () => { outdated = true; };
+  }, [sessionProp, selectedPeriod?.id]);
 
   const options = useMemo(() => {
     const groups = new Set<string>();
@@ -414,6 +422,23 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
                   <Calendar className="text-slate-400" size={24} />
                 </div>
                 <p className="text-sm font-bold text-slate-900">Выберите учебный период в шапке</p>
+              </div>
+            </div>
+        ) : selectedValue && !options[filterType].includes(selectedValue) ? (
+            // Выбранный объект переживает F5 и смену периода, а расписание — нет: в этом периоде
+            // такой группы (преподавателя, аудитории) может не быть вовсе. Пустая сетка выглядела бы
+            // как «расписания нет», хотя оно есть — просто не у этого объекта.
+            <div className="bg-white border border-slate-100 rounded-xl p-8 shadow-sm text-center">
+              <div className="flex flex-col items-center gap-2">
+                <Search className="text-slate-400" size={24} />
+                <p className="text-sm font-bold text-slate-900">
+                  В этом периоде у «{selectedValue}» занятий нет
+                </p>
+                <p className="text-xs text-slate-500 max-w-md">
+                  {lessons.length > 0
+                    ? `В расписании периода ${lessons.length} занятий — выберите объект из списка выше.`
+                    : 'Расписание этого периода пусто: либо оно не сгенерировано, либо записано импортом, но не спроецировано (кнопка «Показать в сетке» на странице импорта).'}
+                </p>
               </div>
             </div>
         ) : selectedValue ? (
