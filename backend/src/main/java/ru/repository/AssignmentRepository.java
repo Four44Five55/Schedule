@@ -32,7 +32,8 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
             "curriculumSlot.kindOfStudy",   // Подгрузить и тип занятия
             "studyStream",              // Подгружаем связанный поток
             "studyStream.groups",       // Подгружаем группы внутри потока
-            "educators"                 // Подгружаем преподавателей, назначенных на это занятие
+            "educators",                // Ведущие: те, кто реально проводит занятие
+            "reserveEducators"          // Запасные (И-22): в расписании НЕ участвуют, нужны карточке и подвалу
     })
     @Query("SELECT a FROM Assignment a WHERE a.curriculumSlot.disciplineCourse.id = :courseId")
     List<Assignment> findAllByCourseIdWithDetails(@Param("courseId") Integer courseId);
@@ -57,7 +58,8 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
             "curriculumSlot.kindOfStudy",
             "studyStream",
             "studyStream.groups",
-            "educators"
+            "educators",
+            "reserveEducators"
     })
     @Query("SELECT a FROM Assignment a WHERE a.curriculumSlot.disciplineCourse.id IN :courseIds")
     List<Assignment> findAllByCourseIdsWithDetails(@Param("courseIds") Collection<Integer> courseIds);
@@ -87,4 +89,32 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
 
     /** Сколько назначений держит план периода — часть цены отката, названной заранее. */
     long countByCurriculumSlot_DisciplineCourse_StudyPeriod_Id(Integer periodId);
+
+    /**
+     * Назначения периода, у которых есть запасные (И-22) — для подвала бланка.
+     *
+     * <p>Отдельный запрос, а не обход {@code schedule_view}: запасной по определению не имеет ни
+     * одного размещения, поэтому в проекции его нет и быть не может. Подвал — единственное место,
+     * где он показывается, и данные для него приходится брать с write-стороны (тем же путём, что
+     * кафедру и регалии — см. {@code ScheduleExportService#labelsByEducator}).</p>
+     *
+     * <p>Фильтр {@code SIZE(...) > 0} держит выборку маленькой: назначений в периоде тысячи, а
+     * запасные есть у единиц. Группы потока нужны, чтобы разложить запасных по листам групп;
+     * вид занятия — чтобы выбрать колонку бланка («Лектор» или «Другие виды занятий»).</p>
+     *
+     * @param periodId учебный период
+     * @return назначения с непустым составом запасных; связи для подвала подгружены
+     */
+    @EntityGraph(attributePaths = {
+            "curriculumSlot",
+            "curriculumSlot.disciplineCourse",
+            "curriculumSlot.disciplineCourse.discipline",
+            "studyStream",
+            "studyStream.groups",
+            "reserveEducators"
+    })
+    @Query("SELECT a FROM Assignment a "
+            + "WHERE a.curriculumSlot.disciplineCourse.studyPeriod.id = :periodId "
+            + "AND SIZE(a.reserveEducators) > 0")
+    List<Assignment> findWithReserveByPeriodId(@Param("periodId") Integer periodId);
 }

@@ -57,6 +57,27 @@ public class StudyPeriod {
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
+    /**
+     * Должность подписанта расписания — «Начальник учебного отдела» (чейнджлог 026).
+     *
+     * <p>Три поля подписи — <b>реквизит документа</b>, а не сущность предметной области: подписывает
+     * расписание не обязательно тот, кто в нём преподаёт, и заводить такого человека в справочник
+     * преподавателей ради строки в бланке значило бы портить справочник. Отсюда свободный текст.</p>
+     *
+     * <p>Владелец — период: подписант меняется от семестра к семестру, выгрузка и так
+     * период-центрична, а прошлые семестры сохраняют своего подписанта.</p>
+     */
+    @Column(name = "signer_position")
+    private String signerPosition;
+
+    /** Регалии подписанта — «полковник», «п-к, ктн, доц»; печатаются перед фамилией. */
+    @Column(name = "signer_credentials")
+    private String signerCredentials;
+
+    /** Фамилия и инициалы подписанта — «Иванов И.И.». Пусто → блок подписи в бланке не рисуется. */
+    @Column(name = "signer_name")
+    private String signerName;
+
     public StudyPeriod(String name, int studyYear, PeriodType periodType, LocalDate startDate, LocalDate endDate) {
         this.name = name;
         this.studyYear = studyYear;

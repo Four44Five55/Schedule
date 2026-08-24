@@ -53,9 +53,11 @@ public class AssignmentService {
             // 2. Находим связанные сущности через их сервисы
             StudyStream stream = studyStreamService.getEntityById(detail.studyStreamId());
             List<Educator> educators = educatorService.getAllEntitiesByIds(detail.educatorIds());
+            List<Educator> reserve = resolveReserve(detail.educatorIds(), detail.reserveEducatorIds());
 
             // 3. Создаём и сохраняем (сборка вынесена для переиспользования в applyToCourse)
-            createdAssignments.add(assignmentRepository.save(buildAssignment(slot, stream, educators)));
+            createdAssignments.add(
+                    assignmentRepository.save(buildAssignment(slot, stream, educators, reserve)));
         }
 
         return assignmentMapper.toDtoList(createdAssignments);
@@ -76,13 +78,18 @@ public class AssignmentService {
      * иначе — только слоты курса из этого набора (выбор по видам/конкретным занятиям
      * разворачивается во фронте). Фильтр по {@code courseId} уже отсекает чужие слоты —
      * пересечение с {@code slotIds} лишь сужает.</p>
+     *
+     * <p>Запасные (И-22) едут тем же путём, что и ведущие: при {@code overwrite=true} состав
+     * запасных заменяется целиком — иначе «перезаписать» означало бы разное для двух ролей
+     * одного назначения.</p>
      */
     @Transactional
     public List<AssignmentDto> applyToCourse(Integer courseId, Integer studyStreamId,
-                                             List<Integer> educatorIds, boolean overwrite,
-                                             List<Integer> slotIds) {
+                                             List<Integer> educatorIds, List<Integer> reserveEducatorIds,
+                                             boolean overwrite, List<Integer> slotIds) {
         StudyStream stream = studyStreamService.getEntityById(studyStreamId);
         List<Educator> educators = educatorService.getAllEntitiesByIds(educatorIds);
+        List<Educator> reserve = resolveReserve(educatorIds, reserveEducatorIds);
         List<CurriculumSlot> slots = curriculumSlotService.getEntitiesByCourseId(courseId);
 
         if (slotIds != null && !slotIds.isEmpty()) {
@@ -100,9 +107,10 @@ public class AssignmentService {
         for (CurriculumSlot slot : slots) {
             Assignment existing = existingBySlot.get(slot.getId());
             if (existing == null) {
-                affected.add(assignmentRepository.save(buildAssignment(slot, stream, educators)));
+                affected.add(assignmentRepository.save(buildAssignment(slot, stream, educators, reserve)));
             } else if (overwrite) {
                 existing.setEducators(new HashSet<>(educators));
+                existing.setReserveEducators(new HashSet<>(reserve));
                 affected.add(assignmentRepository.save(existing));
                 overwritten.add(existing);
             }
@@ -163,7 +171,11 @@ public class AssignmentService {
 
     /**
      * Назначения курса, «однотипные» выбранному варианту: тот же поток, тот же состав
-     * преподавателей (сравнение множеств), в пределах охвата слотов.
+     * <b>ведущих</b> преподавателей (сравнение множеств), в пределах охвата слотов.
+     *
+     * <p>Запасные в критерий намеренно не входят: снятие делается по тому, кто ведёт занятие, а
+     * страховка — характеристика назначения, а не признак его тождества. Иначе снятие
+     * промахивалось бы мимо назначений, у которых запасного добавили или убрали позже.</p>
      */
     private List<Assignment> matchHomogeneous(Integer courseId, Integer studyStreamId,
                                               List<Integer> educatorIds, List<Integer> slotIds) {
@@ -210,12 +222,42 @@ public class AssignmentService {
     }
 
     /** Сборка сущности назначения из уже разрешённых связей (DRY для create/applyToCourse). */
-    private Assignment buildAssignment(CurriculumSlot slot, StudyStream stream, List<Educator> educators) {
+    private Assignment buildAssignment(CurriculumSlot slot, StudyStream stream,
+                                       List<Educator> educators, List<Educator> reserve) {
         Assignment newAssignment = new Assignment();
         newAssignment.setCurriculumSlot(slot);
         newAssignment.setStudyStream(stream);
         newAssignment.setEducators(new HashSet<>(educators));
+        newAssignment.setReserveEducators(new HashSet<>(reserve));
         return newAssignment;
+    }
+
+    /**
+     * Разрешает запасных (И-22) и проверяет главное ограничение: <b>один человек не может быть на
+     * одном назначении и ведущим, и запасным</b>.
+     *
+     * <p>Роли взаимоисключающие по смыслу: ведущий занятие проводит и занимает время, запасной
+     * числится и времени не занимает. Человек в обоих списках сразу означал бы, что вопрос «занят
+     * ли он в эту пару» имеет два ответа. Молча выбросить его из запасных нельзя — это скрыло бы
+     * ошибку ввода, поэтому отказ.</p>
+     *
+     * @param educatorIds        ведущие, как их прислал вызывающий
+     * @param reserveEducatorIds запасные; {@code null}/пусто → запасных нет
+     * @return сущности запасных (пустой список, если их нет)
+     * @throws IllegalArgumentException если списки пересекаются
+     */
+    private List<Educator> resolveReserve(List<Integer> educatorIds, List<Integer> reserveEducatorIds) {
+        if (reserveEducatorIds == null || reserveEducatorIds.isEmpty()) {
+            return List.of();
+        }
+        Set<Integer> leading = educatorIds == null ? Set.of() : new HashSet<>(educatorIds);
+        List<Integer> both = reserveEducatorIds.stream().filter(leading::contains).toList();
+        if (!both.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Преподаватель не может быть одновременно ведущим и запасным на одном назначении: id="
+                            + both.stream().map(String::valueOf).collect(Collectors.joining(", ")));
+        }
+        return educatorService.getAllEntitiesByIds(reserveEducatorIds);
     }
 
     @Transactional
@@ -226,10 +268,14 @@ public class AssignmentService {
         // Находим новые связанные сущности через сервисы
         StudyStream stream = studyStreamService.getEntityById(updateDto.studyStreamId());
         List<Educator> educators = educatorService.getAllEntitiesByIds(updateDto.educatorIds());
+        List<Educator> reserve = resolveReserve(updateDto.educatorIds(), updateDto.reserveEducatorIds());
 
         // Обновляем поля
         assignment.setStudyStream(stream);
         assignment.setEducators(new HashSet<>(educators));
+        // Состав запасных приходит целиком: пусто → запасных не остаётся. Перепроекции это не
+        // требует (в проекции запасного нет), но announceChanged ниже нужен из-за ведущих.
+        assignment.setReserveEducators(new HashSet<>(reserve));
 
         Assignment updatedAssignment = assignmentRepository.save(assignment);
         // Уже размещённые занятия несут снимок прежнего преподавателя/потока — иначе правка

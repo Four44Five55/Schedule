@@ -10,9 +10,10 @@ import {
   AuditoriumHealthDto, PeriodAuditoriumLoadDto
 } from '../../../types/api';
 import { usePeriod } from '../../period/PeriodContext';
+import { PeriodSignatureModal } from '../../period/PeriodSignatureModal';
 import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
-  AlertTriangle, CalendarClock, ArrowRight, FileSpreadsheet, RefreshCw
+  AlertTriangle, CalendarClock, ArrowRight, FileSpreadsheet, RefreshCw, PenLine
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -37,13 +38,15 @@ interface DashboardProps {
  */
 export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   // Учебный период — из общего контекста (единый выбор в шапке приложения).
-  const { periods, selectedPeriodId, selectedPeriod: period, loading: periodsLoading } = usePeriod();
+  const { periods, selectedPeriodId, selectedPeriod: period, loading: periodsLoading, reloadPeriods } = usePeriod();
   const [readiness, setReadiness] = useState<PeriodReadinessDto | null>(null);
   const [quality, setQuality] = useState<PeriodScheduleQualityDto | null>(null);
   const [density, setDensity] = useState<GroupDensityDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [exportAxis, setExportAxis] = useState<ExportAxis>('GROUP');
   const [exporting, setExporting] = useState(false);
+  // Подпись под расписанием — реквизит выгрузки, но хранится у периода: подписант один на семестр.
+  const [editingSignature, setEditingSignature] = useState(false);
   // Здоровье проекции: сбой асинхронной синхронизации иначе виден только в логе,
   // то есть не виден никому — занятие просто не появляется в сетке.
   const [health, setHealth] = useState<ProjectionHealthDto | null>(null);
@@ -205,6 +208,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
               <option value="EDUCATOR">Преподаватели</option>
               <option value="AUDITORIUM">Аудитории</option>
             </select>
+            <button
+              onClick={() => setEditingSignature(true)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors',
+                period.signerName
+                  ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+              )}
+              title={period.signerName
+                ? `Подпись в бланке: ${[period.signerCredentials, period.signerName].filter(Boolean).join(' ')}`
+                : 'Подпись под расписанием не заполнена — бланк уйдёт без неё'}
+            >
+              <PenLine size={14} />
+              Подпись
+            </button>
             <button
               onClick={handleExport}
               disabled={exporting}
@@ -632,6 +650,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         <Inventory label="Группы" value={stats.groups} icon={Users} />
         <Inventory label="Дисциплины" value={stats.disciplines} icon={BookOpen} />
       </div>
+
+      {editingSignature && period && (
+        <PeriodSignatureModal
+          period={period}
+          onClose={() => setEditingSignature(false)}
+          onSaved={() => { setEditingSignature(false); reloadPeriods(); }}
+        />
+      )}
     </div>
   );
 };

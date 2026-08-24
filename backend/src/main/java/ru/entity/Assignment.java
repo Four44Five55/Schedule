@@ -55,6 +55,30 @@ public class Assignment {
     )
     private Set<Educator> educators = new HashSet<>();
 
+    /**
+     * Запасные преподаватели: числятся за дисциплиной, но занятий не ведут (решение И-22).
+     *
+     * <p><b>Инвариант: в расписании не участвуют.</b> Не занимают время при подборе места, не
+     * попадают ни в свою сетку, ни в нагрузку, ни в датчики качества. Участвуют только в
+     * атрибуции — печатаются в подвале бланка группы после ведущих.</p>
+     *
+     * <p><b>Почему отдельная связь, а не флаг в {@link #educators}.</b> По составу {@code educators}
+     * считается всё, и флаг пришлось бы проверять в каждом из ~20 мест, где этот состав берётся;
+     * первое же забытое место сделало бы запасного занятым молча — с конфликтами там, где их нет.
+     * Отдельная связь безопасна по построению: кто о ней не знает, тот её и не получит. Поэтому
+     * <b>её намеренно не подмешивают в {@code getEducators()}</b>.</p>
+     *
+     * <p>⚠️ Не путать со случаем «двое ведут вместе»: там оба ведущие и оба обязаны быть в
+     * {@code educators}, иначе занятие пропадёт из расписания одного из них.</p>
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "assignment_reserve_educators",
+            joinColumns = @JoinColumn(name = "assignment_id"),
+            inverseJoinColumns = @JoinColumn(name = "educator_id")
+    )
+    private Set<Educator> reserveEducators = new HashSet<>();
+
     // Конструктор для удобства создания
     public Assignment(CurriculumSlot curriculumSlot, StudyStream studyStream) {
         this.curriculumSlot = curriculumSlot;
@@ -69,6 +93,14 @@ public class Assignment {
 
     public void removeEducator(Educator educator) {
         this.educators.remove(educator);
+    }
+
+    public void addReserveEducator(Educator educator) {
+        this.reserveEducators.add(educator);
+    }
+
+    public void removeReserveEducator(Educator educator) {
+        this.reserveEducators.remove(educator);
     }
 
     @Override

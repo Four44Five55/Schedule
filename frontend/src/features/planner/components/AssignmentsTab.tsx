@@ -4,7 +4,7 @@ import {
   RemoveAssignmentsImpactDto
 } from '../../../types/api';
 import { CurriculumService } from '../../../services/apiServices';
-import { Check, Plus, Users, Settings, Trash2, Edit2, X, ChevronRight, CopyMinus, Lock } from 'lucide-react';
+import { Check, Plus, Users, Settings, Trash2, Edit2, X, ChevronRight, CopyMinus, Lock, LifeBuoy } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
 
@@ -40,6 +40,9 @@ interface AssignmentFormState {
   assignmentId: number | null;
   streamId: number | '';
   educatorIds: number[];
+  // Запасные (И-22): числятся за дисциплиной, но занятий не ведут. Распределение их не видит —
+  // они не занимают время и не попадают в свою сетку; печатаются только в подвале бланка.
+  reserveEducatorIds: number[];
   applyAll: boolean;              // массовое назначение по охвату (только при создании)
   overwrite: boolean;            // при applyAll — перезаписывать уже назначенные слоты
   selectedSlotIds: Set<number>;  // охват массового назначения (виды/конкретные занятия)
@@ -99,7 +102,7 @@ export const AssignmentsTab: React.FC<{
   };
 
   const openCreate = (slotId: number, courseId: number) => {
-    setForm({ slotId, courseId, assignmentId: null, streamId: '', educatorIds: [], applyAll: false, overwrite: false, selectedSlotIds: new Set() });
+    setForm({ slotId, courseId, assignmentId: null, streamId: '', educatorIds: [], reserveEducatorIds: [], applyAll: false, overwrite: false, selectedSlotIds: new Set() });
   };
 
   const openEdit = (assignment: AssignmentDto, courseId: number) => {
@@ -109,6 +112,7 @@ export const AssignmentsTab: React.FC<{
       assignmentId: assignment.id,
       streamId: assignment.studyStream.id,
       educatorIds: assignment.educators.map(e => e.id),
+      reserveEducatorIds: assignment.reserveEducators.map(e => e.id),
       applyAll: false,
       overwrite: false,
       selectedSlotIds: new Set(),
@@ -168,6 +172,20 @@ export const AssignmentsTab: React.FC<{
     });
   };
 
+  // Запасной (И-22). Роли взаимоисключающие: человек либо ведёт занятие и занимает время, либо
+  // числится и не занимает. Бэк пересечение отклоняет (400), поэтому в списках чужая роль просто
+  // недоступна — правило видно до отправки, а не в тексте ошибки.
+  const toggleReserveEducator = (id: number) => {
+    if (!form) return;
+    setForm(prev => {
+      if (!prev) return prev;
+      const ids = prev.reserveEducatorIds.includes(id)
+        ? prev.reserveEducatorIds.filter(e => e !== id)
+        : [...prev.reserveEducatorIds, id];
+      return { ...prev, reserveEducatorIds: ids };
+    });
+  };
+
   const handleSave = async () => {
     if (!form || form.streamId === '') return;
     setSaving(true);
@@ -176,6 +194,7 @@ export const AssignmentsTab: React.FC<{
         await CurriculumService.updateAssignment(form.assignmentId, {
           studyStreamId: form.streamId as number,
           educatorIds: form.educatorIds,
+          reserveEducatorIds: form.reserveEducatorIds,
         });
       } else if (form.applyAll) {
         // Проставить этот поток+преподавателей на выбранный охват занятий курса (bulk на бэке).
@@ -183,13 +202,18 @@ export const AssignmentsTab: React.FC<{
           courseId: form.courseId,
           studyStreamId: form.streamId as number,
           educatorIds: form.educatorIds,
+          reserveEducatorIds: form.reserveEducatorIds,
           overwrite: form.overwrite,
           slotIds: Array.from(form.selectedSlotIds),
         });
       } else {
         await CurriculumService.createAssignment({
           curriculumSlotId: form.slotId,
-          assignments: [{ studyStreamId: form.streamId as number, educatorIds: form.educatorIds }],
+          assignments: [{
+            studyStreamId: form.streamId as number,
+            educatorIds: form.educatorIds,
+            reserveEducatorIds: form.reserveEducatorIds,
+          }],
         });
       }
       closeForm();
@@ -398,6 +422,15 @@ export const AssignmentsTab: React.FC<{
                                       </span>
                                     </>
                                   )}
+                                  {a.reserveEducators.length > 0 && (
+                                    <span
+                                      title="Запасные: занятий не ведут, время не занимают; печатаются в подвале бланка"
+                                      className="flex items-center gap-1 text-xs text-slate-400 truncate shrink-0"
+                                    >
+                                      <LifeBuoy size={12} className="shrink-0" />
+                                      {a.reserveEducators.map(e => e.name).join(', ')}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-1 ml-2 shrink-0">
                                   <button
@@ -512,19 +545,71 @@ export const AssignmentsTab: React.FC<{
                                 {educators.length === 0 ? (
                                   <p className="text-xs text-slate-400">Нет преподавателей</p>
                                 ) : (
-                                  educators.map(e => (
-                                    <label key={e.id} className="flex items-center gap-2 text-xs py-0.5 cursor-pointer hover:bg-slate-50 px-1 rounded">
+                                  educators.map(e => {
+                                    // Зеркало запрета из списка запасных: роль на занятии одна.
+                                    const reserve = form?.reserveEducatorIds.includes(e.id) ?? false;
+                                    return (
+                                      <label
+                                        key={e.id}
+                                        title={reserve ? 'Уже числится запасным на это занятие' : undefined}
+                                        className={cn(
+                                          'flex items-center gap-2 text-xs py-0.5 px-1 rounded',
+                                          reserve ? 'text-slate-300 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50',
+                                        )}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          disabled={reserve}
+                                          checked={form?.educatorIds.includes(e.id) ?? false}
+                                          onChange={() => toggleEducator(e.id)}
+                                          className="w-3 h-3"
+                                        />
+                                        <span>{e.name}</span>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Запасные (И-22): числятся за дисциплиной, но занятий не ведут.
+                              Распределение их не видит — время они не занимают и в своей сетке
+                              занятий не получают; видны только здесь и в подвале бланка. */}
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Запасные ({form?.reserveEducatorIds.length ?? 0})
+                              <span className="ml-1.5 font-normal text-slate-400">
+                                — не ведут занятий, но попадают в подвал бланка
+                              </span>
+                            </label>
+                            <div className="bg-white border border-slate-200 rounded-lg p-2 max-h-28 overflow-y-auto">
+                              {educators.length === 0 ? (
+                                <p className="text-xs text-slate-400">Нет преподавателей</p>
+                              ) : (
+                                educators.map(e => {
+                                  const leading = form?.educatorIds.includes(e.id) ?? false;
+                                  return (
+                                    <label
+                                      key={e.id}
+                                      title={leading ? 'Уже назначен ведущим на это занятие' : undefined}
+                                      className={cn(
+                                        'flex items-center gap-2 text-xs py-0.5 px-1 rounded',
+                                        leading ? 'text-slate-300 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50',
+                                      )}
+                                    >
                                       <input
                                         type="checkbox"
-                                        checked={form?.educatorIds.includes(e.id) ?? false}
-                                        onChange={() => toggleEducator(e.id)}
+                                        disabled={leading}
+                                        checked={form?.reserveEducatorIds.includes(e.id) ?? false}
+                                        onChange={() => toggleReserveEducator(e.id)}
                                         className="w-3 h-3"
                                       />
                                       <span>{e.name}</span>
                                     </label>
-                                  ))
-                                )}
-                              </div>
+                                  );
+                                })
+                              )}
                             </div>
                           </div>
 

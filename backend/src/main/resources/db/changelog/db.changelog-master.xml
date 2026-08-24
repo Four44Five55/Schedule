@@ -89,4 +89,13 @@
          выбрасывал; заодно даёт подбору предпочтение «своя комната» -->
     <include file="025-auditorium-org-unit.sql" relativeToChangelogFile="true"/>
 
+    <!-- Подпись под расписанием (должность, регалии, ФИО) — реквизит документа, поэтому свободный
+         текст у периода, а не ссылка на преподавателя: подписывает не обязательно тот, кто ведёт -->
+    <include file="026-period-signature.sql" relativeToChangelogFile="true"/>
+
+    <!-- Запасной преподаватель назначения: числится за дисциплиной, но занятий не ведёт. Отдельная
+         связь, а не флаг в assignment_educators — иначе первое же забытое место сделало бы его
+         занятым молча -->
+    <include file="027-assignment-reserve-educators.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

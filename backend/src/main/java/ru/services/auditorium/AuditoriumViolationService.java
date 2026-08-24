@@ -60,8 +60,7 @@ public class AuditoriumViolationService {
             if (assigned == null || assigned.isEmpty()) {
                 // Занятие без комнаты правилу не предъявить — оно про ИСПОЛЬЗОВАНИЕ комнаты, а её
                 // нет. Но и молчать нельзя: занятие где-то идёт, а где — неизвестно. У импорта это
-                // массовое состояние (комнату из файла не нашли), и до появления этой находки его
-                // было видно только в отчёте прогона, живущем до перезагрузки вкладки.
+                // массовое состояние: комнаты из файла может не быть в справочнике.
                 roomless.add(AuditoriumFinding.noAuditorium(placement.getId(),
                         placement.getScheduledDate(), placement.getScheduledSlot()));
                 continue;

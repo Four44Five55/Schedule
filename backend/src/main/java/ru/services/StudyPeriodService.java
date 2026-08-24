@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.dto.studyPeriod.PeriodSignatureDto;
 import ru.dto.studyPeriod.StudyPeriodCreateDto;
 import ru.dto.studyPeriod.StudyPeriodDto;
 import ru.dto.studyPeriod.StudyPeriodUpdateDto;
@@ -66,6 +67,30 @@ public class StudyPeriodService {
         periodToUpdate.setEndDate(updateDto.endDate());
 
         return studyPeriodMapper.toDto(studyPeriodRepository.save(periodToUpdate));
+    }
+
+    /**
+     * Сохраняет подпись под расписанием периода (должность, регалии, ФИО подписанта).
+     *
+     * <p>Отдельная операция, а не поля в {@link #updateStudyPeriod}: подпись правят перед выгрузкой,
+     * а не при заведении периода, и требовать ради неё даты и тип периода незачем.</p>
+     *
+     * <p>Пустые строки приводятся к {@code null}: «не заполнено» и «заполнено пустым» — одно и то же
+     * состояние, и бланк не должен различать их при отрисовке блока.</p>
+     */
+    @Transactional
+    public StudyPeriodDto updateSignature(Integer id, PeriodSignatureDto dto) {
+        StudyPeriod period = getEntityById(id);
+        period.setSignerPosition(trimToNull(dto.signerPosition()));
+        period.setSignerCredentials(trimToNull(dto.signerCredentials()));
+        period.setSignerName(trimToNull(dto.signerName()));
+        return studyPeriodMapper.toDto(studyPeriodRepository.save(period));
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Transactional(readOnly = true)

@@ -377,6 +377,21 @@ export interface StudyPeriodDto {
   periodType: PeriodType;
   startDate: string;
   endDate: string;
+  /**
+   * Подпись под выгруженным расписанием: должность, регалии и ФИО того, кто его подписывает.
+   * Свободный текст (реквизит документа, а не ссылка на преподавателя) и живёт у периода —
+   * подписант меняется от семестра к семестру. Пусто — блока подписи в бланке нет.
+   */
+  signerPosition?: string | null;
+  signerCredentials?: string | null;
+  signerName?: string | null;
+}
+
+/** Тело `PUT /study-periods/{id}/signature`: только подпись, даты периода трогать не надо. */
+export interface PeriodSignatureDto {
+  signerPosition?: string | null;
+  signerCredentials?: string | null;
+  signerName?: string | null;
 }
 
 export interface StudyPeriodCreateDto {
@@ -531,6 +546,9 @@ export interface AssignmentDto {
   curriculumSlot: { id: number; position: number; kindOfStudyName: string };
   studyStream: { id: number; name: string };
   educators: { id: number; name: string }[];
+  // Запасные (И-22): числятся за дисциплиной, но занятий не ведут. В расписании не участвуют —
+  // ни занятости, ни нагрузки, ни своей сетки; печатаются только в подвале бланка после ведущих.
+  reserveEducators: { id: number; name: string }[];
 }
 
 // Создание назначений для ОДНОГО слота: бэк принимает батч (поддержка деления
@@ -538,6 +556,7 @@ export interface AssignmentDto {
 export interface AssignmentDetailDto {
   studyStreamId: number;
   educatorIds: number[];
+  reserveEducatorIds?: number[]; // запасные; пересечение с educatorIds бэк отклоняет (400)
 }
 export interface AssignmentCreateDto {
   curriculumSlotId: number;
@@ -550,6 +569,7 @@ export interface ApplyAssignmentToCourseDto {
   courseId: number;
   studyStreamId: number;
   educatorIds: number[];
+  reserveEducatorIds?: number[]; // запасные — при overwrite=true заменяются так же, как ведущие
   overwrite: boolean;
   slotIds?: number[]; // охват: пусто → все слоты курса; иначе только эти (выбор по видам/занятиям)
 }
@@ -557,6 +577,7 @@ export interface ApplyAssignmentToCourseDto {
 export interface AssignmentUpdateDto {
   studyStreamId?: number;
   educatorIds?: number[];
+  reserveEducatorIds?: number[]; // состав целиком: пусто → запасных не остаётся
 }
 
 // Массовое снятие «однотипных» назначений (зеркало apply-to-course): удаляются назначения

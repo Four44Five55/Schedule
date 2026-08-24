@@ -48,6 +48,7 @@ import {
   AuditoriumPoolDto,
   StudyPeriodDto,
   StudyPeriodCreateDto,
+  PeriodSignatureDto,
   EducatorConstraintDto,
   GroupConstraintDto,
   AuditoriumConstraintDto,
@@ -504,6 +505,14 @@ export const ResourceService = {
   getStudyPeriods: () => api.get<StudyPeriodDto[]>('/study-periods').then((r) => r.data),
   createStudyPeriod: (data: StudyPeriodCreateDto) =>
       api.post<StudyPeriodDto>('/study-periods', data).then((r) => r.data),
+
+  /**
+   * Подпись под расписанием периода (должность, регалии, ФИО подписанта) — её печатает выгрузка.
+   * Отдельная команда, а не общий update периода: править подпись перед выгрузкой можно, не
+   * присылая даты и тип, которые менять не собирались.
+   */
+  updatePeriodSignature: (id: number, data: PeriodSignatureDto) =>
+      api.put<StudyPeriodDto>(`/study-periods/${id}/signature`, data).then((r) => r.data),
 
   /**
    * Получить активный учебный период (содержит сегодняшнюю дату).

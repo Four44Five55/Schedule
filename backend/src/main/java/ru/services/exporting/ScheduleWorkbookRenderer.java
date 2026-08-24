@@ -92,6 +92,20 @@ public class ScheduleWorkbookRenderer {
     private static final int MARKS_COL_KIND_NAME = 1;      // B — расшифровка (перетекает вправо по пустым)
     private static final int MARKS_COL_OTHER_ABBR = 9;     // J — аббревиатура прочего обозначения
     private static final int MARKS_COL_OTHER_NAME = 10;    // K — расшифровка
+
+    // Блок подписи: та же свободная зона, но прижат к правому краю листа (решение заказчика
+    // 2026-08-23 — «внизу справа от расшифровок»). Форма обычная для документа: должность строкой,
+    // ниже — регалии слева и фамилия справа, а между ними пустое место, где расписываются от руки.
+    private static final int SIGNATURE_FIRST_ROW_WITH_MARKS = MARKS_TITLE_ROW;       // группа: вровень с расшифровкой
+    private static final int SIGNATURE_FIRST_ROW_BARE = LEGEND_HEADER_FIRST_ROW + 1; // без таблицы — сразу под сеткой
+    private static final int SIGNATURE_MIN_COL = MARKS_COL_OTHER_NAME + 1; // левее не заходим: там расшифровка
+    private static final int SIGNATURE_MIN_WIDTH_COLS = 4;  // узкий блок всё равно читается как подпись
+    private static final int SIGNATURE_CHARS_PER_COL = 8;   // ширина недельного столбца бланка, знаков
+    // Место под роспись — ПУСТЫЕ СТОЛБЦЫ, а не пробелы в строке: ширина пробела зависит от шрифта и
+    // масштаба печати, поэтому набитый пробелами промежуток разъезжается от бланка к бланку, а
+    // слишком длинная строка ещё и обрезается краем блока. Столбцы бланка одинаковы и измеримы:
+    // три столбца ≈ 24 знака ≈ 4.5 см — обычное место для росписи. Мало/много — правится здесь.
+    private static final int SIGNATURE_GAP_COLS = 3;
     // Низ листа НЕ константа: бланк правят (2026-08-07 хвостовые пустые строки 97–106 удалены,
     // лист стал заканчиваться на 96). Область печати считается от последней ЗАПОЛНЕННОЙ строки.
 
@@ -116,6 +130,35 @@ public class ScheduleWorkbookRenderer {
     public record Mark(String abbr, String name) {}
 
     /**
+     * Подпись под расписанием: кто документ подписывает.
+     *
+     * <p>Свободный текст, а не ссылка на преподавателя (решение заказчика 2026-08-23): подписывает
+     * расписание не обязательно тот, кто в нём преподаёт. Живёт у периода
+     * ({@code study_period.signer_*}, чейнджлог 026), потому что подписант меняется от семестра к
+     * семестру; сюда приезжает уже разрешённым — рендерер о БД не знает.</p>
+     *
+     * <p>Одна на книгу, а не на лист: подписант один на всю выгрузку, и параметром {@code SheetData}
+     * его пришлось бы дублировать в каждом листе ZIP-архива.</p>
+     *
+     * @param position    должность: «Начальник учебного отдела» — первая строка блока
+     * @param credentials регалии: «полковник» — печатаются перед фамилией во второй строке
+     * @param name        фамилия и инициалы: «Иванов И.И.»
+     */
+    public record Signature(String position, String credentials, String name) {
+
+        /** Ничего не заполнено — блок не рисуется вовсе (подпись необязательна). */
+        public static final Signature EMPTY = new Signature(null, null, null);
+
+        public boolean isEmpty() {
+            return blank(position) && blank(credentials) && blank(name);
+        }
+
+        private static boolean blank(String value) {
+            return value == null || value.isBlank();
+        }
+    }
+
+    /**
      * Одна строка таблицы «Обозначения» бланка (для группы): аббревиатура и название дисциплины,
      * подразделения («Каф») всех её участников, лектор(ы), преподаватели других (нелекционных) видов
      * занятий, кол-во часов «лекц-нелекц» (напр. {@code "12-26"}), отчёт — аббревиатуры зачётов/
@@ -133,10 +176,11 @@ public class ScheduleWorkbookRenderer {
      * @param contentEnd последняя дата, по которой на листах есть что показывать (занятие или
      *                   ограничение); правее её недели обрезаются. {@code null} → обрезаем по {@code end}
      * @param axis       перспектива (задаёт содержимое ячеек)
+     * @param signature  подпись под расписанием — одна на всю книгу; {@code null}/пустая → блока нет
      * @return байты .xlsx (заполненный бланк)
      */
     public byte[] render(List<SheetData> sheets, LocalDate start, LocalDate end,
-                         LocalDate contentEnd, ExportAxis axis) {
+                         LocalDate contentEnd, ExportAxis axis, Signature signature) {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(TEMPLATE)) {
             if (is == null) {
                 throw new IllegalStateException("Шаблон не найден в ресурсах: " + TEMPLATE);
@@ -166,7 +210,7 @@ public class ScheduleWorkbookRenderer {
                 for (int i = 0; i < sheets.size(); i++) {
                     Sheet sheet = targets.get(i);
                     wb.setSheetName(wb.getSheetIndex(sheet), safeSheetName(sheets.get(i).name(), usedNames));
-                    fillSheet(sheet, sheets.get(i), start, end, cropEnd, axis, dateStyle, styler);
+                    fillSheet(sheet, sheets.get(i), start, end, cropEnd, axis, dateStyle, styler, signature);
                 }
 
                 wb.write(out);
@@ -178,20 +222,30 @@ public class ScheduleWorkbookRenderer {
     }
 
     private void fillSheet(Sheet sheet, SheetData data, LocalDate start, LocalDate end, LocalDate cropEnd,
-                           ExportAxis axis, CellStyle dateStyle, CellStyler styler) {
+                           ExportAxis axis, CellStyle dateStyle, CellStyler styler, Signature signature) {
         writeMonthHeader(sheet, start, end);
         writeEntityHeader(sheet, data.name(), start, end, axis);
+        // Стили свободной зоны — ДО удаления таблицы «Обозначения»: образец шрифта берётся из неё,
+        // а у преподавателя и аудитории её строки сейчас будут удалены. Возьми стили после — и шрифт
+        // молча откатится к умолчанию книги (ровно эта мина уже срабатывала, см. blockStyles).
+        BlockStyles blockStyles = blockStyles(sheet);
+        // Правый край листа нужен до записи подписи (она прижата к нему), а обрезке — после;
+        // считаем один раз, чтобы обрезка не отрезала блок, который сама же и не видела.
+        int lastCol = contentLastCol(start, cropEnd, axis);
+
         // Таблица «Обозначения» внизу бланка — групповая по смыслу (дисциплины/лекторы/часы группы).
         // Преподавателю и аудитории она не нужна — чистим целиком; группе — заполняем реальными данными.
         int lastRow = LEGEND_LAST_DATA_ROW; // низ таблицы «Обозначения» — базовый край листа группы
         if (axis == ExportAxis.GROUP) {
             writeDisciplineLegend(sheet, data.legend(), styler);
             // Расшифровка аббревиатур — ниже таблицы, поэтому только там, где эта таблица есть.
-            lastRow = Math.max(lastRow, writeAbbreviationMarks(sheet, data.kindMarks(), data.otherMarks()));
+            lastRow = Math.max(lastRow,
+                    writeAbbreviationMarks(sheet, data.kindMarks(), data.otherMarks(), blockStyles));
         } else {
             deleteDisciplineLegend(sheet);
             lastRow = LEGEND_HEADER_FIRST_ROW - 1; // таблицы больше нет — низ листа поднимается к сетке
         }
+        lastRow = Math.max(lastRow, writeSignature(sheet, signature, lastCol, axis, blockStyles));
 
         // Данные ячеек занятий (вид/тема/дисциплина/группы/аудитория) — по центру (шаблонный дефолт).
         // Влево выравниваются только колонки лекторов в легенде (см. writeDisciplineLegend).
@@ -243,7 +297,7 @@ public class ScheduleWorkbookRenderer {
             }
         }
 
-        int lastCol = cropColumnsRightOfSchedule(sheet, start, cropEnd, axis, styler);
+        cropColumnsRightOfSchedule(sheet, lastCol, styler);
         // Область печати бланка (A1:Z107) фиксирована под 23 недели — приводим к фактическому листу,
         // иначе печать либо тянет отрезанный хвост, либо режет расшифровку/недели за 23-й.
         Workbook wb = sheet.getWorkbook();
@@ -269,17 +323,12 @@ public class ScheduleWorkbookRenderer {
      * <p>Для группы граница не уходит левее {@code X}: там таблица «Обозначения» стоит на тех же
      * столбцах, что недели, — срезав их, срезали бы её.</p>
      *
-     * @return индекс последнего оставшегося столбца (правый край листа)
+     * @param lastCol правый край листа — {@link #contentLastCol}; передаётся, а не считается здесь,
+     *                потому что тот же край нужен блоку подписи ДО обрезки
      */
-    private int cropColumnsRightOfSchedule(Sheet sheet, LocalDate start, LocalDate cropEnd,
-                                           ExportAxis axis, CellStyler styler) {
-        int lastCol = FIRST_WEEK_COL
-                + (int) ChronoUnit.WEEKS.between(start.with(DayOfWeek.MONDAY), cropEnd.with(DayOfWeek.MONDAY));
-        if (axis == ExportAxis.GROUP) {
-            lastCol = Math.max(lastCol, LEGEND_LAST_COL); // таблицу «Обозначения» не режем
-        }
+    private void cropColumnsRightOfSchedule(Sheet sheet, int lastCol, CellStyler styler) {
         int firstCut = lastCol + 1;
-        if (firstCut > LAST_SHEET_COL) return Math.min(lastCol, LAST_SHEET_COL);
+        if (firstCut > LAST_SHEET_COL) return;
 
         // 1. Объединения: целиком за границей — снять; пересекающие границу — усечь до неё.
         List<Integer> toRemove = new ArrayList<>();
@@ -332,7 +381,24 @@ public class ScheduleWorkbookRenderer {
             }
             cells.forEach(row::removeCell);
         }
-        return lastCol;
+    }
+
+    /**
+     * Правый край листа: последняя неделя, по которой есть что показывать. У группы не левее
+     * {@code X} — там на тех же столбцах стоит таблица «Обозначения». Ограничен физическим краем
+     * бланка: правее {@link #LAST_SHEET_COL} листа просто нет.
+     *
+     * <p>Отдельным методом, потому что край нужен дважды и в разные моменты: блоку подписи — <b>до</b>
+     * заполнения (он к этому краю прижат), обрезке и области печати — <b>после</b>. Посчитай его в
+     * двух местах — и однажды подпись окажется правее границы, то есть будет удалена обрезкой.</p>
+     */
+    private int contentLastCol(LocalDate start, LocalDate cropEnd, ExportAxis axis) {
+        int lastCol = FIRST_WEEK_COL
+                + (int) ChronoUnit.WEEKS.between(start.with(DayOfWeek.MONDAY), cropEnd.with(DayOfWeek.MONDAY));
+        if (axis == ExportAxis.GROUP) {
+            lastCol = Math.max(lastCol, LEGEND_LAST_COL); // таблицу «Обозначения» не режем
+        }
+        return Math.min(lastCol, LAST_SHEET_COL);
     }
 
     /**
@@ -346,12 +412,12 @@ public class ScheduleWorkbookRenderer {
      *
      * @return индекс последней занятой строки (для области печати)
      */
-    private int writeAbbreviationMarks(Sheet sheet, List<Mark> kindMarks, List<Mark> otherMarks) {
+    private int writeAbbreviationMarks(Sheet sheet, List<Mark> kindMarks, List<Mark> otherMarks,
+                                       BlockStyles styles) {
         boolean hasKinds = kindMarks != null && !kindMarks.isEmpty();
         boolean hasOthers = otherMarks != null && !otherMarks.isEmpty();
         if (!hasKinds && !hasOthers) return LEGEND_LAST_DATA_ROW;
 
-        MarksStyles styles = marksStyles(sheet);
         if (hasKinds) {
             setMarkCell(sheet, MARKS_TITLE_ROW, MARKS_COL_KIND_ABBR, "Обозначения видов занятий:", styles.title());
         }
@@ -365,6 +431,113 @@ public class ScheduleWorkbookRenderer {
         lastRow = Math.max(lastRow,
                 writeMarkColumn(sheet, otherMarks, MARKS_COL_OTHER_ABBR, MARKS_COL_OTHER_NAME, styles.entry()));
         return Math.max(lastRow, LEGEND_LAST_DATA_ROW);
+    }
+
+    /**
+     * Пишет блок подписи — внизу листа, прижатым к его правому краю (решение заказчика 2026-08-23).
+     * Форма обычная для документа:
+     *
+     * <pre>
+     *   Начальник учебного отдела
+     *   полковник            &lt;— здесь расписываются —&gt;            Иванов И.И.
+     * </pre>
+     *
+     * <p><b>Место под роспись — пустые столбцы, а не пробелы в строке.</b> Набитый пробелами
+     * промежуток зависит от шрифта и масштаба печати: на одном бланке он тот, что нужно, на другом
+     * фамилия уезжает за край или прилипает к званию, а вся строка целиком ещё и обрезается краем
+     * объединения. Столбцы бланка одинаковой ширины и измеримы, поэтому промежуток задаётся ими —
+     * {@link #SIGNATURE_GAP_COLS}. Ровно поэтому строка разнесена на <b>два</b> объединения: регалии
+     * у левого края блока, фамилия у правого, между ними — пустые ячейки.</p>
+     *
+     * <p><b>Почему блок объединён, хотя расшифровка рядом — нет.</b> У расшифровки слева пусто, и
+     * текст перетекает вправо. Подпись стоит на тех же строках правее, поэтому её перетекание шло бы
+     * <b>навстречу</b> расшифровке — и два текста рисовались бы поверх друг друга. Объединение
+     * ставит между ними границу: расшифровка обрезается о край блока, а не лезет в него.</p>
+     *
+     * <p><b>Ширина считается по длине текста</b>, а не берётся константой: должность бывает и
+     * «Начальник кафедры», и «Заместитель начальника института по учебной работе», а объединённая
+     * ячейка не перетекает — короткий блок обрезал бы длинную должность молча. Оценка грубая (ширина
+     * недельного столбца бланка — около 8 знаков), и это нормально: ошибка в одну колонку сдвигает
+     * левый край блока, а не портит документ. Левее {@link #SIGNATURE_MIN_COL} блок не растёт — там
+     * стоит расшифровка прочих обозначений; на зажатом листе первым съедается промежуток, а
+     * объединения не пересекаются никогда — их пересечение уронило бы выгрузку целиком.</p>
+     *
+     * <p>Пустые части опускаются: нет регалий — фамилия просто встаёт у правого края (промежутку
+     * тогда неоткуда взяться), пустая подпись целиком блока не даёт.</p>
+     *
+     * @param lastCol правый край листа ({@link #contentLastCol}) — к нему блок и прижат
+     * @return индекс последней занятой блоком строки; {@code -1}, если подписи нет
+     */
+    private int writeSignature(Sheet sheet, Signature signature, int lastCol, ExportAxis axis,
+                               BlockStyles styles) {
+        if (signature == null || signature.isEmpty()) return -1;
+
+        String position = trimOrEmpty(signature.position());
+        String credentials = trimOrEmpty(signature.credentials());
+        String name = trimOrEmpty(signature.name());
+
+        int credWidth = columnsFor(credentials);
+        int nameWidth = columnsFor(name);
+        // Промежуток нужен только там, где есть что разносить: одна фамилия без регалий просто
+        // встаёт у правого края.
+        int gap = credWidth > 0 && nameWidth > 0 ? SIGNATURE_GAP_COLS : 0;
+        int width = Math.max(SIGNATURE_MIN_WIDTH_COLS,
+                Math.max(credWidth + gap + nameWidth, columnsFor(position)));
+        int firstCol = Math.max(SIGNATURE_MIN_COL, lastCol - width + 1);
+        if (firstCol > lastCol) firstCol = lastCol; // лист уже блока — пишем в одну ячейку
+
+        int row = axis == ExportAxis.GROUP ? SIGNATURE_FIRST_ROW_WITH_MARKS : SIGNATURE_FIRST_ROW_BARE;
+        int lastRow = -1;
+        if (!position.isEmpty()) {
+            writeBlockLine(sheet, row, firstCol, lastCol, position, styles.entry());
+            lastRow = row++;
+        }
+        if (credWidth > 0 || nameWidth > 0) {
+            // Раскладка строки: регалии от левого края блока, фамилия — у правого, между ними место.
+            int credLast = Math.min(lastCol, firstCol + Math.max(credWidth, 1) - 1);
+            int nameFirst = nameWidth == 0 ? lastCol + 1
+                    : Math.min(lastCol, Math.max(credWidth == 0 ? firstCol : credLast + 1 + gap,
+                    lastCol - nameWidth + 1));
+            if (credWidth > 0) {
+                // Регалии не должны залезть на фамилию даже на зажатом листе — промежуток съедается
+                // первым, но пересечение объединений уронило бы выгрузку целиком.
+                writeBlockLine(sheet, row, firstCol, Math.min(credLast, nameFirst - 1),
+                        credentials, styles.entry());
+            }
+            if (nameWidth > 0) {
+                writeBlockLine(sheet, row, nameFirst, lastCol, name, styles.signatureRight());
+            }
+            lastRow = row;
+        }
+        return lastRow;
+    }
+
+    /**
+     * Одна строка блока: значение в первой ячейке, стиль — на весь диапазон, объединение (если
+     * ячеек больше одной).
+     *
+     * <p>Стиль ставится всем ячейкам диапазона, а не только якорю: у объединения Excel берёт
+     * оформление с якоря, но незаполненные соседи внутри объединения теряют рамку.</p>
+     */
+    private void writeBlockLine(Sheet sheet, int row, int firstCol, int lastCol, String text, CellStyle style) {
+        if (firstCol > lastCol) return;
+        cell(sheet, row, firstCol).setCellValue(text);
+        for (int c = firstCol; c <= lastCol; c++) {
+            cell(sheet, row, c).setCellStyle(style);
+        }
+        if (firstCol < lastCol) {
+            sheet.addMergedRegion(new CellRangeAddress(row, row, firstCol, lastCol));
+        }
+    }
+
+    /** Сколько столбцов бланка занимает строка текста; пустая — ноль. */
+    private int columnsFor(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        return (text.length() + SIGNATURE_CHARS_PER_COL - 1) / SIGNATURE_CHARS_PER_COL;
+    }
+
+    private static String trimOrEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
     /** Один столбец расшифровки: «аббревиатура | название», начиная с {@link #MARKS_FIRST_DATA_ROW}. */
@@ -386,8 +559,12 @@ public class ScheduleWorkbookRenderer {
         cell.setCellStyle(style);
     }
 
-    /** Пара стилей блока расшифровки: жирный для заголовков, обычный для строк списка. */
-    private record MarksStyles(CellStyle title, CellStyle entry) {}
+    /**
+     * Стили свободной зоны под сеткой: жирный (заголовки расшифровки), обычный (строки списка,
+     * должность и регалии подписи) и прижатый вправо (фамилия подписанта). Считаются один раз на
+     * лист — все трое растут из одного образца, чтобы типографика зоны была общей.
+     */
+    private record BlockStyles(CellStyle title, CellStyle entry, CellStyle signatureRight) {}
 
     /**
      * Стили блока расшифровки. Свободные строки бланка размечены вразнобой (столбец A — {@code Arial
@@ -405,8 +582,21 @@ public class ScheduleWorkbookRenderer {
      * ради которой всё и делалось. Поэтому запасной образец — ячейка аббревиатуры таблицы
      * «Обозначения»: она в шрифте бланка и живёт, пока жива сама таблица. Границы и заливку
      * образца снимаем: под таблицей рамок быть не должно.</p>
+     *
+     * <p><b>Из образца берётся ТОЛЬКО шрифт — раскладку задаём сами</b> (исправлено по находке
+     * заказчика: расшифровка приезжала «с переносом текста» и читалась только после ручной правки
+     * форматирования). Ячейки бланка размечены под узкие колонки таблицы, и у образца стоит
+     * <b>перенос по словам</b> ({@code wrapText}); {@code cloneStyleFrom} копирует его вместе со
+     * шрифтом. Название вида занятия пишется в столбец {@code B} шириной 3.9 знака — с переносом оно
+     * складывалось в вертикальный столбик по букве в строке, да ещё и обрезанный высотой строки.
+     * Здесь текст обязан <b>перетекать</b> вправо по пустым ячейкам — ровно ради этого блок и не
+     * объединяют, — а перетекание возможно только без переноса и без «ужать текст».</p>
+     *
+     * <p>Поэтому раскладочные свойства выставляются <b>явно все</b>, а не «те, что мешали»: образец
+     * — чужая ячейка бланка, её разметку правит заказчик, и следующая правка иначе снова приедет к
+     * нам молча (так уже было со шрифтом, см. абзац выше).</p>
      */
-    private MarksStyles marksStyles(Sheet sheet) {
+    private BlockStyles blockStyles(Sheet sheet) {
         Workbook wb = sheet.getWorkbook();
         Cell sample = existingCell(sheet, MARKS_TITLE_ROW, MARKS_COL_KIND_ABBR);
         if (sample == null) sample = existingCell(sheet, LEGEND_FIRST_DATA_ROW, LEGEND_COL_ABBR);
@@ -415,7 +605,13 @@ public class ScheduleWorkbookRenderer {
         if (sample != null && sample.getCellStyle() != null) {
             title.cloneStyleFrom(sample.getCellStyle());
         }
+        // Раскладка блока — своя, независимо от того, что стояло у образца.
+        title.setWrapText(false);      // текст перетекает вправо, а не складывается в столбик
+        title.setShrinkToFit(false);   // и не ужимается до нечитаемого кегля
         title.setAlignment(HorizontalAlignment.LEFT);
+        title.setVerticalAlignment(VerticalAlignment.CENTER);
+        title.setRotation((short) 0);
+        title.setIndention((short) 0);
         title.setBorderTop(BorderStyle.NONE);
         title.setBorderBottom(BorderStyle.NONE);
         title.setBorderLeft(BorderStyle.NONE);
@@ -433,7 +629,13 @@ public class ScheduleWorkbookRenderer {
         CellStyle entry = wb.createCellStyle();
         entry.cloneStyleFrom(title);
         entry.setFont(plain);
-        return new MarksStyles(title, entry);
+
+        // Фамилия подписанта прижата к правому краю листа; должность и регалии — к левому краю
+        // блока, и им подходит `entry` как есть (тот же шрифт, выравнивание влево).
+        CellStyle signatureRight = wb.createCellStyle();
+        signatureRight.cloneStyleFrom(entry);
+        signatureRight.setAlignment(HorizontalAlignment.RIGHT);
+        return new BlockStyles(title, entry, signatureRight);
     }
 
     /**

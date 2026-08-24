@@ -22,15 +22,20 @@ public record AssignmentCreateDto(
     /**
      * Описывает одно конкретное назначение: для какого потока и с какими преподавателями.
      *
-     * @param studyStreamId ID потока/группы.
-     * @param educatorIds   Список ID преподавателей. Может быть один или несколько.
+     * @param studyStreamId      ID потока/группы.
+     * @param educatorIds        Список ID ведущих преподавателей. Может быть один или несколько.
+     * @param reserveEducatorIds Запасные (И-22): числятся, но не ведут. Необязательно —
+     *                           {@code null}/пусто означает «запасных нет». Пересечение с
+     *                           {@code educatorIds} запрещено: роль у человека на занятии одна.
      */
     public record AssignmentDetail(
             @NotNull(message = "ID потока не может быть пустым")
             Integer studyStreamId,
 
             @NotEmpty(message = "Список ID преподавателей не может быть пустым")
-            List<Integer> educatorIds
+            List<Integer> educatorIds,
+
+            List<Integer> reserveEducatorIds
     ) {
     }
 }

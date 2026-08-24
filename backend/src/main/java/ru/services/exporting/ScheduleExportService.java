@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.dto.ScheduledLessonDto;
+import ru.entity.Assignment;
+import ru.entity.Group;
 import ru.entity.StudyPeriod;
 import ru.entity.constraints.ConstraintData;
 import ru.entity.constraints.ConstraintKindRef;
@@ -12,6 +14,7 @@ import ru.entity.Educator;
 import ru.entity.OrgUnit;
 import ru.entity.read.ScheduleView;
 import ru.enums.KindOfStudy;
+import ru.repository.AssignmentRepository;
 import ru.repository.EducatorRepository;
 import ru.repository.read.ScheduleViewRepository;
 import ru.services.ScheduleResponseService;
@@ -25,6 +28,7 @@ import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -57,6 +61,7 @@ public class ScheduleExportService {
     private final ScheduleResponseService responseService;
     private final ConstraintService constraintService;
     private final EducatorRepository educatorRepository;
+    private final AssignmentRepository assignmentRepository;
     private final ScheduleWorkbookRenderer renderer;
 
     /** Результат выгрузки: байты, имя файла (кириллица, кодируется в контроллером) и MIME-тип. */
@@ -81,13 +86,22 @@ public class ScheduleExportService {
         // ВСЕХ строк оси (не только текущей группы), т.к. поток — это со-группы по общему placementId.
         Map<UUID, Set<String>> streamGroups = axis == ExportAxis.GROUP
                 ? groupsByPlacement(relevant) : Map.of();
+        // Запасные (И-22) — только для группы: их нет ни в одной строке проекции (занятий они не
+        // ведут), поэтому подвал — единственное место, где они показываются, и данные приходится
+        // брать с write-стороны. Ключ — группа, потом дисциплина.
+        Map<Integer, Map<String, ReserveSlot>> reserve = axis == ExportAxis.GROUP
+                ? reserveByGroup(periodId) : Map.of();
         // Подписи участников для таблицы «Обозначения» (кафедра + регалии) — тоже только для
-        // группы: у преподавателя и аудитории таблица удаляется целиком.
+        // группы: у преподавателя и аудитории таблица удаляется целиком. Запасные подмешиваются в
+        // тот же запрос: подпись им нужна ровно та же, а второго похода в БД она не стоит.
         Map<Integer, EducatorLabel> educatorLabels = axis == ExportAxis.GROUP
-                ? labelsByEducator(relevant) : Map.of();
+                ? labelsByEducator(relevant, reserveEducatorIds(reserve)) : Map.of();
 
         // Правый край листов: последняя дата, на которой в расписании периода есть занятие.
         LocalDate contentEnd = contentEnd(relevant, end);
+        // Подпись под расписанием — реквизит документа, живёт у периода (чейнджлог 026). Одна на всю
+        // выгрузку: подписант один, и в ZIP на сотню файлов он тот же самый.
+        var signature = signatureOf(period);
 
         // Одна сущность — одна книга .xlsx (как раньше).
         if (entityId != null) {
@@ -96,8 +110,8 @@ public class ScheduleExportService {
                     .toList();
             String scopeName = rows.isEmpty() ? ("#" + entityId) : axis.entityName(rows.get(0));
             var sheet = sheetOf(scopeName, entityId, rows, axisConstraints, start, end, axis,
-                    streamGroups, educatorLabels);
-            byte[] bytes = renderer.render(List.of(sheet), start, end, contentEnd, axis);
+                    streamGroups, educatorLabels, reserve);
+            byte[] bytes = renderer.render(List.of(sheet), start, end, contentEnd, axis, signature);
             String filename = buildFilename(period, axis, scopeName, ".xlsx");
             log.info("Экспорт расписания (бланк, .xlsx): период id={}, ось={}, сущность={}, {} байт",
                     periodId, axis, entityId, bytes.length);
@@ -113,10 +127,11 @@ public class ScheduleExportService {
                                 Optional.ofNullable(axis.entityName(e.getValue().get(0))).orElse(""),
                         String.CASE_INSENSITIVE_ORDER))
                 .map(e -> sheetOf(axis.entityName(e.getValue().get(0)), e.getKey(),
-                        e.getValue(), axisConstraints, start, end, axis, streamGroups, educatorLabels))
+                        e.getValue(), axisConstraints, start, end, axis, streamGroups, educatorLabels,
+                        reserve))
                 .toList();
 
-        byte[] bytes = zipPerEntity(sheets, start, end, contentEnd, axis);
+        byte[] bytes = zipPerEntity(sheets, start, end, contentEnd, axis, signature);
         String scopeName = "все_" + axis.title().toLowerCase(Locale.ROOT);
         String filename = buildFilename(period, axis, scopeName, ".zip");
         log.info("Экспорт расписания (бланк, ZIP): период id={}, ось={}, файлов={}, {} байт",
@@ -130,12 +145,13 @@ public class ScheduleExportService {
      * Имена файлов внутри архива уникализируются (тёзки получают суффикс).
      */
     private byte[] zipPerEntity(List<ScheduleWorkbookRenderer.SheetData> sheets,
-                                LocalDate start, LocalDate end, LocalDate contentEnd, ExportAxis axis) {
+                                LocalDate start, LocalDate end, LocalDate contentEnd, ExportAxis axis,
+                                ScheduleWorkbookRenderer.Signature signature) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream();
              ZipOutputStream zip = new ZipOutputStream(out, java.nio.charset.StandardCharsets.UTF_8)) {
             Set<String> usedNames = new HashSet<>();
             for (ScheduleWorkbookRenderer.SheetData sheet : sheets) {
-                byte[] book = renderer.render(List.of(sheet), start, end, contentEnd, axis);
+                byte[] book = renderer.render(List.of(sheet), start, end, contentEnd, axis, signature);
                 zip.putNextEntry(new ZipEntry(zipEntryName(sheet.name(), usedNames)));
                 zip.write(book);
                 zip.closeEntry();
@@ -145,6 +161,18 @@ public class ScheduleExportService {
         } catch (IOException e) {
             throw new UncheckedIOException("Не удалось сформировать ZIP-архив расписания", e);
         }
+    }
+
+    /**
+     * Подпись под расписанием из реквизитов периода.
+     *
+     * <p>Читается здесь, а не в рендерере: рендерер о БД не знает. Ничего не сохраняет — подпись
+     * правится своей командой ({@code PUT /api/study-periods/{id}/signature}), а выгрузка остаётся
+     * чистым чтением.</p>
+     */
+    private ScheduleWorkbookRenderer.Signature signatureOf(StudyPeriod period) {
+        return new ScheduleWorkbookRenderer.Signature(
+                period.getSignerPosition(), period.getSignerCredentials(), period.getSignerName());
     }
 
     /** Имя файла сущности внутри архива: очищенное имя + {@code .xlsx}, уникальное в пределах архива. */
@@ -164,15 +192,18 @@ public class ScheduleExportService {
                                                        Map<Integer, List<ConstraintData>> axisConstraints,
                                                        LocalDate start, LocalDate end, ExportAxis axis,
                                                        Map<UUID, Set<String>> streamGroups,
-                                                       Map<Integer, EducatorLabel> educatorLabels) {
+                                                       Map<Integer, EducatorLabel> educatorLabels,
+                                                       Map<Integer, Map<String, ReserveSlot>> reserve) {
         Map<String, List<ScheduledLessonDto>> grid = responseService.buildGridFromViews(rows);
         List<ConstraintData> constraints = axisConstraints.get(entityId);
         Map<String, String> constraintAbbr = constraintMapFor(constraints, start, end);
         // Таблица «Обозначения» бланка и расшифровки под ней — только для группы; для препода и
         // аудитории таблица вычищается, а вместе с ней уходит и место под расшифровки.
         boolean group = axis == ExportAxis.GROUP;
-        List<ScheduleWorkbookRenderer.LegendRow> legend =
-                group ? buildLegend(rows, streamGroups, educatorLabels) : List.of();
+        List<ScheduleWorkbookRenderer.LegendRow> legend = group
+                ? buildLegend(rows, streamGroups, educatorLabels,
+                        reserve.getOrDefault(entityId, Map.of()))
+                : List.of();
         List<ScheduleWorkbookRenderer.Mark> kindMarks = group ? kindMarksOf(rows) : List.of();
         List<ScheduleWorkbookRenderer.Mark> otherMarks = group ? constraintMarksOf(constraints, start, end) : List.of();
         return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr, legend, kindMarks, otherMarks);
@@ -239,22 +270,38 @@ public class ScheduleExportService {
     }
 
     /**
-     * Легенда «Обозначения» группы из её же размещённых строк (без новых запросов): по дисциплине —
-     * аббревиатура, название, лектор(ы), преподаватели других (нелекционных) видов занятий и кол-во
-     * лекционных часов. Лекторов и «других» может быть несколько — собираем всех уникальных. Часы —
-     * по <b>реально размещённым</b> лекциям: число лекционных пар × {@value #ACADEMIC_HOURS_PER_PAIR}
+     * Легенда «Обозначения» группы из её же размещённых строк: по дисциплине — аббревиатура,
+     * название, лектор(ы), преподаватели других (нелекционных) видов занятий и кол-во лекционных
+     * часов. Лекторов и «других» может быть несколько — собираем всех уникальных. Часы — по
+     * <b>реально размещённым</b> лекциям: число лекционных пар × {@value #ACADEMIC_HOURS_PER_PAIR}
      * академ. часа (в модели хранимых часов нет). Порядок — по аббревиатуре/названию.
+     *
+     * <p><b>Запасные (И-22) дописываются после ведущих</b>, без пометки (решение заказчика
+     * 2026-08-24): в исходных файлах подвал ролей не различает, и бланк воспроизводит их форму.
+     * Порядок — единственное, что о роли говорит: сначала те, у кого занятия стоят поклеточно.
+     * Колонку выбирает вид занятия назначения: лекционное → «Лектор», любое другое → «Другие виды
+     * занятий».</p>
+     *
+     * <p>⚠️ Часы и «Каф» запасные не меняют: часы считаются по размещённым парам (запасной их не
+     * ведёт), а «Каф» описывает подразделения тех, кто занятие проводит.</p>
+     *
+     * <p>⚠️ Строки заводятся по размещённым занятиям, поэтому дисциплина, у которой в этой группе
+     * не размещено <b>ничего</b>, в подвал не попадает — вместе со своими запасными. Это то же
+     * правило, что и для ведущих: подвал описывает расписание, а не учебный план.</p>
      */
     private List<ScheduleWorkbookRenderer.LegendRow> buildLegend(List<ScheduleView> rows,
                                                                  Map<UUID, Set<String>> streamGroups,
-                                                                 Map<Integer, EducatorLabel> educatorLabels) {
+                                                                 Map<Integer, EducatorLabel> educatorLabels,
+                                                                 Map<String, ReserveSlot> reserve) {
         Map<String, List<ScheduleView>> byDiscipline = rows.stream()
                 .collect(Collectors.groupingBy(
-                        v -> nn(v.getDisciplineName()) + '\0' + nn(v.getDisciplineAbbr()),
+                        v -> disciplineKey(v.getDisciplineName(), v.getDisciplineAbbr()),
                         LinkedHashMap::new, Collectors.toList()));
 
         List<ScheduleWorkbookRenderer.LegendRow> legend = new ArrayList<>();
-        for (List<ScheduleView> disc : byDiscipline.values()) {
+        for (Map.Entry<String, List<ScheduleView>> entry : byDiscipline.entrySet()) {
+            List<ScheduleView> disc = entry.getValue();
+            ReserveSlot reserveSlot = reserve.getOrDefault(entry.getKey(), ReserveSlot.EMPTY);
             String abbr = disc.get(0).getDisciplineAbbr();
             String name = disc.get(0).getDisciplineName();
             List<ScheduleView> lectures = disc.stream()
@@ -265,8 +312,10 @@ public class ScheduleExportService {
                     .filter(v -> !"LECTURE".equals(v.getKindOfStudy()))
                     .toList();
 
-            String lecturers = distinctEducators(lectures, educatorLabels);
-            String others = distinctEducators(nonLectures, educatorLabels);
+            String lecturers = withReserve(distinctEducators(lectures, educatorLabels),
+                    lectures, reserveSlot.lecturers(), educatorLabels);
+            String others = withReserve(distinctEducators(nonLectures, educatorLabels),
+                    nonLectures, reserveSlot.others(), educatorLabels);
             // Кол-во часов «лекц-нелекц»: число размещённых пар × 2 академ. часа, две цифры через дефис.
             int lectureHours = distinctPlacements(lectures) * ACADEMIC_HOURS_PER_PAIR;
             int nonLectureHours = distinctPlacements(nonLectures) * ACADEMIC_HOURS_PER_PAIR;
@@ -334,11 +383,14 @@ public class ScheduleExportService {
      * вместо пустого значения догадку было бы хуже пустой ячейки. То же и с регалиями — их
      * отсутствие даёт просто ФИО.</p>
      */
-    private Map<Integer, EducatorLabel> labelsByEducator(List<ScheduleView> relevant) {
+    private Map<Integer, EducatorLabel> labelsByEducator(List<ScheduleView> relevant,
+                                                         Set<Integer> extraIds) {
         Set<Integer> ids = relevant.stream()
                 .map(ScheduleView::getEducatorId)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toCollection(HashSet::new));
+        // Запасные (И-22) в проекции не встречаются вовсе, а подпись в подвале им нужна такая же.
+        ids.addAll(extraIds);
         if (ids.isEmpty()) return Map.of();
 
         Map<Integer, EducatorLabel> byEducator = new HashMap<>();
@@ -380,6 +432,107 @@ public class ScheduleExportService {
                 .values().stream()
                 .filter(s -> !s.isBlank())
                 .collect(Collectors.joining(", "));
+    }
+
+    /**
+     * Дописывает запасных (И-22) после ведущих в одну колонку подвала — без пометки, тем же
+     * разделителем.
+     *
+     * <p>Из состава выбрасываются те, кто уже назван ведущим в этой же колонке: человек может
+     * числиться запасным по дисциплине и при этом вести часть занятий её вида (замена состоялась,
+     * а назначение осталось). Показать его дважды значило бы соврать о числе преподавателей.</p>
+     *
+     * @param leading    уже собранная строка ведущих (может быть пустой)
+     * @param leadingRows строки, из которых она собрана — по ним считается, кого уже назвали
+     * @param reserveIds запасные этой колонки, в порядке заведения
+     * @param labels     подписи преподавателей (кафедра + регалии)
+     */
+    private static String withReserve(String leading, List<ScheduleView> leadingRows,
+                                      Set<Integer> reserveIds, Map<Integer, EducatorLabel> labels) {
+        if (reserveIds.isEmpty()) {
+            return leading;
+        }
+        Set<Integer> alreadyNamed = leadingRows.stream()
+                .map(ScheduleView::getEducatorId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        String tail = reserveIds.stream()
+                .filter(id -> !alreadyNamed.contains(id))
+                .map(labels::get)
+                .filter(Objects::nonNull)
+                .map(EducatorLabel::titleLine)
+                .filter(line -> line != null && !line.isBlank())
+                .collect(Collectors.joining(", "));
+        if (tail.isEmpty()) {
+            return leading;
+        }
+        return leading.isBlank() ? tail : leading + ", " + tail;
+    }
+
+    /**
+     * Запасные (И-22) периода, разложенные «группа → дисциплина → лекционные/остальные».
+     *
+     * <p>Раскладка по группам, а не по потокам: лист бланка выписывается на группу, и запасной
+     * лекционного назначения обязан появиться в подвале каждой группы потока — ровно там же, где
+     * стоят сами лекции.</p>
+     *
+     * <p>Колонку выбирает {@code kindOfStudy} слота: {@link KindOfStudy#LECTURE} → «Лектор», всё
+     * остальное → «Другие виды занятий». Отдельного признака роли у запасного нет намеренно — вид
+     * занятия уже известен из плана, и второй источник мог бы с ним разойтись.</p>
+     */
+    private Map<Integer, Map<String, ReserveSlot>> reserveByGroup(Integer periodId) {
+        List<Assignment> withReserve = assignmentRepository.findWithReserveByPeriodId(periodId);
+        if (withReserve.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, Map<String, ReserveSlot>> byGroup = new HashMap<>();
+        for (Assignment a : withReserve) {
+            var discipline = a.getCurriculumSlot().getDisciplineCourse().getDiscipline();
+            String key = disciplineKey(discipline.getName(), discipline.getAbbreviation());
+            boolean lecture = a.getCurriculumSlot().getKindOfStudy() == KindOfStudy.LECTURE;
+            List<Integer> ids = a.getReserveEducators().stream()
+                    .map(Educator::getId)
+                    .sorted() // состав — Set: без сортировки порядок колонки плавал бы между выгрузками
+                    .toList();
+            for (Group group : a.getStudyStream().getGroups()) {
+                ReserveSlot slot = byGroup
+                        .computeIfAbsent(group.getId(), g -> new HashMap<>())
+                        .computeIfAbsent(key, k -> ReserveSlot.empty());
+                (lecture ? slot.lecturers() : slot.others()).addAll(ids);
+            }
+        }
+        return byGroup;
+    }
+
+    /** Все запасные выгрузки — чтобы подписи (кафедра, регалии) пришли тем же запросом, что и у ведущих. */
+    private static Set<Integer> reserveEducatorIds(Map<Integer, Map<String, ReserveSlot>> reserve) {
+        return reserve.values().stream()
+                .flatMap(byDiscipline -> byDiscipline.values().stream())
+                .flatMap(slot -> Stream.concat(slot.lecturers().stream(), slot.others().stream()))
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Запасные одной группы по одной дисциплине, разложенные по колонкам подвала.
+     *
+     * <p>{@link LinkedHashSet} — потому что колонка печатается перечнем: нужен и порядок
+     * (устойчивый между выгрузками), и отсутствие повторов (один человек может быть запасным на
+     * нескольких занятиях одного вида).</p>
+     */
+    private record ReserveSlot(LinkedHashSet<Integer> lecturers, LinkedHashSet<Integer> others) {
+
+        /** Общая пустая: дисциплин без запасных подавляющее большинство, плодить объекты незачем. */
+        private static final ReserveSlot EMPTY =
+                new ReserveSlot(new LinkedHashSet<>(), new LinkedHashSet<>());
+
+        private static ReserveSlot empty() {
+            return new ReserveSlot(new LinkedHashSet<>(), new LinkedHashSet<>());
+        }
+    }
+
+    /** Ключ дисциплины в подвале: название + аббревиатура (обе части значащие — тёзки различаются). */
+    private static String disciplineKey(String disciplineName, String disciplineAbbr) {
+        return nn(disciplineName) + '\0' + nn(disciplineAbbr);
     }
 
     /** Число уникальных размещений (пар) в строках — одно размещение = одна пара. */
