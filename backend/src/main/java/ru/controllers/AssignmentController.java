@@ -46,14 +46,13 @@ public class AssignmentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     /**
-     * Назначить поток+преподавателей на все занятия курса (типовой случай — один
-     * преподаватель на весь курс). overwrite управляет уже назначенными слотами.
+     * Назначить потоки+преподавателей на занятия курса (типовые случаи — один преподаватель на
+     * весь курс; несколько потоков с одним и тем же составом ведущих). overwrite управляет уже
+     * назначенными слотами, по каждому потоку отдельно.
      */
     @PostMapping("/apply-to-course")
     public ResponseEntity<List<AssignmentDto>> applyToCourse(@Valid @RequestBody ApplyAssignmentToCourseDto dto) {
-        List<AssignmentDto> result = assignmentService.applyToCourse(
-                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.reserveEducatorIds(),
-                dto.overwrite(), dto.slotIds());
+        List<AssignmentDto> result = assignmentService.applyToCourse(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
     /**
@@ -63,8 +62,7 @@ public class AssignmentController {
     @PostMapping("/remove-from-course/impact")
     public ResponseEntity<RemoveAssignmentsImpactDto> removeFromCourseImpact(
             @Valid @RequestBody RemoveAssignmentsFromCourseDto dto) {
-        return ResponseEntity.ok(assignmentService.removeImpact(
-                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.slotIds()));
+        return ResponseEntity.ok(assignmentService.removeImpact(dto));
     }
 
     /**
@@ -74,8 +72,7 @@ public class AssignmentController {
      */
     @PostMapping("/remove-from-course")
     public ResponseEntity<Integer> removeFromCourse(@Valid @RequestBody RemoveAssignmentsFromCourseDto dto) {
-        int removed = assignmentService.removeFromCourse(
-                dto.courseId(), dto.studyStreamId(), dto.educatorIds(), dto.slotIds());
+        int removed = assignmentService.removeFromCourse(dto);
         return ResponseEntity.ok(removed);
     }
 

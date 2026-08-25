@@ -4,9 +4,11 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.dto.assignment.ApplyAssignmentToCourseDto;
 import ru.dto.assignment.AssignmentCreateDto;
 import ru.dto.assignment.AssignmentDto;
 import ru.dto.assignment.AssignmentUpdateDto;
+import ru.dto.assignment.RemoveAssignmentsFromCourseDto;
 import ru.dto.assignment.RemoveAssignmentsImpactDto;
 import ru.entity.Assignment;
 import ru.entity.Educator;
@@ -21,6 +23,7 @@ import ru.services.projection.ProjectionSource;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,14 +45,38 @@ public class AssignmentService {
     private final LessonPlacementRepository placementRepository;
     private final ProjectionMaintenance projectionMaintenance;
 
+    /**
+     * Создать назначения для ОДНОГО слота — по одному на каждый переданный поток.
+     *
+     * <p><b>Потоки, у которых назначение на этом слоте уже есть, пропускаются.</b> В схеме стоит
+     * {@code UNIQUE (curriculum_slot_id, study_stream_id)}: у занятия один поток = одно назначение.
+     * Раньше повтор доходил до вставки и падал нарушением ограничения — сырым 500, потому что
+     * {@link ru.controllers.command.CommandExceptionHandler} накрывает только пакет
+     * {@code ru.controllers.command}, а этот контроллер лежит в {@code ru.controllers}. Пока
+     * поток выбирали по одному, наткнуться на это было трудно; с выбором нескольких потоков разом
+     * достаточно одного уже назначенного, чтобы <b>вся</b> пачка откатилась.</p>
+     *
+     * <p>Пропуск, а не ошибка, — потому что менять состав уже существующего назначения умеет
+     * правка (и {@code applyToCourse} с {@code overwrite}); «создать» здесь означает ровно
+     * создать. Сколько назначений создано, видно по длине ответа: вызывающий сравнивает её
+     * с числом запрошенных потоков.</p>
+     */
     @Transactional
     public List<AssignmentDto> createAssignments(AssignmentCreateDto createDto) {
         // 1. Находим родительский слот через его сервис
         CurriculumSlot slot = curriculumSlotService.getEntityById(createDto.curriculumSlotId());
 
+        // Потоки, уже назначенные на этот слот. Множество пополняется по ходу цикла — так же
+        // отсекается и дубль ВНУТРИ одного запроса (два одинаковых потока в списке).
+        Set<Integer> taken = assignmentRepository.findByCurriculumSlotId(slot.getId()).stream()
+                .map(a -> a.getStudyStream().getId())
+                .collect(Collectors.toCollection(HashSet::new));
+
         List<Assignment> createdAssignments = new ArrayList<>();
 
         for (AssignmentCreateDto.AssignmentDetail detail : createDto.assignments()) {
+            if (!taken.add(detail.studyStreamId())) continue;
+
             // 2. Находим связанные сущности через их сервисы
             StudyStream stream = studyStreamService.getEntityById(detail.studyStreamId());
             List<Educator> educators = educatorService.getAllEntitiesByIds(detail.educatorIds());
@@ -64,15 +91,21 @@ public class AssignmentService {
     }
 
     /**
-     * Назначает поток + преподавателей на ВСЕ занятия курса. Удобство для типового
+     * Назначает потоки + преподавателей на занятия курса. Удобство для типового
      * случая «один преподаватель ведёт поток через весь курс»: проставить разом,
      * а исключения потом править точечно.
      *
-     * <p>Политика для уже назначенных на этот поток слотов: {@code overwrite=false}
-     * (по умолчанию) — пропускаем (ручные исключения не трогаем, операция идемпотентна);
-     * {@code overwrite=true} — заменяем состав преподавателей существующего назначения
-     * (та же строка, ссылки не рвутся). Материализуем по слотам — отдельной
-     * «курс-уровневой» сущности назначения нет.</p>
+     * <p><b>Потоков может быть несколько, состав преподавателей у них общий</b> — это второй
+     * типовой случай: потоки разные, а комбинация ведущих одна и та же, и повторять её вручную
+     * для каждого потока значило бы вводить одно и то же по нескольку раз. Результат —
+     * декартово произведение «потоки × занятия охвата»: назначение материализуется по слотам,
+     * отдельной «курс-уровневой» сущности нет. Один поток — частный случай, прежнее поведение.</p>
+     *
+     * <p>Политика для уже назначенных слотов считается <b>по каждому потоку отдельно</b>:
+     * {@code overwrite=false} (по умолчанию) — пропускаем (ручные исключения не трогаем,
+     * операция идемпотентна); {@code overwrite=true} — заменяем состав преподавателей
+     * существующего назначения (та же строка, ссылки не рвутся). Иначе один поток, назначенный
+     * заранее, блокировал бы всю пачку.</p>
      *
      * <p>Охват: {@code slotIds} {@code null}/пусто → все слоты курса (прежнее поведение);
      * иначе — только слоты курса из этого набора (выбор по видам/конкретным занятиям
@@ -82,39 +115,54 @@ public class AssignmentService {
      * <p>Запасные (И-22) едут тем же путём, что и ведущие: при {@code overwrite=true} состав
      * запасных заменяется целиком — иначе «перезаписать» означало бы разное для двух ролей
      * одного назначения.</p>
+     *
+     * <p><b>Принимает DTO целиком, а не разобранным на аргументы</b> — как {@code createAssignments}
+     * и {@code updateAssignment} в этом же классе. Разобранная сигнатура несла подряд четыре
+     * {@code List<Integer>} (потоки, ведущие, запасные, охват): перепутать их местами компилятор
+     * не мешает, а результат был бы катастрофическим и молчаливым.</p>
      */
     @Transactional
-    public List<AssignmentDto> applyToCourse(Integer courseId, Integer studyStreamId,
-                                             List<Integer> educatorIds, List<Integer> reserveEducatorIds,
-                                             boolean overwrite, List<Integer> slotIds) {
-        StudyStream stream = studyStreamService.getEntityById(studyStreamId);
-        List<Educator> educators = educatorService.getAllEntitiesByIds(educatorIds);
-        List<Educator> reserve = resolveReserve(educatorIds, reserveEducatorIds);
-        List<CurriculumSlot> slots = curriculumSlotService.getEntitiesByCourseId(courseId);
+    public List<AssignmentDto> applyToCourse(ApplyAssignmentToCourseDto dto) {
+        // Порядок сохраняем, повторы гасим: один и тот же поток дважды в списке — это один поток,
+        // а не попытка назначить его дважды (второй заход и так упёрся бы в UNIQUE).
+        List<StudyStream> streams = new LinkedHashSet<>(dto.studyStreamIds()).stream()
+                .map(studyStreamService::getEntityById)
+                .toList();
+        List<Educator> educators = educatorService.getAllEntitiesByIds(dto.educatorIds());
+        List<Educator> reserve = resolveReserve(dto.educatorIds(), dto.reserveEducatorIds());
+        List<CurriculumSlot> slots = curriculumSlotService.getEntitiesByCourseId(dto.courseId());
 
-        if (slotIds != null && !slotIds.isEmpty()) {
-            Set<Integer> wanted = new HashSet<>(slotIds);
+        if (dto.slotIds() != null && !dto.slotIds().isEmpty()) {
+            Set<Integer> wanted = new HashSet<>(dto.slotIds());
             slots = slots.stream().filter(s -> wanted.contains(s.getId())).toList();
         }
 
-        // Уже назначенные на этот поток слоты курса — один запрос, без N+1.
-        Map<Integer, Assignment> existingBySlot = assignmentRepository.findAllByCourseIdWithDetails(courseId).stream()
-                .filter(a -> a.getStudyStream().getId().equals(studyStreamId))
-                .collect(Collectors.toMap(a -> a.getCurriculumSlot().getId(), a -> a));
+        // Уже назначенные слоты курса — по-прежнему ОДИН запрос на весь вызов, сколько бы потоков
+        // ни пришло: запрос внутрь цикла по потокам дал бы N+1 ровно там, где потоков много.
+        Set<Integer> wantedStreams = streams.stream().map(StudyStream::getId).collect(Collectors.toSet());
+        Map<Integer, Map<Integer, Assignment>> existingByStreamAndSlot =
+                assignmentRepository.findAllByCourseIdWithDetails(dto.courseId()).stream()
+                        .filter(a -> wantedStreams.contains(a.getStudyStream().getId()))
+                        .collect(Collectors.groupingBy(a -> a.getStudyStream().getId(),
+                                Collectors.toMap(a -> a.getCurriculumSlot().getId(), a -> a)));
 
         List<Assignment> affected = new ArrayList<>();
         List<Assignment> overwritten = new ArrayList<>(); // только они меняют уже стоящие занятия
-        for (CurriculumSlot slot : slots) {
-            Assignment existing = existingBySlot.get(slot.getId());
-            if (existing == null) {
-                affected.add(assignmentRepository.save(buildAssignment(slot, stream, educators, reserve)));
-            } else if (overwrite) {
-                existing.setEducators(new HashSet<>(educators));
-                existing.setReserveEducators(new HashSet<>(reserve));
-                affected.add(assignmentRepository.save(existing));
-                overwritten.add(existing);
+        for (StudyStream stream : streams) {
+            Map<Integer, Assignment> existingBySlot =
+                    existingByStreamAndSlot.getOrDefault(stream.getId(), Map.of());
+            for (CurriculumSlot slot : slots) {
+                Assignment existing = existingBySlot.get(slot.getId());
+                if (existing == null) {
+                    affected.add(assignmentRepository.save(buildAssignment(slot, stream, educators, reserve)));
+                } else if (dto.overwrite()) {
+                    existing.setEducators(new HashSet<>(educators));
+                    existing.setReserveEducators(new HashSet<>(reserve));
+                    affected.add(assignmentRepository.save(existing));
+                    overwritten.add(existing);
+                }
+                // overwrite=false и назначение уже есть → SKIP
             }
-            // overwrite=false и назначение уже есть → SKIP
         }
         announceChanged(overwritten);
         return assignmentMapper.toDtoList(affected);
@@ -128,12 +176,17 @@ public class AssignmentService {
      * <p>Каскад write-стороны (размещения) выполняет БД по FK. Read-модель
      * {@code schedule_view} чистим синхронно в этой же транзакции (см. {@link #purge}).</p>
      *
+     * <p><b>Принимает DTO целиком, а не разобранным на аргументы</b> — как остальные методы этого
+     * класса. Разобранная сигнатура несла два {@code Integer} подряд (курс, поток) и два
+     * {@code List<Integer>} подряд (преподаватели, охват): перепутать соседей местами компилятор
+     * не мешает, а промах критерия здесь означает снос <b>не тех</b> назначений вместе с их
+     * размещениями — молча и необратимо.</p>
+     *
      * @return число удалённых назначений
      */
     @Transactional
-    public int removeFromCourse(Integer courseId, Integer studyStreamId,
-                                List<Integer> educatorIds, List<Integer> slotIds) {
-        List<Assignment> matched = matchHomogeneous(courseId, studyStreamId, educatorIds, slotIds);
+    public int removeFromCourse(RemoveAssignmentsFromCourseDto dto) {
+        List<Assignment> matched = matchHomogeneous(dto);
         purge(matched);
         return matched.size();
     }
@@ -143,9 +196,8 @@ public class AssignmentService {
      * и сколько из размещённых закреплено (замок) — см. {@link RemoveAssignmentsImpactDto}.
      */
     @Transactional(readOnly = true)
-    public RemoveAssignmentsImpactDto removeImpact(Integer courseId, Integer studyStreamId,
-                                                   List<Integer> educatorIds, List<Integer> slotIds) {
-        List<Assignment> matched = matchHomogeneous(courseId, studyStreamId, educatorIds, slotIds);
+    public RemoveAssignmentsImpactDto removeImpact(RemoveAssignmentsFromCourseDto dto) {
+        List<Assignment> matched = matchHomogeneous(dto);
         return impactOf(matched.stream().map(Assignment::getId).toList());
     }
 
@@ -177,13 +229,12 @@ public class AssignmentService {
      * страховка — характеристика назначения, а не признак его тождества. Иначе снятие
      * промахивалось бы мимо назначений, у которых запасного добавили или убрали позже.</p>
      */
-    private List<Assignment> matchHomogeneous(Integer courseId, Integer studyStreamId,
-                                              List<Integer> educatorIds, List<Integer> slotIds) {
-        Set<Integer> wantedEducators = educatorIds == null ? Set.of() : new HashSet<>(educatorIds);
-        Set<Integer> scope = (slotIds == null || slotIds.isEmpty()) ? null : new HashSet<>(slotIds);
+    private List<Assignment> matchHomogeneous(RemoveAssignmentsFromCourseDto dto) {
+        Set<Integer> wantedEducators = dto.educatorIds() == null ? Set.of() : new HashSet<>(dto.educatorIds());
+        Set<Integer> scope = (dto.slotIds() == null || dto.slotIds().isEmpty()) ? null : new HashSet<>(dto.slotIds());
 
-        return assignmentRepository.findAllByCourseIdWithDetails(courseId).stream()
-                .filter(a -> a.getStudyStream().getId().equals(studyStreamId))
+        return assignmentRepository.findAllByCourseIdWithDetails(dto.courseId()).stream()
+                .filter(a -> a.getStudyStream().getId().equals(dto.studyStreamId()))
                 .filter(a -> scope == null || scope.contains(a.getCurriculumSlot().getId()))
                 .filter(a -> a.getEducators().stream().map(Educator::getId)
                         .collect(Collectors.toSet()).equals(wantedEducators))

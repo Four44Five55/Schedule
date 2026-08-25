@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DisciplineCourseDto, CurriculumSlotDto, StudyStreamDto, EducatorDto, AssignmentDto,
   RemoveAssignmentsImpactDto
 } from '../../../types/api';
 import { CurriculumService } from '../../../services/apiServices';
-import { Check, Plus, Users, Settings, Trash2, Edit2, X, ChevronRight, CopyMinus, Lock, LifeBuoy } from 'lucide-react';
+import { Check, Plus, Users, Settings, Trash2, Edit2, X, ChevronRight, CopyMinus, Lock, LifeBuoy, Search } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
 
@@ -38,7 +38,17 @@ interface AssignmentFormState {
   slotId: number;
   courseId: number;
   assignmentId: number | null;
-  streamId: number | '';
+  /**
+   * Потоки, которым достаётся ОДИН состав преподавателей. Список, а не одно значение: потоки
+   * бывают разные при одной и той же комбинации ведущих, и повторять ввод для каждого — то же
+   * самое несколько раз. Схема не меняется: назначения по-прежнему заводятся по одному на поток
+   * (`UNIQUE (curriculum_slot_id, study_stream_id)`), просто заводятся списком за один заход.
+   *
+   * ⚠️ **При правке всегда ровно один.** Назначение — это и есть пара «занятие + поток»;
+   * «поменять поток на два» означало бы разделить строку надвое, а не изменить её. Размножать
+   * потоки поэтому можно только при создании — см. развилку в разметке.
+   */
+  streamIds: number[];
   educatorIds: number[];
   // Запасные (И-22): числятся за дисциплиной, но занятий не ведут. Распределение их не видит —
   // они не занимают время и не попадают в свою сетку; печатаются только в подвале бланка.
@@ -102,15 +112,17 @@ export const AssignmentsTab: React.FC<{
   };
 
   const openCreate = (slotId: number, courseId: number) => {
-    setForm({ slotId, courseId, assignmentId: null, streamId: '', educatorIds: [], reserveEducatorIds: [], applyAll: false, overwrite: false, selectedSlotIds: new Set() });
+    setSkipped([]);
+    setForm({ slotId, courseId, assignmentId: null, streamIds: [], educatorIds: [], reserveEducatorIds: [], applyAll: false, overwrite: false, selectedSlotIds: new Set() });
   };
 
   const openEdit = (assignment: AssignmentDto, courseId: number) => {
+    setSkipped([]);
     setForm({
       slotId: assignment.curriculumSlot.id,
       courseId,
       assignmentId: assignment.id,
-      streamId: assignment.studyStream.id,
+      streamIds: [assignment.studyStream.id],
       educatorIds: assignment.educators.map(e => e.id),
       reserveEducatorIds: assignment.reserveEducators.map(e => e.id),
       applyAll: false,
@@ -119,7 +131,112 @@ export const AssignmentsTab: React.FC<{
     });
   };
 
-  const closeForm = () => setForm(null);
+  const closeForm = () => { setForm(null); setSkipped([]); setSaveError(null); };
+
+  /**
+   * Почему сохранять нельзя — строкой, а не булевым флагом. Кнопка, погашенная без причины,
+   * это своя ошибка: человек видит, что нажать нельзя, и не видит, чего не хватает.
+   *
+   * **Пустой состав ведущих — не каприз формы, а зеркало бэка:** `educatorIds` помечен
+   * `@NotEmpty` во всех трёх путях записи (создание, правка, массовое назначение). Раньше кнопка
+   * оставалась активной, запрос уходил и возвращался 400 — а показать его было некому, и нажатие
+   * выглядело как «ничего не произошло».
+   *
+   * ⚠️ Запасные (И-22) ведущего не заменяют: они занятий не ведут, и назначение из одних
+   * запасных означало бы занятие, которое некому проводить.
+   */
+  const saveBlocker: string | null = !form ? null
+    : form.streamIds.length === 0 ? 'Выберите учебный поток'
+    : form.educatorIds.length === 0 ? 'Выберите хотя бы одного преподавателя: запасные занятий не ведут'
+    : form.applyAll && form.selectedSlotIds.size === 0 ? 'Выберите хотя бы одно занятие курса'
+    : null;
+
+  /**
+   * Потоки, которые бэк отказался заводить, потому что назначение у них на этом занятии уже есть.
+   * В обычной работе список пуст — такие потоки в выборе недоступны; сюда попадает только то,
+   * что разошлось с соседней вкладкой. Молчать нельзя: «создал пятерым, создалось четверым».
+   */
+  const [skipped, setSkipped] = useState<string[]>([]);
+
+  /**
+   * Отказ бэка. До этого у `handleSave` не было `catch` вовсе: 400 (пустой состав), 409 и 500
+   * гасились в `finally`, и панель просто оставалась открытой — то есть неотличимо от «нажатие
+   * не сработало». Логи `apiClient` выводятся только в dev-сборке, так что в проде следа не было.
+   */
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /**
+   * Варианты выбора для открытой формы. Считаются **один раз на форму**, а не внутри цикла по
+   * занятиям: форма всегда одна, а цикл проходит по всем занятиям всех развёрнутых курсов —
+   * прежний расчёт по месту повторял одну и ту же работу на каждой строке плана.
+   */
+  const formCourse = form ? allCourses.find(c => c.id === form.courseId) ?? null : null;
+
+  /** Потоки, у которых назначение на ЭТОМ занятии уже есть: второго ему завести некуда (UNIQUE). */
+  const takenStreamIds = useMemo(() => new Set(
+    form
+      ? (courseAssignments.get(form.courseId) ?? [])
+          .filter(a => a.curriculumSlot.id === form.slotId)
+          .map(a => a.studyStream.id)
+      : [],
+  ), [form, courseAssignments]);
+
+  /**
+   * Потоки семестра курса. Уже выбранный остаётся в списке при любом семестре — иначе правка
+   * «однотипного» назначения потеряла бы значение.
+   */
+  const streamOptions = useMemo<PickerOption[]>(() => {
+    if (!form || !formCourse) return [];
+    return streams
+      .filter(st => st.semester === formCourse.semester || form.streamIds.includes(st.id))
+      .map(st => ({
+        id: st.id,
+        name: st.name,
+        // Пометка остаётся видимой и на выбранном потоке: она предупреждение, а не блокировка,
+        // и в массовом режиме как раз подсказывает, кому понадобится «перезаписать».
+        note: takenStreamIds.has(st.id) ? 'уже назначен' : `сем. ${st.semester}`,
+        noteTone: takenStreamIds.has(st.id) ? 'warn' : 'muted',
+      }));
+  }, [form, formCourse, streams, takenStreamIds]);
+
+  /**
+   * Занятость потока запрещает выбор только для ОДНОГО занятия. В охвате нескольких она разная
+   * у разных занятий, и решает её «перезаписать», а не этот список.
+   */
+  const blockedStreamIds = useMemo(
+    () => (form && !form.applyAll ? Array.from(takenStreamIds) : []),
+    [form, takenStreamIds],
+  );
+
+  /** Преподаватели — общий список для обеих ролей; чужая роль передаётся отдельно, `blockedIds`. */
+  const educatorOptions = useMemo<PickerOption[]>(
+    () => educators.map(e => ({
+      id: e.id,
+      name: e.name,
+      // Кафедра — единственное, чем различаются однофамильцы; по ней же идёт поиск.
+      note: e.orgUnitName ?? undefined,
+      title: e.titleLine || e.name,
+    })),
+    [educators],
+  );
+
+  const toggleStream = useCallback((id: number) => {
+    setForm(prev => {
+      if (!prev) return prev;
+      const ids = prev.streamIds.includes(id)
+        ? prev.streamIds.filter(s => s !== id)
+        : [...prev.streamIds, id];
+      return { ...prev, streamIds: ids };
+    });
+  }, []);
+
+  // Панель раскрывается ВНУТРИ списка занятий курса, а не поверх него. На нижних занятиях
+  // длинного курса она открывалась бы за краем экрана — кнопка «Добавить» нажата, а формы не
+  // видно. `block: 'nearest'` не дёргает страницу, когда панель и так на виду.
+  const formRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (form) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [form?.slotId, form?.assignmentId]);
 
   // ── Массовое назначение: охват (виды / конкретные занятия) ──
   // Слоты курса текущей формы — источник дерева охвата.
@@ -161,8 +278,7 @@ export const AssignmentsTab: React.FC<{
     return next;
   });
 
-  const toggleEducator = (id: number) => {
-    if (!form) return;
+  const toggleEducator = useCallback((id: number) => {
     setForm(prev => {
       if (!prev) return prev;
       const ids = prev.educatorIds.includes(id)
@@ -170,13 +286,12 @@ export const AssignmentsTab: React.FC<{
         : [...prev.educatorIds, id];
       return { ...prev, educatorIds: ids };
     });
-  };
+  }, []);
 
   // Запасной (И-22). Роли взаимоисключающие: человек либо ведёт занятие и занимает время, либо
   // числится и не занимает. Бэк пересечение отклоняет (400), поэтому в списках чужая роль просто
   // недоступна — правило видно до отправки, а не в тексте ошибки.
-  const toggleReserveEducator = (id: number) => {
-    if (!form) return;
+  const toggleReserveEducator = useCallback((id: number) => {
     setForm(prev => {
       if (!prev) return prev;
       const ids = prev.reserveEducatorIds.includes(id)
@@ -184,40 +299,63 @@ export const AssignmentsTab: React.FC<{
         : [...prev.reserveEducatorIds, id];
       return { ...prev, reserveEducatorIds: ids };
     });
-  };
+  }, []);
 
   const handleSave = async () => {
-    if (!form || form.streamId === '') return;
+    if (!form || saveBlocker) return;
     setSaving(true);
+    setSkipped([]);
+    setSaveError(null);
     try {
       if (form.assignmentId) {
+        // Правка — всегда один поток: назначение и есть пара «занятие + поток».
         await CurriculumService.updateAssignment(form.assignmentId, {
-          studyStreamId: form.streamId as number,
+          studyStreamId: form.streamIds[0],
           educatorIds: form.educatorIds,
           reserveEducatorIds: form.reserveEducatorIds,
         });
       } else if (form.applyAll) {
-        // Проставить этот поток+преподавателей на выбранный охват занятий курса (bulk на бэке).
+        // Потоки × выбранный охват занятий курса — одним вызовом (bulk на бэке).
         await CurriculumService.applyAssignmentToCourse({
           courseId: form.courseId,
-          studyStreamId: form.streamId as number,
+          studyStreamIds: form.streamIds,
           educatorIds: form.educatorIds,
           reserveEducatorIds: form.reserveEducatorIds,
           overwrite: form.overwrite,
           slotIds: Array.from(form.selectedSlotIds),
         });
       } else {
-        await CurriculumService.createAssignment({
+        // По назначению на поток, все — в одной транзакции: эндпоинт принимает список с самого
+        // начала, отдельного «массового создания» заводить не пришлось.
+        const created = await CurriculumService.createAssignment({
           curriculumSlotId: form.slotId,
-          assignments: [{
-            studyStreamId: form.streamId as number,
+          assignments: form.streamIds.map(streamId => ({
+            studyStreamId: streamId,
             educatorIds: form.educatorIds,
             reserveEducatorIds: form.reserveEducatorIds,
-          }],
+          })),
         });
+        // Бэк молча пропускает потоки, у которых назначение на этом занятии уже есть. Сверяем
+        // заказанное с созданным и оставляем форму открытой, если совпало не всё.
+        const done = new Set(created.map(a => a.studyStream.id));
+        const missed = form.streamIds.filter(id => !done.has(id));
+        if (missed.length > 0) {
+          setSkipped(missed.map(id => streams.find(s => s.id === id)?.name ?? `поток #${id}`));
+          // Созданные из выбора убираем: форма остаётся открытой ради непонятного остатка,
+          // и показывать в ней уже сделанное значило бы звать нажать «Создать» ещё раз.
+          setForm(prev => prev ? { ...prev, streamIds: missed } : prev);
+          onRefresh();
+          return;
+        }
       }
       closeForm();
       onRefresh();
+    } catch (err: any) {
+      console.error('Ошибка сохранения назначения:', err);
+      const data = err?.response?.data;
+      setSaveError(err?.response?.status === 400
+        ? (typeof data === 'string' ? data : data?.message || 'Данные формы не приняты')
+        : 'Не удалось сохранить. Попробуйте ещё раз.');
     } finally {
       setSaving(false);
     }
@@ -247,6 +385,19 @@ export const AssignmentsTab: React.FC<{
     });
   };
   const closeRemove = () => { setRemoveForm(null); setRemoveImpact(null); };
+
+  // Esc закрывает открытую панель. Поиск внутри пикера гасит своё Esc сам (preventDefault),
+  // пока в нём есть запрос: первое нажатие возвращает полный список, и только второе закрывает
+  // форму — иначе человек, сузивший список, терял бы вместе с фильтром весь набранный выбор.
+  useEffect(() => {
+    if (!form && !removeForm) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (form) closeForm(); else closeRemove();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [form, removeForm]);
 
   const setRemoveSlots = (updater: (prev: Set<number>) => Set<number>) =>
     setRemoveForm(prev => prev ? { ...prev, selectedSlotIds: updater(prev.selectedSlotIds) } : prev);
@@ -366,13 +517,6 @@ export const AssignmentsTab: React.FC<{
               slots.map((slot, idx) => {
                 const slotAssignments = assignments.filter(a => a.curriculumSlot.id === slot.id);
                 const isFormOpen = form?.slotId === slot.id;
-                // Потоки для выпадашки: только текущего семестра курса — семестр это заявленный
-                // инвариант (StudyStream.semester ↔ DisciplineCourse.semester), поэтому поток
-                // другого семестра назначать курсу и не нужно. Уже выбранный поток оставляем в
-                // списке всегда (иначе правка «однотипного» назначения потеряла бы значение).
-                const formStreams = isFormOpen
-                  ? streams.filter(s => s.semester === course.semester || s.id === form?.streamId)
-                  : [];
 
                 return (
                   <div key={slot.id} className="border-t border-slate-50">
@@ -517,100 +661,75 @@ export const AssignmentsTab: React.FC<{
                       )}
 
                       {isFormOpen && (
-                        <div className="ml-8 mt-2 p-3 border border-blue-200 rounded-lg bg-blue-50 space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Учебный поток *</label>
-                              <select
-                                value={form?.streamId ?? ''}
-                                onChange={e => setForm(prev => prev ? { ...prev, streamId: Number(e.target.value) } : prev)}
-                                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                              >
-                                <option value="">— выберите —</option>
-                                {formStreams.map(s => (
-                                  <option key={s.id} value={s.id}>{s.name} (сем. {s.semester})</option>
-                                ))}
-                              </select>
-                              {formStreams.length === 0 && (
-                                <p className="text-xs text-amber-600 mt-1">
-                                  Нет потоков семестра {course.semester} — создайте во вкладке «Потоки»
-                                </p>
-                              )}
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                Преподаватели ({form?.educatorIds.length ?? 0})
-                              </label>
-                              <div className="bg-white border border-slate-200 rounded-lg p-2 max-h-28 overflow-y-auto">
-                                {educators.length === 0 ? (
-                                  <p className="text-xs text-slate-400">Нет преподавателей</p>
-                                ) : (
-                                  educators.map(e => {
-                                    // Зеркало запрета из списка запасных: роль на занятии одна.
-                                    const reserve = form?.reserveEducatorIds.includes(e.id) ?? false;
-                                    return (
-                                      <label
-                                        key={e.id}
-                                        title={reserve ? 'Уже числится запасным на это занятие' : undefined}
-                                        className={cn(
-                                          'flex items-center gap-2 text-xs py-0.5 px-1 rounded',
-                                          reserve ? 'text-slate-300 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50',
-                                        )}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          disabled={reserve}
-                                          checked={form?.educatorIds.includes(e.id) ?? false}
-                                          onChange={() => toggleEducator(e.id)}
-                                          className="w-3 h-3"
-                                        />
-                                        <span>{e.name}</span>
-                                      </label>
-                                    );
-                                  })
-                                )}
+                        <div ref={formRef} className="ml-0 sm:ml-8 mt-2 p-3 border border-blue-200 rounded-lg bg-blue-50 space-y-3">
+                          {/* Три состава — в одну линию: значения короткие (номер потока, фамилия),
+                              ширины хватает, а решения между колонками связаны и принимаются
+                              сравнением. Роли ведущего и запасного взаимоисключающие (И-22) —
+                              врозь их пришлось бы сверять прокруткой; поток же задаёт, кому этот
+                              состав достанется. Ниже `lg` колонок две, на узком — одна: три по
+                              ~220 px начали бы резать фамилию вместе с кафедрой. */}
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {/* Правка — прежний `select`: назначение и есть пара «занятие + поток»,
+                                размножать поток у существующей строки нечем. Создание — список:
+                                потоки разные, а состав ведущих у них часто один и тот же. */}
+                            {form?.assignmentId ? (
+                              <div className="min-w-0">
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Учебный поток *</label>
+                                <select
+                                  value={form.streamIds[0] ?? ''}
+                                  onChange={e => setForm(prev => prev
+                                    ? { ...prev, streamIds: e.target.value ? [Number(e.target.value)] : [] }
+                                    : prev)}
+                                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                  <option value="">— выберите —</option>
+                                  {streamOptions.map(o => (
+                                    <option key={o.id} value={o.id}>{o.name} ({o.note})</option>
+                                  ))}
+                                </select>
                               </div>
-                            </div>
-                          </div>
+                            ) : (
+                              <MultiPicker
+                                label="Учебные потоки *"
+                                hint="— один состав на всех выбранных"
+                                options={streamOptions}
+                                selectedIds={form?.streamIds ?? []}
+                                blockedIds={blockedStreamIds}
+                                blockedTitle="У этого занятия поток уже назначен — состав меняется правкой (✎)"
+                                searchPlaceholder="Поиск потока"
+                                emptyText={`Нет потоков семестра ${formCourse?.semester ?? ''} — создайте во вкладке «Потоки»`}
+                                accent="blue"
+                                onToggle={toggleStream}
+                              />
+                            )}
 
-                          {/* Запасные (И-22): числятся за дисциплиной, но занятий не ведут.
-                              Распределение их не видит — время они не занимают и в своей сетке
-                              занятий не получают; видны только здесь и в подвале бланка. */}
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">
-                              Запасные ({form?.reserveEducatorIds.length ?? 0})
-                              <span className="ml-1.5 font-normal text-slate-400">
-                                — не ведут занятий, но попадают в подвал бланка
-                              </span>
-                            </label>
-                            <div className="bg-white border border-slate-200 rounded-lg p-2 max-h-28 overflow-y-auto">
-                              {educators.length === 0 ? (
-                                <p className="text-xs text-slate-400">Нет преподавателей</p>
-                              ) : (
-                                educators.map(e => {
-                                  const leading = form?.educatorIds.includes(e.id) ?? false;
-                                  return (
-                                    <label
-                                      key={e.id}
-                                      title={leading ? 'Уже назначен ведущим на это занятие' : undefined}
-                                      className={cn(
-                                        'flex items-center gap-2 text-xs py-0.5 px-1 rounded',
-                                        leading ? 'text-slate-300 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50',
-                                      )}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        disabled={leading}
-                                        checked={form?.reserveEducatorIds.includes(e.id) ?? false}
-                                        onChange={() => toggleReserveEducator(e.id)}
-                                        className="w-3 h-3"
-                                      />
-                                      <span>{e.name}</span>
-                                    </label>
-                                  );
-                                })
-                              )}
-                            </div>
+                            <MultiPicker
+                              label="Преподаватели"
+                              options={educatorOptions}
+                              selectedIds={form?.educatorIds ?? []}
+                              blockedIds={form?.reserveEducatorIds ?? []}
+                              blockedTitle="Уже числится запасным на это занятие"
+                              searchPlaceholder="Поиск по фамилии или кафедре"
+                              emptyText="Нет преподавателей"
+                              accent="blue"
+                              onToggle={toggleEducator}
+                            />
+
+                            {/* Запасные (И-22): числятся за дисциплиной, но занятий не ведут.
+                                Распределение их не видит — время они не занимают и в своей сетке
+                                занятий не получают; видны только здесь и в подвале бланка. */}
+                            <MultiPicker
+                              label="Запасные"
+                              hint="— не ведут занятий, но попадают в подвал бланка"
+                              options={educatorOptions}
+                              selectedIds={form?.reserveEducatorIds ?? []}
+                              blockedIds={form?.educatorIds ?? []}
+                              blockedTitle="Уже назначен ведущим на это занятие"
+                              searchPlaceholder="Поиск по фамилии или кафедре"
+                              emptyText="Нет преподавателей"
+                              accent="amber"
+                              onToggle={toggleReserveEducator}
+                            />
                           </div>
 
                           {/* Массовое назначение — только при создании (не при правке). */}
@@ -623,12 +742,15 @@ export const AssignmentsTab: React.FC<{
                                   onChange={e => toggleApplyAll(e.target.checked)}
                                   className="w-3.5 h-3.5"
                                 />
-                                <span>Применить к нескольким занятиям курса (этот поток)</span>
+                                <span>Применить к нескольким занятиям курса (выбранные потоки)</span>
                               </label>
                               {form?.applyAll && (
                                 <div className="pl-5 space-y-1.5">
                                   <div className="text-[11px] text-slate-500">
                                     Выбрано занятий: <span className="font-bold text-blue-600">{form.selectedSlotIds.size}</span> из {formCourseSlots.length}
+                                    {form.streamIds.length > 1 && (
+                                      <> · охват: <span className="font-bold text-blue-600">{form.selectedSlotIds.size * form.streamIds.length}</span> пар «поток × занятие»</>
+                                    )}
                                   </div>
                                   <SlotScopeTree
                                     slots={formCourseSlots}
@@ -653,14 +775,39 @@ export const AssignmentsTab: React.FC<{
                             </div>
                           )}
 
-                          <div className="flex gap-2">
+                          {/* Пропущенные потоки. В обычной работе не появляется — такие потоки
+                              в списке недоступны; сработает, если соседняя вкладка назначила их
+                              раньше. Форма остаётся открытой: остальное уже создано, и человек
+                              видит, что именно не доехало. */}
+                          {skipped.length > 0 && (
+                            <div className="flex items-start gap-1.5 text-[11px] text-amber-800 bg-amber-100 border border-amber-200 rounded px-2 py-1.5">
+                              <Lock size={12} className="shrink-0 mt-0.5" />
+                              <span>
+                                Уже были назначены на это занятие, поэтому пропущены:{' '}
+                                <b>{skipped.join(', ')}</b>. Состав им меняет правка (✎).
+                              </span>
+                            </div>
+                          )}
+
+                          {saveError && (
+                            <div className="flex items-start gap-1.5 text-[11px] text-red-800 bg-red-100 border border-red-200 rounded px-2 py-1.5">
+                              <X size={12} className="shrink-0 mt-0.5" />
+                              <span>{saveError}</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               onClick={handleSave}
-                              disabled={!form?.streamId || saving || (!!form?.applyAll && form.selectedSlotIds.size === 0)}
+                              disabled={!!saveBlocker || saving}
                               className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                             >
                               <Check size={12} />
-                              {saving ? 'Сохранение...' : form?.assignmentId ? 'Обновить' : form?.applyAll ? 'Применить к выбранным' : 'Создать'}
+                              {saving ? 'Сохранение...'
+                                : form?.assignmentId ? 'Обновить'
+                                : form?.applyAll ? 'Применить к выбранным'
+                                : (form?.streamIds.length ?? 0) > 1 ? `Создать (${form!.streamIds.length})`
+                                : 'Создать'}
                             </button>
                             <button
                               onClick={closeForm}
@@ -668,6 +815,11 @@ export const AssignmentsTab: React.FC<{
                             >
                               Отмена
                             </button>
+                            {/* Причина рядом с погашенной кнопкой, а не вместо неё: кнопку видно,
+                                и видно, чего ей не хватает. */}
+                            {saveBlocker && !saving && (
+                              <span className="text-[11px] text-amber-700">{saveBlocker}</span>
+                            )}
                           </div>
                         </div>
                       )}
@@ -766,6 +918,189 @@ const SlotScopeTree: React.FC<{
           </div>
         );
       })}
+    </div>
+  );
+};
+
+
+/** Оформление выбранных: ведущие и потоки — синие (как вся панель), запасные — янтарные. */
+const PICKER_CHIP: Record<'blue' | 'amber', string> = {
+  blue: 'bg-blue-100 text-blue-800 hover:bg-blue-200',
+  amber: 'bg-amber-100 text-amber-800 hover:bg-amber-200',
+};
+
+/**
+ * Один вариант выбора. Доменных полей здесь нет намеренно: пикер одинаково обслуживает потоки и
+ * преподавателей, и знать, что такое кафедра или семестр, ему незачем — хост переводит свои
+ * сущности в эти четыре поля и владеет смыслом.
+ */
+interface PickerOption {
+  id: number;
+  /** Основная подпись; по ней же и по `note` идёт поиск. */
+  name: string;
+  /** Приписка справа: кафедра, семестр, «уже назначен». */
+  note?: string;
+  /** `warn` — янтарным: предупреждение, которое видно и на выбранной строке. */
+  noteTone?: 'muted' | 'warn';
+  /** Подсказка при наведении, если она богаче подписи (у преподавателя — строка с регалиями). */
+  title?: string;
+}
+
+/**
+ * Выбор нескольких вариантов: поиск, выбранные — чипами над списком, занятые — с причиной.
+ *
+ * **Почему один компонент на потоки и на людей.** Как только у потоков появился поиск, оба списка
+ * стали одинаковыми по взаимодействию — поиск, чипы, прокрутка, счётчик, запрет с причиной. Две
+ * копии этого разошлись бы на первой же правке; поэтому пикер презентационный, а смысл вариантов
+ * остаётся у хоста (`PickerOption`). Третьему списку менять компонент не придётся.
+ *
+ * **Строка поиска живёт внутри пикера.** Это состояние одного поля, а не формы: подними его в
+ * `AssignmentsTab` — и каждое нажатие клавиши перерисовывало бы все развёрнутые курсы со слотами,
+ * назначениями и деревьями охвата. Здесь перерисовывается один список.
+ *
+ * **Ищем по подписи и приписке, но не по `title`:** у преподавателя `title` начинается со звания
+ * («п-к Иванов И.И.»), и поиск по нему спотыкался бы о приставку — то же решение, что в разделе
+ * «Преподаватели». Приписка в запросе полезна там, где фамилия неуникальна и людей различает
+ * только кафедра.
+ *
+ * **Выбранные показаны чипами, а не подъёмом наверх.** Сортировка «выбранные первыми» переставляла
+ * бы строки под курсором в момент клика; к тому же поиск прятал бы уже выбранных, и состав
+ * пришлось бы держать в голове.
+ *
+ * **Занятый вариант блокируется, только если он ещё не выбран.** Иначе смена режима (охват одного
+ * занятия ↔ нескольких) оставляла бы галочку, которую нечем снять.
+ */
+const MultiPicker: React.FC<{
+  label: string;
+  hint?: string;
+  options: PickerOption[];
+  selectedIds: number[];
+  /** Занятые встречной ролью: показаны, но недоступны — правило видно до отправки, а не в 400. */
+  blockedIds: number[];
+  blockedTitle: string;
+  searchPlaceholder: string;
+  emptyText: string;
+  accent: 'blue' | 'amber';
+  onToggle: (id: number) => void;
+}> = ({ label, hint, options, selectedIds, blockedIds, blockedTitle,
+        searchPlaceholder, emptyText, accent, onToggle }) => {
+  const [query, setQuery] = useState('');
+
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const blocked = useMemo(() => new Set(blockedIds), [blockedIds]);
+
+  const trimmed = query.trim();
+  const visible = useMemo(() => {
+    const q = trimmed.toLowerCase();
+    if (!q) return options;
+    return options.filter(o =>
+      o.name.toLowerCase().includes(q) || (o.note ?? '').toLowerCase().includes(q));
+  }, [options, trimmed]);
+
+  // Чипы строим из ПОЛНОГО списка, а не из отфильтрованного: выбранный не должен исчезать
+  // из состава оттого, что не подошёл под запрос.
+  const chosen = useMemo(() => options.filter(o => selected.has(o.id)), [options, selected]);
+
+  return (
+    <div className="min-w-0">
+      <label className="block text-xs font-medium text-slate-600 mb-1 truncate">
+        {label} ({selectedIds.length})
+        {hint && <span className="ml-1.5 font-normal text-slate-400">{hint}</span>}
+      </label>
+
+      <div className="bg-white border border-slate-200 rounded-lg">
+        {chosen.length > 0 && (
+          <div className="flex flex-wrap gap-1 p-1.5 border-b border-slate-100">
+            {chosen.map(o => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => onToggle(o.id)}
+                title={`${o.title ?? o.name} — убрать`}
+                className={cn(
+                  'flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors',
+                  PICKER_CHIP[accent],
+                )}
+              >
+                <span className="truncate">{o.name}</span>
+                <X size={10} className="shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="relative border-b border-slate-100">
+          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            // Esc при непустом запросе гасит только запрос — панель закрывается следующим.
+            // `preventDefault` (а не `stopPropagation`) потому, что слушатель формы висит на
+            // window: до него событие дойдёт в любом случае, а `defaultPrevented` переживёт путь.
+            onKeyDown={e => { if (e.key === 'Escape' && query) { e.preventDefault(); setQuery(''); } }}
+            placeholder={searchPlaceholder}
+            className="w-full pl-7 pr-6 py-1.5 text-xs bg-transparent outline-none placeholder:text-slate-400"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              title="Очистить"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {/* Высота списка растёт вместе с экраном: фиксированные 112 px давали 9 строк на любом. */}
+        <div className="max-h-40 md:max-h-52 lg:max-h-64 overflow-y-auto p-1.5">
+          {options.length === 0 ? (
+            <p className="text-xs text-amber-600 px-1 py-0.5">{emptyText}</p>
+          ) : visible.length === 0 ? (
+            <p className="text-xs text-slate-400 px-1 py-0.5">Ничего не нашлось по «{trimmed}»</p>
+          ) : (
+            visible.map(o => {
+              // Свой выбор снять можно всегда — блокировка не должна запирать уже отмеченное.
+              const isChosen = selected.has(o.id);
+              const isBlocked = blocked.has(o.id) && !isChosen;
+              return (
+                <label
+                  key={o.id}
+                  title={isBlocked ? blockedTitle : (o.title ?? o.name)}
+                  className={cn(
+                    'flex items-center gap-2 text-xs py-0.5 px-1 rounded',
+                    isBlocked ? 'text-slate-300 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={isBlocked}
+                    checked={isChosen}
+                    onChange={() => onToggle(o.id)}
+                    className="w-3 h-3 shrink-0"
+                  />
+                  <span className="truncate">{o.name}</span>
+                  {o.note && (
+                    <span className={cn(
+                      'ml-auto shrink-0 max-w-[45%] truncate text-[10px]',
+                      isBlocked ? 'text-slate-300' : o.noteTone === 'warn' ? 'text-amber-600' : 'text-slate-400',
+                    )}>
+                      {o.note}
+                    </span>
+                  )}
+                </label>
+              );
+            })
+          )}
+        </div>
+
+        {trimmed && visible.length > 0 && (
+          <div className="px-2 py-1 border-t border-slate-100 text-[10px] text-slate-400">
+            показано {visible.length} из {options.length}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

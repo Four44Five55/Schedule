@@ -6,10 +6,13 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /**
- * Назначить поток + преподавателей на ВСЕ занятия курса разом.
+ * Назначить потоки + преподавателей на занятия курса разом.
  *
- * @param courseId      курс, по слотам которого проставляем назначение
- * @param studyStreamId поток/подгруппа
+ * @param courseId       курс, по слотам которого проставляем назначение
+ * @param studyStreamIds потоки/подгруппы, которым достаётся ОДИН И ТОТ ЖЕ состав преподавателей.
+ *                       Результат — «потоки × занятия охвата»; уже назначенное решается
+ *                       {@code overwrite} по каждому потоку отдельно. Один поток — частный
+ *                       случай, прежнее поведение
  * @param educatorIds   ведущие преподаватели (минимум один)
  * @param reserveEducatorIds запасные (И-22) — числятся, но не ведут; {@code null}/пусто → нет.
  *                      При {@code overwrite=true} состав запасных заменяется так же, как ведущих
@@ -24,8 +27,8 @@ public record ApplyAssignmentToCourseDto(
         @NotNull(message = "ID курса не может быть пустым")
         Integer courseId,
 
-        @NotNull(message = "ID потока не может быть пустым")
-        Integer studyStreamId,
+        @NotEmpty(message = "Список ID потоков не может быть пустым")
+        List<@NotNull(message = "ID потока не может быть пустым") Integer> studyStreamIds,
 
         @NotEmpty(message = "Список ID преподавателей не может быть пустым")
         List<Integer> educatorIds,

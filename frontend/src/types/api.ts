@@ -563,11 +563,12 @@ export interface AssignmentCreateDto {
   assignments: AssignmentDetailDto[];
 }
 
-// Назначить поток+преподавателей на все занятия курса. overwrite=false → пропускать
-// уже назначенные на этот поток слоты; true → заменять состав преподавателей у них.
+// Назначить потоки+преподавателей на занятия курса: каждому потоку из списка достаётся один и
+// тот же состав, результат — «потоки × занятия охвата». overwrite=false → пропускать уже
+// назначенные слоты (считается по каждому потоку отдельно); true → заменять у них состав.
 export interface ApplyAssignmentToCourseDto {
   courseId: number;
-  studyStreamId: number;
+  studyStreamIds: number[];
   educatorIds: number[];
   reserveEducatorIds?: number[]; // запасные — при overwrite=true заменяются так же, как ведущие
   overwrite: boolean;
