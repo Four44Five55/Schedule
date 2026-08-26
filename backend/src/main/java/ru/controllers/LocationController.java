@@ -43,15 +43,13 @@ public class LocationController {
         return ResponseEntity.ok(locationService.deleteImpact(id));
     }
 
+    /**
+     * Удаление. Локацию с привязанными корпусами сервис удалить не даст (FK RESTRICT):
+     * {@code InUseException} едет в {@link ApiExceptionHandler} и становится 409.
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Integer id) {
-        try {
-            locationService.deleteLocation(id);
-            return ResponseEntity.noContent().build();
-        } catch (IllegalStateException e) {
-            // К локации привязаны корпуса: БД удалить не даст (FK RESTRICT).
-            // Отвечаем осмысленно, а не сырым 500 (глобального @ControllerAdvice в проекте нет).
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
+        locationService.deleteLocation(id);
+        return ResponseEntity.noContent().build();
     }
 }

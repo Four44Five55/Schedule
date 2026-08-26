@@ -1,6 +1,6 @@
 package ru.controllers;
 
-import jakarta.persistence.EntityNotFoundException;
+import ru.exceptions.NotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,7 +13,7 @@ import ru.services.educator.dictionary.EducatorDictionaryService;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
+import ru.exceptions.NotFoundException;
 
 /**
  * Справочники регалий преподавателя: специальные звания, роды службы, отрасли науки.
@@ -43,65 +43,51 @@ public class EducatorDictionaryController {
     }
 
     @GetMapping("/{kind}")
-    public ResponseEntity<?> getAll(@PathVariable String kind) {
-        Optional<EducatorDictionaryKind> resolved = EducatorDictionaryKind.bySlug(kind);
-        if (resolved.isEmpty()) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(dictionaryService.findAll(resolved.get()));
+    public ResponseEntity<List<DictionaryEntryDto>> getAll(@PathVariable String kind) {
+        return ResponseEntity.ok(dictionaryService.findAll(kindOf(kind)));
     }
 
     @GetMapping("/{kind}/{id}")
-    public ResponseEntity<?> getById(@PathVariable String kind, @PathVariable Integer id) {
-        Optional<EducatorDictionaryKind> resolved = EducatorDictionaryKind.bySlug(kind);
-        if (resolved.isEmpty()) return ResponseEntity.notFound().build();
-        Optional<DictionaryEntryDto> entry = dictionaryService.findById(resolved.get(), id);
-        return entry.isPresent() ? ResponseEntity.ok(entry.get()) : ResponseEntity.notFound().build();
+    public ResponseEntity<DictionaryEntryDto> getById(@PathVariable String kind, @PathVariable Integer id) {
+        return dictionaryService.findById(kindOf(kind), id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /** Занятое сокращение — {@code DuplicateException} и 409: разбор чужого файла по нему обязан быть однозначным. */
     @PostMapping("/{kind}")
-    public ResponseEntity<?> create(@PathVariable String kind,
-                                    @Valid @RequestBody DictionaryEntryFormDto form) {
-        Optional<EducatorDictionaryKind> resolved = EducatorDictionaryKind.bySlug(kind);
-        if (resolved.isEmpty()) return ResponseEntity.notFound().build();
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(dictionaryService.create(resolved.get(), form));
-        } catch (IllegalArgumentException e) {
-            // Занятое сокращение: разбор чужого файла по нему обязан быть однозначным.
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<DictionaryEntryDto> create(@PathVariable String kind,
+                                                     @Valid @RequestBody DictionaryEntryFormDto form) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(dictionaryService.create(kindOf(kind), form));
     }
 
     @PutMapping("/{kind}/{id}")
-    public ResponseEntity<?> update(@PathVariable String kind,
-                                    @PathVariable Integer id,
-                                    @Valid @RequestBody DictionaryEntryFormDto form) {
-        Optional<EducatorDictionaryKind> resolved = EducatorDictionaryKind.bySlug(kind);
-        if (resolved.isEmpty()) return ResponseEntity.notFound().build();
-        try {
-            return ResponseEntity.ok(dictionaryService.update(resolved.get(), id, form));
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<DictionaryEntryDto> update(@PathVariable String kind,
+                                                     @PathVariable Integer id,
+                                                     @Valid @RequestBody DictionaryEntryFormDto form) {
+        return ResponseEntity.ok(dictionaryService.update(kindOf(kind), id, form));
     }
 
     /**
      * Удаление. Строку, за которой числятся преподаватели, БД удалить не даст (RESTRICT), поэтому
-     * отказ приходит осмысленным 409 с числом ссылающихся — а не сырым 500 после попытки.
+     * сервис проверяет заранее: {@code InUseException} становится 409 с числом ссылающихся.
      */
     @DeleteMapping("/{kind}/{id}")
-    public ResponseEntity<?> delete(@PathVariable String kind, @PathVariable Integer id) {
-        Optional<EducatorDictionaryKind> resolved = EducatorDictionaryKind.bySlug(kind);
-        if (resolved.isEmpty()) return ResponseEntity.notFound().build();
-        try {
-            dictionaryService.delete(resolved.get(), id);
-            return ResponseEntity.noContent().build();
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable String kind, @PathVariable Integer id) {
+        dictionaryService.delete(kindOf(kind), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Вид справочника из сегмента пути; неизвестный — 404.
+     *
+     * <p>Разрешение вынесено сюда, а не повторено пятью проверками {@code isEmpty()}: из-за этой
+     * пары строк все пять методов возвращали {@code ResponseEntity} без типа и теряли контракт
+     * ответа. {@code NotFoundException} — тот же путь наружу, что у остальных «не найдено».</p>
+     */
+    private static EducatorDictionaryKind kindOf(String slug) {
+        return EducatorDictionaryKind.bySlug(slug)
+                .orElseThrow(() -> new NotFoundException("Справочника «" + slug + "» не существует"));
     }
 
     /**

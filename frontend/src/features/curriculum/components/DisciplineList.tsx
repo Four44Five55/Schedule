@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { DisciplineFormModal } from './DisciplineFormModal';
 import { DisciplineCourseFormModal } from './DisciplineCourseFormModal';
 import type { TabId } from '../../../components/layout/Sidebar';
+import { useToast } from '../../../context/ToastContext';
 
 interface DisciplineListProps {
   disciplines: DisciplineDto[];
@@ -28,6 +29,7 @@ interface DisciplineListProps {
  * цена называется заранее.</p>
  */
 export const DisciplineList: React.FC<DisciplineListProps> = ({ disciplines, onRefresh, onNavigate }) => {
+  const toast = useToast();
   const [query, setQuery] = useState('');
 
   const [selectedDiscipline, setSelectedDiscipline] = useState<DisciplineDto | null>(null);
@@ -60,11 +62,8 @@ export const DisciplineList: React.FC<DisciplineListProps> = ({ disciplines, onR
       onRefresh?.();
     } catch (err: any) {
       // 409 — у дисциплины есть курсы; бэк присылает текст с их числом.
-      const message = err?.response?.status === 409 && typeof err.response.data === 'string'
-          ? err.response.data
-          : 'Не удалось удалить дисциплину.';
       setDeletingDiscipline(null);
-      alert(message);
+      toast.failure(err, 'Не удалось удалить дисциплину.');
     } finally {
       setBusy(false);
     }
@@ -84,8 +83,12 @@ export const DisciplineList: React.FC<DisciplineListProps> = ({ disciplines, onR
       if (loss) {
         message = `Вместе с курсом будет удалено — ${loss}.\n\nЭто действие нельзя отменить.`;
       }
-    } catch (e) {
-      console.error('Не удалось получить последствия удаления курса:', e);
+    } catch {
+      // Как и с занятием плана: не смогли узнать цену — говорим это в самом вопросе, иначе
+      // «Удалить курс?» читается как «терять нечего».
+      message = 'Проверить, что будет удалено вместе с курсом, не удалось (сервер не ответил). '
+        + 'Каскадом уходят занятия плана, назначения и уже размещённые занятия.\n\n'
+        + 'Это действие нельзя отменить.';
     }
     setDeletingCourse({ course, message });
   };
@@ -97,9 +100,9 @@ export const DisciplineList: React.FC<DisciplineListProps> = ({ disciplines, onR
       await CurriculumService.deleteCourse(deletingCourse.course.id);
       setDeletingCourse(null);
       onRefresh?.();
-    } catch {
+    } catch (e) {
       setDeletingCourse(null);
-      alert('Не удалось удалить курс.');
+      toast.failure(e, 'Не удалось удалить курс.');
     } finally {
       setBusy(false);
     }

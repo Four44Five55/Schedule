@@ -44,15 +44,13 @@ public class BuildingController {
         return ResponseEntity.ok(buildingService.deleteImpact(id));
     }
 
+    /**
+     * Удаление. Корпус, чьи аудитории указаны в учебном плане, сервис удалить не даст:
+     * {@code InUseException} едет в {@link ApiExceptionHandler} и становится 409.
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Integer id) {
-        try {
-            buildingService.deleteBuilding(id);
-            return ResponseEntity.noContent().build();
-        } catch (IllegalStateException e) {
-            // Аудитории корпуса указаны в учебном плане: БД удалить не даст (FK без каскада).
-            // Отвечаем осмысленно, а не сырым 500 (глобального @ControllerAdvice в проекте нет).
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
+        buildingService.deleteBuilding(id);
+        return ResponseEntity.noContent().build();
     }
 }

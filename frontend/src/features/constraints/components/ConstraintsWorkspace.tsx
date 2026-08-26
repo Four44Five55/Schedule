@@ -13,6 +13,9 @@ import { TimelineEntity } from '../../../components/grid/EntityTimelineShell';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
 import { ConstraintKindsModal } from './ConstraintKindsModal';
+import { useToast } from '../../../context/ToastContext';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 type FilterType = 'group' | 'educator' | 'auditorium';
 type ViewMode = 'grid' | 'gantt';
@@ -62,6 +65,7 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
   // Виды ограничений — пользовательский справочник: цвет и подписи берём из него, а не из карты
   // кодов на фронте (кодов новых видов фронт знать не может).
   const { getConstraintStyle } = useEnums();
+  const toast = useToast();
   const [kindsOpen, setKindsOpen] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>(() => {
     const saved = localStorage.getItem('unischedule.constraints.filterType');
@@ -113,7 +117,11 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
       ResourceService.getAuditoriums(),
     ]).then(([groups, educators, auditoriums]) => {
       setResources({ groups, educators, auditoriums });
-    }).finally(() => setLoadingResources(false));
+    })
+      // Без справочников выбирать объект не из чего — раздел выглядит так, будто ни групп,
+      // ни преподавателей не заведено.
+      .catch((e) => setLoadError(errorMessage(e, 'Не удалось загрузить группы, преподавателей и аудитории.')))
+      .finally(() => setLoadingResources(false));
   }, []);
 
   // Все ограничения трёх типов (master-data) — на монтировании и после правок.
@@ -178,13 +186,26 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
   // Отдельного bulk-эндпоинта нет — N запросов (как «по всем» в Ганте); для текущих объёмов ок.
   const handlePaint = async (cells: { dateStr: string; slot: TimeSlotPair }[], kind: KindOfConstraints) => {
     if (selectedId === '' || cells.length === 0) return;
-    await Promise.all(cells.map((c) => createForCell(selectedId as number, c.dateStr, c.slot, kind)));
+    try {
+      await Promise.all(cells.map((c) => createForCell(selectedId as number, c.dateStr, c.slot, kind)));
+    } catch (e) {
+      // Кисть — N запросов без bulk-эндпоинта: часть ячеек могла не завестись, и разметка
+      // на экране после refresh окажется дырявой. Молча это выглядит как промах мышью.
+      toast.failure(e, 'Не удалось разметить часть ячеек — проверьте разметку после обновления.');
+    }
     refresh();
   };
   // Ластик в сетке: массовое удаление ограничений по id (покрывающих закрашенные ячейки).
   const handleErase = async (ids: number[]) => {
     if (ids.length === 0) return;
-    await Promise.all(ids.map((id) => deleteById(id)));
+    try {
+      await Promise.all(ids.map((id) => deleteById(id)));
+    } catch (e) {
+      // Ластик снимает пачку: отказ на середине оставляет часть полос на месте, и без
+      // сообщения это выглядит как «протянул не до конца». Раньше отказ вообще не ловился —
+      // обещание падало в никуда.
+      toast.failure(e, 'Не удалось снять часть ограничений — обновите и проверьте разметку.');
+    }
     refresh();
   };
   const deleteById = (id: number): Promise<void> => {
@@ -194,7 +215,7 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
   };
   const handleDelete = async (id: number) => {
     try { await deleteById(id); refresh(); }
-    catch (e) { console.error('Не удалось удалить ограничение', e); }
+    catch (e) { toast.failure(e, 'Не удалось удалить ограничение.'); }
   };
 
   // Допустимые id текущего типа из scope (null = без ограничения, показываем всех).
@@ -300,10 +321,7 @@ export const ConstraintsWorkspace: React.FC<ConstraintsWorkspaceProps> = ({ star
   return (
     <div className="space-y-4">
       {loadError && (
-        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-          <ShieldAlert size={18} className="shrink-0 mt-0.5" />
-          <span>{loadError}</span>
-        </div>
+        <ErrorBanner message={loadError} className="rounded-xl" />
       )}
 
       {/* Панель выбора: тип сущности + формат + объект */}

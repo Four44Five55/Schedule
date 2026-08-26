@@ -4,6 +4,7 @@ import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { AuditoriumFormModal } from './AuditoriumFormModal';
 import { Home, Users, Tag, Plus, Pencil, Trash2, Building2, Network } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
 
 interface AuditoriumGridProps {
   auditoriums: AuditoriumDto[];
@@ -14,6 +15,7 @@ export const AuditoriumGrid: React.FC<AuditoriumGridProps> = ({
                                                                 auditoriums,
                                                                 onAuditoriumsChange,
                                                               }) => {
+  const toast = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAuditorium, setEditingAuditorium] = useState<AuditoriumDto | null>(null);
   const [deletingAuditorium, setDeletingAuditorium] = useState<AuditoriumDto | null>(null);
@@ -74,7 +76,7 @@ export const AuditoriumGrid: React.FC<AuditoriumGridProps> = ({
       onAuditoriumsChange();
     } catch (err: any) {
       console.error('Ошибка удаления аудитории:', err);
-      alert(err?.response?.data || 'Не удалось удалить аудиторию.');
+      toast.failure(err, 'Не удалось удалить аудиторию.');
     } finally {
       setIsDeleting(false);
     }

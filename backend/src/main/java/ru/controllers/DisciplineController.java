@@ -39,12 +39,8 @@ public class DisciplineController {
      * сырым 500 — как у подразделений, корпусов и локаций.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Integer id) {
-        try {
-            disciplineService.deleteDiscipline(id);
-            return ResponseEntity.noContent().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
+        disciplineService.deleteDiscipline(id);
+        return ResponseEntity.noContent().build();
     }
 }

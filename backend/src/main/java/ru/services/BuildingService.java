@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.InUseException;
 import ru.dto.building.BuildingCreateDto;
 import ru.dto.building.BuildingDeletionImpactDto;
 import ru.dto.building.BuildingDto;
@@ -86,7 +87,7 @@ public class BuildingService {
     @Transactional(readOnly = true)
     public BuildingDeletionImpactDto deleteImpact(Integer id) {
         Building building = buildingRepository.findWithDetailsById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Корпус с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Корпус с id=" + id + " не найден."));
 
         List<Integer> auditoriumIds = building.getAuditoriums().stream()
                 .map(Auditorium::getId)
@@ -123,7 +124,7 @@ public class BuildingService {
         // Одно правило — один источник: и предпросмотр, и отказ смотрят на тот же deletable.
         BuildingDeletionImpactDto impact = deleteImpact(id); // бросит 404, если корпуса нет
         if (!impact.deletable()) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "Корпус нельзя удалить: его аудитории указаны требуемыми или приоритетными в "
                             + impact.slotsRequiringIt() + " занятиях учебного плана. "
                             + "Сначала уберите эти аудитории из плана.");
@@ -150,6 +151,6 @@ public class BuildingService {
     @Transactional(readOnly = true)
     public Building getEntityById(Integer id) {
         return buildingRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Корпус с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Корпус с id=" + id + " не найден."));
     }
 }

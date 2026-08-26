@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.group.GroupCreateDto;
 import ru.dto.group.GroupDto;
 import ru.dto.group.GroupUpdateDto;
@@ -44,7 +45,7 @@ public class GroupService {
     @Transactional
     public GroupDto createGroup(GroupCreateDto createDto) {
         if (groupRepository.existsByName(createDto.name())) {
-            throw new IllegalStateException("Группа с названием '" + createDto.name() + "' уже существует.");
+            throw new DuplicateException("Группа с названием '" + createDto.name() + "' уже существует.");
         }
 
         Group newGroup = new Group();
@@ -77,7 +78,7 @@ public class GroupService {
         // Проверяем уникальность имени, если оно было изменено
         if (!groupToUpdate.getName().equals(updateDto.name())) {
             groupRepository.findByName(updateDto.name()).ifPresent(existing -> {
-                throw new IllegalStateException("Группа с названием '" + updateDto.name() + "' уже существует.");
+                throw new DuplicateException("Группа с названием '" + updateDto.name() + "' уже существует.");
             });
         }
 
@@ -120,7 +121,7 @@ public class GroupService {
     @Transactional
     public void deleteGroup(Integer groupId) {
         if (!groupRepository.existsById(groupId)) {
-            throw new EntityNotFoundException("Группа с id=" + groupId + " не найдена.");
+            throw new NotFoundException("Группа с id=" + groupId + " не найдена.");
         }
         // TODO: Добавить проверку, не используется ли группа в StudyStream, перед удалением.
 
@@ -139,7 +140,7 @@ public class GroupService {
     @Transactional(readOnly = true)
     public Group getEntityById(Integer id) {
         return groupRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Группа с id=" + id + " не найдена."));
+                .orElseThrow(() -> new NotFoundException("Группа с id=" + id + " не найдена."));
     }
 
     /**
@@ -159,7 +160,7 @@ public class GroupService {
     public List<Group> getAllEntitiesByIds(List<Integer> groupIds) {
         List<Group> groups = groupRepository.findAllById(groupIds);
         if (groups.size() != groupIds.size()) {
-            throw new EntityNotFoundException("Одна или несколько групп из списка ID не найдены.");
+            throw new NotFoundException("Одна или несколько групп из списка ID не найдены.");
         }
         return groups;
     }

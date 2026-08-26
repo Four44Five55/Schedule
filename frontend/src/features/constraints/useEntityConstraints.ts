@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ConstraintDto } from '../../types/api';
 import { ConstraintsService } from '../../services/apiServices';
+import { useToast } from '../../context/ToastContext';
 
 /** Тип сущности, для которой показываем ограничения на сетке расписания. */
 export type ConstraintEntityKind = 'group' | 'educator' | 'auditorium';
@@ -29,6 +30,7 @@ export function useEntityConstraints(
   kind: ConstraintEntityKind,
   entityId?: number,
 ): { constraints: ConstraintDto[]; loading: boolean } {
+  const toast = useToast();
   const [constraints, setConstraints] = useState<ConstraintDto[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -42,10 +44,16 @@ export function useEntityConstraints(
     setLoading(true);
     CONSTRAINT_LOADERS[kind](entityId)
       .then((data) => { if (!cancelled) setConstraints(data); })
-      .catch(() => { if (!cancelled) setConstraints([]); })
+      .catch((e) => {
+        if (cancelled) return;
+        // Пустой список = «ограничений нет»: сетка перестаёт помечать занятые дни, и человек
+        // ставит занятие туда, куда нельзя. Это не пропажа подсказки, а подсказка наоборот.
+        setConstraints([]);
+        toast.failure(e, 'Не удалось загрузить ограничения — в сетке они показаны не будут.');
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [kind, entityId]);
+  }, [kind, entityId, toast]);
 
   return { constraints, loading };
 }

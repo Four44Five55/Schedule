@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { X, Save, Loader2, ShieldAlert, AlertCircle } from 'lucide-react';
+import { X, Save, Loader2, ShieldAlert } from 'lucide-react';
 import { ConstraintDto, KindOfConstraints, TimeSlotPair } from '../../../types/api';
 import { ConstraintsService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
 import { SLOTS } from '../../../components/grid/AcademicGridShell';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 type EntityType = 'group' | 'educator' | 'auditorium';
 
@@ -73,11 +75,7 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
       onSaved(saved);
     } catch (err: any) {
       console.error('Ошибка сохранения ограничения:', err);
-      const serverError = err?.response?.data;
-      setError(
-        typeof serverError === 'string' ? serverError
-          : serverError?.message || 'Не удалось сохранить. Попробуйте ещё раз.'
-      );
+      setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
     } finally {
       setSaving(false);
     }
@@ -111,10 +109,7 @@ export const ConstraintFormModal: React.FC<ConstraintFormModalProps> = ({
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-6 space-y-5 overflow-y-auto flex-1">
             {error && (
-              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
+              <ErrorBanner message={error} />
             )}
 
             <div className="space-y-1.5">

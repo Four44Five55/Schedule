@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.auditoriumPurpose.AuditoriumPurposeCreateDto;
 import ru.dto.auditoriumPurpose.AuditoriumPurposeDto;
 import ru.dto.auditoriumPurpose.AuditoriumPurposeUpdateDto;
@@ -24,7 +25,7 @@ public class AuditoriumPurposeService {
     @Transactional
     public AuditoriumPurposeDto create(AuditoriumPurposeCreateDto createDto) {
         if (auditoriumPurposeRepository.existsByName(createDto.name())) {
-            throw new IllegalStateException("Назначение аудитории с названием '" + createDto.name() + "' уже существует.");
+            throw new DuplicateException("Назначение аудитории с названием '" + createDto.name() + "' уже существует.");
         }
         AuditoriumPurpose purpose = new AuditoriumPurpose();
         purpose.setName(createDto.name());
@@ -35,7 +36,7 @@ public class AuditoriumPurposeService {
     public AuditoriumPurposeDto update(Integer id, AuditoriumPurposeUpdateDto updateDto) {
         AuditoriumPurpose purposeToUpdate = getEntityById(id);
         if (auditoriumPurposeRepository.existsByName(updateDto.name())) {
-            throw new IllegalStateException("Назначение аудитории с названием '" + updateDto.name() + "' уже существует.");
+            throw new DuplicateException("Назначение аудитории с названием '" + updateDto.name() + "' уже существует.");
         }
         purposeToUpdate.setName(updateDto.name());
         return auditoriumPurposeMapper.toDto(auditoriumPurposeRepository.save(purposeToUpdate));
@@ -44,7 +45,7 @@ public class AuditoriumPurposeService {
     @Transactional
     public void delete(Integer id) {
         if (!auditoriumPurposeRepository.existsById(id)) {
-            throw new EntityNotFoundException("Назначение аудитории с id=" + id + " не найдено.");
+            throw new NotFoundException("Назначение аудитории с id=" + id + " не найдено.");
         }
         // TODO: Добавить проверку, не используется ли это назначение в Auditorium, перед удалением
         auditoriumPurposeRepository.deleteById(id);
@@ -64,6 +65,6 @@ public class AuditoriumPurposeService {
     @Transactional(readOnly = true)
     public AuditoriumPurpose getEntityById(Integer id) {
         return auditoriumPurposeRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Назначение аудитории с id=" + id + " не найдено."));
+                .orElseThrow(() -> new NotFoundException("Назначение аудитории с id=" + id + " не найдено."));
     }
 }

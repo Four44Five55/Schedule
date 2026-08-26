@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Layers, Users, BookOpen, AlertCircle, Check } from 'lucide-react';
+import { X, Save, Loader2, Layers, Users, BookOpen, Check } from 'lucide-react';
 import { StudyStreamDto, StudyStreamCreateDto, StudyStreamUpdateDto, GroupDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface StudyStreamFormModalProps {
     stream: StudyStreamDto | null;
@@ -34,7 +36,8 @@ export const StudyStreamFormModal: React.FC<StudyStreamFormModalProps> = ({
         setLoadingGroups(true);
         ResourceService.getGroups()
             .then(setGroups)
-            .catch(() => setGroups([]))
+            // Поток — это состав групп: пустой список равнозначен неработающей форме.
+            .catch((err) => { setGroups([]); setError(errorMessage(err, 'Не удалось загрузить список групп.')); })
             .finally(() => setLoadingGroups(false));
     }, []);
 
@@ -81,14 +84,8 @@ export const StudyStreamFormModal: React.FC<StudyStreamFormModalProps> = ({
             onSaved(saved);
         } catch (err: any) {
             console.error('Ошибка сохранения потока:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации');
-            } else if (err.response?.status === 409) {
-                setError('Поток с таким названием уже существует');
-            } else {
-                setError('Не удалось сохранить поток. Попробуйте ещё раз.');
-            }
+            // Текст отказа пишет бэк — он один знает, что именно совпало; здесь только запасной.
+            setError(errorMessage(err, 'Не удалось сохранить поток. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -121,10 +118,7 @@ export const StudyStreamFormModal: React.FC<StudyStreamFormModalProps> = ({
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {/* Ошибка */}
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {/* Название */}

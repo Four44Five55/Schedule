@@ -25,6 +25,9 @@ import {
   Calendar,
   FileSpreadsheet
 } from 'lucide-react';
+import { apiError, errorMessage, isStaleVersion } from '../../../services/apiError';
+import { useToast } from '../../../context/ToastContext';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface ScheduleManagerProps {
   currentSession?: ScheduleSessionDto | null;
@@ -46,7 +49,11 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
   // Находки по аудиториям (двойное бронирование / теснота) — карта на всё расписание, вслед за
   // сеткой. Сетка красит имя комнаты; сюда попадает после каждой перезагрузки lessons.
   const [auditoriumViolations, setAuditoriumViolations] = useState<Map<string, AuditoriumFinding>>(new Map());
+  const toast = useToast();
   const [loadingPeriodSchedule, setLoadingPeriodSchedule] = useState(false);
+  // Не загрузилось ≠ не сгенерировано: пустая сетка в обоих случаях выглядит одинаково, а
+  // действия человека нужны противоположные — повторить запрос либо пойти генерировать.
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   // Тип фильтра и выбранный объект переживают обновление страницы (localStorage),
   // иначе F5 сбрасывает открытое расписание и его приходится выбирать заново.
@@ -84,13 +91,17 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
       ResourceService.getAuditoriums(),
     ]).then(([groups, educators, auditoriums]) => {
       setAllResources({ groups, educators, auditoriums });
-    });
-  }, []);
+    })
+      // Без справочников выпадающие списки фильтра пусты — выбрать группу или преподавателя
+      // нечем, и раздел выглядит так, будто их не заведено.
+      .catch((e) => toast.failure(e, 'Не удалось загрузить справочники для фильтра.'));
+  }, [toast]);
 
   // Загрузка расписания текущего периода (Query Side). Перезагружается при смене
   // общего периода и вызывается вручную после переноса/пина/перегенерации.
   const reloadPeriodSchedule = useCallback(async () => {
     if (!selectedPeriod) { setLessons([]); setGrid({}); return; }
+    setScheduleError(null);
     try {
       const result = await ScheduleService.loadExisting(selectedPeriod.startDate, selectedPeriod.endDate);
       if (result.status === 'loaded') {
@@ -101,7 +112,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
         setGrid({});
       }
     } catch (err) {
-      console.error('Не удалось загрузить расписание:', err);
+      setScheduleError(errorMessage(err, 'Не удалось загрузить расписание периода.'));
     }
   }, [selectedPeriod]);
 
@@ -118,10 +129,12 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
     CQRSService.getAuditoriumViolations(sessionId)
       .then((v) => setAuditoriumViolations(buildAuditoriumFindingMap(v)))
       .catch((e) => {
-        console.error('Не удалось загрузить находки по аудиториям:', e);
+        // Пустая карта = «конфликтов аудиторий нет»: значки в сетке гаснут, и расписание
+        // выглядит чистым. Подсказка не исчезает — она становится неверной.
         setAuditoriumViolations(new Map());
+        toast.failure(e, 'Не удалось загрузить находки по аудиториям — подсветка конфликтов выключена.');
       });
-  }, [sessionId, lessons]);
+  }, [sessionId, lessons, toast]);
 
   // Синхронизируем currentSession с пропом (только если проп задан —
   // иначе не затираем сессию, подтянутую при открытии расписания).
@@ -140,9 +153,11 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
     if (sessionProp) return;
     let outdated = false;
     setCurrentSession(null);
-    CQRSService.getEditableSession(selectedPeriod?.id).then((s) => {
-      if (!outdated && s) setCurrentSession(s);
-    });
+    CQRSService.getEditableSession(selectedPeriod?.id)
+      .then((s) => { if (!outdated && s) setCurrentSession(s); })
+      // Раньше отказ превращался в null — то есть в «расписания ещё нет» (законный 204).
+      // Кнопки правки при этом гасли без объяснения; теперь причина названа.
+      .catch((e) => { if (!outdated) toast.failure(e, 'Не удалось открыть сессию расписания — правка недоступна.'); });
     return () => { outdated = true; };
   }, [sessionProp, selectedPeriod?.id]);
 
@@ -245,15 +260,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
     } catch (e: any) {
       console.error('Ошибка закрепления:', e);
       // 409 «устаревшая версия» — подхватить актуальную и перечитать, иначе раздел залипнет.
-      const body = e?.response?.data;
-      if (e?.response?.status === 409 && body?.error === 'CONFLICT') {
-        if (body.currentVersion != null) {
-          setCurrentSession((s) => (s ? { ...s, version: body.currentVersion } : s));
+      if (isStaleVersion(e)) {
+        const version = apiError(e).currentVersion;
+        if (version != null) {
+          setCurrentSession((s) => (s ? { ...s, version } : s));
         }
         setActionMessage('⚠️ Расписание изменено параллельно — данные обновлены, повторите');
         reloadPeriodSchedule();
       } else {
-        setActionMessage('❌ Ошибка закрепления');
+        setActionMessage(`❌ ${errorMessage(e, 'Ошибка закрепления')}`);
       }
       setTimeout(() => setActionMessage(null), 3000);
     }
@@ -303,6 +318,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ currentSession
 
   return (
       <div className="space-y-4">
+        {/* Отказ загрузки — плашкой над разделом, а не вместо него: фильтры и кнопки остаются
+            рабочими, и повторить можно, ничего не потеряв. */}
+        {scheduleError && (
+            <ErrorBanner
+                message={scheduleError}
+                onRetry={() => { void reloadPeriodSchedule(); }}
+            />
+        )}
+
         {/* Единая липкая панель управления: фильтры · статус сессии + кнопки.
             Период выбирается глобально в шапке приложения, поэтому здесь его нет. */}
         <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border border-slate-100 rounded-xl px-2 py-1.5 shadow-sm flex flex-wrap items-center gap-2">

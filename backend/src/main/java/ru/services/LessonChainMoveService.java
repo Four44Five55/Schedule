@@ -67,7 +67,21 @@ public class LessonChainMoveService {
         ScheduleWorkspace workspace = recreated.workspace();
 
         List<Lesson> chain = resolveChainLessons(placementIds, recreated.lessonByPlacementId());
-        if (chain == null) return List.of();
+        if (chain == null) {
+            // Пустой список ячеек — это УТВЕРЖДЕНИЕ «переносить некуда», по которому человек
+            // принимает решение, поэтому отвечать им можно только на настоящее «некуда».
+            // Здесь два разных случая, и раньше оба давали пустоту:
+            //   • карта пуста — размещения уже нет (сняли, пока клиент спрашивал). Законный
+            //     пустой ответ: цепочки действительно больше не существует;
+            //   • карта не пуста, а звена в ней нет — восстановление сессии потеряло занятие,
+            //     то есть состояние испорчено. Это сбой, и он обязан выглядеть как сбой —
+            //     ровно так же, как в moveChain, где та же проверка всегда бросала.
+            if (recreated.lessonByPlacementId().isEmpty()) {
+                return List.of();
+            }
+            throw new IllegalStateException(
+                    "Не удалось восстановить цепочку для подбора ячеек: " + placementIds);
+        }
 
         // Текущее начало цепочки — чтобы не предлагать перенос «туда же».
         CellForLesson currentStart = workspace.getCellForLesson(chain.get(0));

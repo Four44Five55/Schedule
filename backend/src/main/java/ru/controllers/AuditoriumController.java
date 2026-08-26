@@ -44,15 +44,13 @@ public class AuditoriumController {
         return ResponseEntity.ok(auditoriumService.deleteImpact(id));
     }
 
+    /**
+     * Удаление. Аудиторию, указанную в учебном плане, сервис удалить не даст: {@code InUseException}
+     * едет в {@link ApiExceptionHandler} и становится 409 с числом ссылающихся.
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Integer id) {
-        try {
-            auditoriumService.deleteAuditorium(id);
-            return ResponseEntity.noContent().build();
-        } catch (IllegalStateException e) {
-            // Аудитория указана в учебном плане: БД её удалить не даст (FK без каскада).
-            // Отвечаем осмысленно, а не сырым 500 (глобального @ControllerAdvice в проекте нет).
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
+        auditoriumService.deleteAuditorium(id);
+        return ResponseEntity.noContent().build();
     }
 }

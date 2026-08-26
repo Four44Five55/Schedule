@@ -7,6 +7,8 @@ import { useEnums } from '../../../context/EnumContext';
 import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
 import { EducatorDictionaryManager } from '../../educatorDictionary/components/EducatorDictionaryManager';
 import { User, Clock, Calendar, Zap, Plus, Pencil, Trash2, Network, Search, X, BookMarked } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface EducatorListProps {
   educators: EducatorDto[];
@@ -40,6 +42,7 @@ interface Section {
  * (`EducatorService.findAll`), и без этого карточки переставлялись бы после каждой правки.</p>
  */
 export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducatorsChange }) => {
+  const toast = useToast();
   const { getDayShort, getSlotShort } = useEnums();
   const { units, flat, loading: unitsLoading } = useOrgUnits();
 
@@ -69,8 +72,9 @@ export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducato
       setDeletingEducator(null);
       onEducatorsChange();
     } catch (err) {
-      console.error('Ошибка удаления преподавателя:', err);
-      alert('Не удалось удалить преподавателя. Возможно, он назначен на занятия.');
+      // Причину называет бэк — он один знает, СКОЛЬКО занятий мешает удалению. Прежняя
+      // фраза «возможно, используется» была догадкой на месте готового ответа.
+      toast.failure(err, 'Не удалось удалить преподавателя.');
     } finally {
       setIsDeleting(false);
     }
@@ -267,9 +271,7 @@ export const EducatorList: React.FC<EducatorListProps> = ({ educators, onEducato
         </div>
 
         {scopeError && (
-            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-700">
-              {scopeError}
-            </div>
+            <ErrorBanner message={scopeError} className="px-3 py-2 text-xs font-bold" />
         )}
 
         {/* Секции по подразделениям */}

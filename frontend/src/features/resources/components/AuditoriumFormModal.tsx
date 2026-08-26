@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, AlertCircle, Home, Building2, Tag, Sparkles, Network } from 'lucide-react';
+import { X, Save, Loader2, Home, Building2, Tag, Sparkles, Network } from 'lucide-react';
 import { AuditoriumDto, AuditoriumCreateDto, AuditoriumUpdateDto, BuildingDto, FeatureDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface AuditoriumFormModalProps {
     auditorium: AuditoriumDto | null;
@@ -64,7 +66,9 @@ export const AuditoriumFormModal: React.FC<AuditoriumFormModalProps> = ({
                 setPurposes(p);
                 setFeatures(f);
             })
-            .catch((err) => console.error('Ошибка загрузки справочников:', err))
+            // Справочник не загрузился — выпадающие списки пусты, и форма выглядит так, будто
+            // выбирать не из чего. Место у сообщения уже есть — плашка формы.
+            .catch((err) => setError(errorMessage(err, 'Не удалось загрузить справочники: корпуса, назначения и особенности.')))
             .finally(() => setLoadingRefs(false));
     }, []);
 
@@ -121,16 +125,8 @@ export const AuditoriumFormModal: React.FC<AuditoriumFormModalProps> = ({
             onSaved(saved);
         } catch (err: any) {
             console.error('Ошибка сохранения аудитории:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(
-                    typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации'
-                );
-            } else if (err.response?.status === 409) {
-                setError('Аудитория с таким названием уже существует');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            // Текст отказа пишет бэк — он один знает, что именно совпало; здесь только запасной.
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -168,10 +164,7 @@ export const AuditoriumFormModal: React.FC<AuditoriumFormModalProps> = ({
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {/* Название */}

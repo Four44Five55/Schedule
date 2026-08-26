@@ -4,6 +4,8 @@ import { CQRSService } from '../../../services/cqrsApiService';
 import { AuditoriumOptionDto } from '../../../types/cqrs';
 import { ScheduledLessonDto } from '../../../types/api';
 import { AlertTriangle, Check, DoorOpen, Loader2, Lock, Users, X } from 'lucide-react';
+import { apiError, errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface AuditoriumPickerModalProps {
   lesson: ScheduledLessonDto;
@@ -52,8 +54,11 @@ export const AuditoriumPickerModal: React.FC<AuditoriumPickerModalProps> = ({
         setSelected(new Set(data.filter((o) => o.current).map((o) => o.auditoriumId)));
       })
       .catch((e) => {
-        console.error('Не удалось загрузить варианты аудиторий:', e);
-        if (!cancelled) setOptions([]);
+        if (cancelled) return;
+        // Пустой список читается как «свободных комнат нет» — при отказе запроса это неправда.
+        // Место для сообщения в модалке уже есть: та же плашка, что у отказа сохранения.
+        setOptions([]);
+        setError(errorMessage(e, 'Не удалось загрузить варианты аудиторий.'));
       });
     return () => { cancelled = true; };
   }, [placementId]);
@@ -86,15 +91,10 @@ export const AuditoriumPickerModal: React.FC<AuditoriumPickerModalProps> = ({
       onChanged(session.version);
       onClose();
     } catch (e: any) {
-      const conflict = e?.response?.data;
-      if (e?.response?.status === 409) {
-        setError(conflict?.message ?? 'Расписание изменилось параллельно — обновите данные.');
-        // Версию из ответа отдаём хосту всегда: иначе вкладка залипнет на устаревшей.
-        if (conflict?.currentVersion != null) onChanged(conflict.currentVersion);
-      } else {
-        setError('Не удалось сменить аудиторию.');
-        console.error('Смена аудитории:', e);
-      }
+      const failure = apiError(e, 'Не удалось сменить аудиторию.');
+      setError(failure.message);
+      // Версию из ответа отдаём хосту всегда: иначе вкладка залипнет на устаревшей.
+      if (failure.currentVersion != null) onChanged(failure.currentVersion);
     } finally {
       setSaving(false);
     }
@@ -199,9 +199,7 @@ export const AuditoriumPickerModal: React.FC<AuditoriumPickerModalProps> = ({
         </div>
 
         {error && (
-          <div className="mx-4 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[11px] text-red-800">
-            {error}
-          </div>
+          <ErrorBanner message={error} className="mx-4 mb-2 px-3 py-2 text-[11px]" />
         )}
 
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-100">

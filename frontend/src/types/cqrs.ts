@@ -191,12 +191,19 @@ export interface CoursePlacementCountDto {
 }
 
 /**
- * Ответ при конфликте optimistic lock
+ * Конфликт команды расписания, приведённый к одной форме сервисным слоем (`apiError`).
+ *
+ * Тело на проводе бывает двух видов и по ходу уборки контроллеров станет одним: `ConflictResponse`
+ * бэкенда (`{error, message, currentVersion}`) и `ProblemDetail` (`{code, detail, …}`). Разбирать
+ * это здесь незачем — сюда приезжает уже разобранное.
  */
 export interface ConflictResponse {
-  error: string;                 // Например: 'OPTIMISTIC_LOCK_CONFLICT'
-  message: string;               // Сообщение для пользователя
-  currentVersion: number;       // Актуальная версия в БД
+  /** Код: `CONFLICT` — устаревшая версия, `RESOURCE_CONFLICT` — занят слот/аудитория. */
+  error: string;
+  /** Сообщение для человека — текст пишет бэк, он один знает причину отказа. */
+  message: string;
+  /** Актуальная версия в БД; `null`, если сессию не опознать — тогда клиент просто перечитает всё. */
+  currentVersion: number | null;
 }
 
 /**

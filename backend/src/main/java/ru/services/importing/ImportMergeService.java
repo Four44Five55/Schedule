@@ -10,6 +10,7 @@ import ru.services.importing.GroupNumberDecoder.SuffixStyle;
 import ru.services.importing.ScheduleMerger.PeriodBounds;
 
 import java.util.List;
+import ru.exceptions.NotFoundException;
 
 /**
  * Сведение разрезов с оглядкой на выбранный период.
@@ -38,7 +39,8 @@ public class ImportMergeService {
      * @param periodId период импорта; {@code null} — период не выбран, выбросы за его границы не
      *                 считаются (и об этом сказано в отчёте нулём, а не выдуманным числом)
      * @param style    написание номера группы
-     * @throws IllegalArgumentException если периода с таким id нет — это ошибка запроса, а не сбой
+     * @throws NotFoundException если периода с таким id нет —
+     *         это ошибка запроса, а не сбой
      */
     @Transactional(readOnly = true)
     public MergeReport merge(List<ParsedSheet> sheets, Integer periodId, SuffixStyle style) {
@@ -56,7 +58,7 @@ public class ImportMergeService {
             return null;
         }
         StudyPeriod period = periodRepository.findById(periodId)
-                .orElseThrow(() -> new IllegalArgumentException("Периода с id " + periodId + " нет"));
+                .orElseThrow(() -> new NotFoundException("Периода с id " + periodId + " нет"));
         return new PeriodBounds(period.getStudyYear(), period.getStartDate(), period.getEndDate());
     }
 }

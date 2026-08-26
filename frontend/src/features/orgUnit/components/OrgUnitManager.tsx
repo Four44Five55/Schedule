@@ -19,6 +19,8 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { cn } from '../../../utils/cn';
 import { useOrgUnits, type OrgUnitNode } from '../hooks/useOrgUnits';
 import { OrgUnitFormModal } from './OrgUnitFormModal';
+import { useToast } from '../../../context/ToastContext';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface OrgUnitManagerProps {
     /** Преподаватели и группы нужны только для счётчиков — отдельных запросов не делаем. */
@@ -36,6 +38,7 @@ interface OrgUnitManagerProps {
  * (будущий {@code OrgUnitScopeResolver}), иначе та же логика разъедется по двум сторонам.</p>
  */
 export const OrgUnitManager: React.FC<OrgUnitManagerProps> = ({ educators, groups, onChanged }) => {
+    const toast = useToast();
     const { tree, flat, loading, error, reload } = useOrgUnits();
     const { getOrgUnitTypeLabel } = useEnums();
 
@@ -112,7 +115,7 @@ export const OrgUnitManager: React.FC<OrgUnitManagerProps> = ({ educators, group
             onChanged?.();
         } catch (err: any) {
             console.error('Ошибка удаления подразделения:', err);
-            alert(err?.response?.data || 'Не удалось удалить подразделение.');
+            toast.failure(err, 'Не удалось удалить подразделение.');
         } finally {
             setIsDeleting(false);
         }
@@ -171,10 +174,7 @@ export const OrgUnitManager: React.FC<OrgUnitManagerProps> = ({ educators, group
             </div>
 
             {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-                    <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                    <span>{error}</span>
-                </div>
+                <ErrorBanner message={error} className="rounded-xl" />
             )}
 
             {/* Нераспределённые: не дефект данных, но видеть их надо */}

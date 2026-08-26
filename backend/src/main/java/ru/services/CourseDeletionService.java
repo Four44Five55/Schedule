@@ -1,6 +1,5 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -11,6 +10,7 @@ import ru.repository.AssignmentRepository;
 import ru.repository.CurriculumSlotRepository;
 import ru.repository.DisciplineCourseRepository;
 import ru.repository.write.LessonPlacementRepository;
+import ru.exceptions.NotFoundException;
 
 /**
  * Глубокое каскадное удаление курса. Выделено в отдельный сервис (SRP) — это
@@ -44,7 +44,7 @@ public class CourseDeletionService {
     @Transactional(readOnly = true)
     public CourseDeletionImpactDto preview(Integer courseId) {
         DisciplineCourse course = disciplineCourseRepository.findById(courseId)
-                .orElseThrow(() -> new EntityNotFoundException("Курс с id=" + courseId + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Курс с id=" + courseId + " не найден."));
 
         int slots = curriculumSlotRepository.findByDisciplineCourseIdOrderByPosition(courseId).size();
         int assignments = (int) assignmentRepository.countByCurriculumSlot_DisciplineCourse_Id(courseId);
@@ -64,12 +64,12 @@ public class CourseDeletionService {
      * и — следом за размещениями — строки read-модели.
      *
      * @param courseId id курса
-     * @throws EntityNotFoundException если курс не найден
+     * @throws NotFoundException если курс не найден
      */
     @Transactional
     public void delete(Integer courseId) {
         if (!disciplineCourseRepository.existsById(courseId)) {
-            throw new EntityNotFoundException("Курс с id=" + courseId + " не найден.");
+            throw new NotFoundException("Курс с id=" + courseId + " не найден.");
         }
 
         long placements = placementRepository.countByCourseId(courseId);

@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import ru.exceptions.RuleViolationException;
 import ru.dto.PeriodReadinessDto;
 import ru.dto.ScheduleResultDto;
 import ru.entity.read.ScheduleView;
@@ -329,8 +330,10 @@ public class ScheduleQueryController {
 
             int unplaced = Math.max(0, total - (int) placed);
             return new PeriodReadinessDto(total, (int) placed, unplaced);
-        } catch (IllegalStateException e) {
-            // Период без курсов — размещать нечего.
+        } catch (RuleViolationException e) {
+            // Период без курсов — размещать нечего, и это ОТВЕТ, а не отказ: ноль из нуля
+            // размещено. Поэтому catch остаётся после подметания контроллеров (2026-08-26):
+            // он не переводит исключение в код ответа, а решает задачу отчёта.
             log.info("Readiness: период id={} без курсов, нули", periodId);
             return new PeriodReadinessDto(0, 0, 0);
         }

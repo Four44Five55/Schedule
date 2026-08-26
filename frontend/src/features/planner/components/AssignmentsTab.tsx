@@ -7,6 +7,8 @@ import { CurriculumService } from '../../../services/apiServices';
 import { Check, Plus, Users, Settings, Trash2, Edit2, X, ChevronRight, CopyMinus, Lock, LifeBuoy, Search } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useEnums } from '../../../context/EnumContext';
+import { errorMessage } from '../../../services/apiError';
+import { useToast } from '../../../context/ToastContext';
 
 const KIND_COLORS: Record<string, string> = {
   LECTURE: 'bg-violet-100 text-violet-700',
@@ -26,7 +28,11 @@ const EXPANDED_STORAGE_KEY = 'unischedule.planner.assignments.expandedCourses';
  * Текст подтверждения точечного удаления. Отдельно называет закреплённые занятия: они уходят
  * тем же FK-каскадом, что и сгенерированные, но восстановить их можно только руками.
  */
-const deleteWarning = (impact: RemoveAssignmentsImpactDto | null): string => {
+const deleteWarning = (impact: RemoveAssignmentsImpactDto | null, impactFailed = false): string => {
+  if (impactFailed) {
+    return 'Удалить назначение?\n\nПроверить, сколько занятий стоит в расписании, не удалось '
+      + '(сервер не ответил). Вместе с назначением они будут сняты — включая закреплённые вручную.';
+  }
   if (!impact || impact.placedLessons === 0) return 'Удалить назначение?';
   const locked = impact.lockedLessons > 0
     ? `\nИз них закреплённых (замок): ${impact.lockedLessons} — ручная раскладка пропадёт.`
@@ -80,6 +86,7 @@ export const AssignmentsTab: React.FC<{
   onRefresh: () => void;
 }> = ({ selectedCourses, allCourses, courseSlots, courseAssignments, streams, educators, onRefresh }) => {
   const { getStudyLabel } = useEnums();
+  const toast = useToast();
   const [form, setForm] = useState<AssignmentFormState | null>(null);
   const [saving, setSaving] = useState(false);
   // Массовое снятие «однотипных» назначений.
@@ -352,10 +359,7 @@ export const AssignmentsTab: React.FC<{
       onRefresh();
     } catch (err: any) {
       console.error('Ошибка сохранения назначения:', err);
-      const data = err?.response?.data;
-      setSaveError(err?.response?.status === 400
-        ? (typeof data === 'string' ? data : data?.message || 'Данные формы не приняты')
-        : 'Не удалось сохранить. Попробуйте ещё раз.');
+      setSaveError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
     } finally {
       setSaving(false);
     }
@@ -364,10 +368,24 @@ export const AssignmentsTab: React.FC<{
   // Удаление назначения уносит его размещения FK-каскадом — в том числе закреплённые
   // (замок про каскад не знает). Поэтому сначала спрашиваем бэк, что именно потеряется.
   const handleDelete = async (id: number) => {
-    const impact = await CurriculumService.getDeleteAssignmentImpact(id).catch(() => null);
-    if (!window.confirm(deleteWarning(impact))) return;
-    await CurriculumService.deleteAssignment(id);
-    onRefresh();
+    // Цена удаления: не узнали — предупреждаем об этом прямо в вопросе (deleteWarning), а не
+    // подсовываем короткое «Удалить назначение?», за которым может стоять снос раскладки.
+    let impact: RemoveAssignmentsImpactDto | null = null;
+    let impactFailed = false;
+    try {
+      impact = await CurriculumService.getDeleteAssignmentImpact(id);
+    } catch {
+      impactFailed = true;
+    }
+    if (!window.confirm(deleteWarning(impact, impactFailed))) return;
+    try {
+      await CurriculumService.deleteAssignment(id);
+      onRefresh();
+    } catch (e) {
+      // Раньше отказ здесь не ловился вовсе: обещание падало в никуда, список не менялся,
+      // и назначение выглядело удалённым до первого обновления страницы.
+      toast.failure(e, 'Не удалось удалить назначение.');
+    }
   };
 
   // ── Массовое снятие «однотипных» назначений ──
@@ -423,9 +441,14 @@ export const AssignmentsTab: React.FC<{
       studyStreamId: removeForm.streamId,
       educatorIds: removeForm.educatorIds,
       slotIds: Array.from(removeForm.selectedSlotIds),
-    }).then(imp => { if (!cancelled) setRemoveImpact(imp); }).catch(() => {});
+    }).then(imp => { if (!cancelled) setRemoveImpact(imp); })
+      .catch((e) => {
+        // Панель массового снятия ждёт число «будет снято N» и без него показывает прочерк —
+        // выглядит как «снимать нечего», хотя ответа просто не пришло.
+        if (!cancelled) toast.failure(e, 'Не удалось посчитать, что будет снято.');
+      });
     return () => { cancelled = true; };
-  }, [removeForm]);
+  }, [removeForm, toast]);
 
   const confirmRemove = async () => {
     if (!removeForm) return;

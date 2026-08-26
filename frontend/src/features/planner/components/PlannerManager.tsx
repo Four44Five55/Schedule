@@ -20,6 +20,7 @@ import { AssignmentsTab } from './AssignmentsTab';
 import { GenerationTab } from './GenerationTab';
 import { PeriodFormModal } from './PeriodFormModal';
 import { ClonePlanFromPeriodModal } from './ClonePlanFromPeriodModal';
+import { useToast } from '../../../context/ToastContext';
 
 type TabType = 'courses' | 'streams' | 'assignments' | 'constraints' | 'schedule' | 'generation';
 
@@ -37,6 +38,7 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   // Учебный период — из общего контекста (единый выбор в шапке приложения). Он задаёт
   // набор курсов и даты; планировщик лишь читает его и умеет создавать новый период.
   const { periods, selectedPeriodId, selectedPeriod, setSelectedPeriodId, reloadPeriods } = usePeriod();
+  const toast = useToast();
   const [showPeriodForm, setShowPeriodForm] = useState(false);
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [showCloneModal, setShowCloneModal] = useState(false);
@@ -51,8 +53,12 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
 
   // Потоки грузим один раз (периоды теперь в общем контексте).
   useEffect(() => {
-    ResourceService.getStreams().then(setStreams);
-  }, []);
+    ResourceService.getStreams()
+      .then(setStreams)
+      // Потоки — состав, на который назначают: пустой список делает форму назначения
+      // непроходимой, и причина этого нигде не видна.
+      .catch((e) => toast.failure(e, 'Не удалось загрузить потоки.'));
+  }, [toast]);
 
   // Курсы зависят от выбранного периода: меняется период — перезагружаем курсы и
   // сбрасываем выбор (курсы другого периода не должны «прилипать»).
@@ -66,8 +72,11 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
     setSelectedCourses(new Set());
     CurriculumService.getCourses(selectedPeriodId)
       .then(setAllCourses)
+      // Пустой список курсов читается как «план на период не заведён» — и человек идёт
+      // заводить его заново поверх существующего.
+      .catch((e) => toast.failure(e, 'Не удалось загрузить курсы периода.'))
       .finally(() => setLoading(false));
-  }, [selectedPeriodId]);
+  }, [selectedPeriodId, toast]);
 
   const handlePeriodCreated = async (created: StudyPeriodDto) => {
     // Обновляем общий список периодов и делаем новый период выбранным (глобально).
@@ -79,9 +88,11 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   // Обновить список курсов периода БЕЗ сброса выбора (в отличие от смены периода).
   const reloadCourses = useCallback(() => {
     if (selectedPeriodId != null) {
-      CurriculumService.getCourses(selectedPeriodId).then(setAllCourses);
+      CurriculumService.getCourses(selectedPeriodId)
+        .then(setAllCourses)
+        .catch((e) => toast.failure(e, 'Список курсов не обновился — данные на экране устарели.'));
     }
-  }, [selectedPeriodId]);
+  }, [selectedPeriodId, toast]);
 
   const handleCourseSaved = () => {
     setShowCourseForm(false);
@@ -102,7 +113,12 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
         `• назначений: ${impact.assignments}\n` +
         `• размещённых в расписании: ${impact.placedLessons}`;
     } catch {
-      // Предпросмотр не критичен — при сбое падаем на общий текст подтверждения.
+      // Цену узнать не удалось — говорим это в самом вопросе. Прежний молчаливый откат к
+      // «Удалить курс? Действие необратимо.» скрывал, что вместе с курсом уходит раскладка.
+      confirmMsg = 'Удалить курс?' + '\n\n'
+        + 'Проверить, что будет удалено вместе с ним, не удалось (сервер не ответил). '
+        + 'Каскадом уходят занятия плана, назначения и уже размещённые занятия.' + '\n\n'
+        + 'Действие необратимо.';
     }
     if (!confirm(confirmMsg)) return;
 
@@ -111,8 +127,8 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
       await CurriculumService.deleteCourse(courseId);
       setSelectedCourses(prev => { const next = new Set(prev); next.delete(courseId); return next; });
       reloadCourses();
-    } catch {
-      alert('Не удалось удалить курс');
+    } catch (e) {
+      toast.failure(e, 'Не удалось удалить курс.');
     } finally {
       setDeletingCourseId(null);
     }
@@ -129,8 +145,11 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
         const map = new Map<number, CurriculumSlotDto[]>();
         ids.forEach((id, i) => map.set(id, results[i]));
         setCourseSlots(map);
-      });
-  }, [selectedCourses]);
+      })
+      // Занятия плана кормят и счётчик «Занятий N», и вкладку назначений: без них курс
+      // выглядит пустым, а назначать не на что.
+      .catch((e) => toast.failure(e, 'Не удалось загрузить занятия выбранных курсов.'));
+  }, [selectedCourses, toast]);
 
   const loadAssignments = useCallback(async () => {
     if (selectedCourses.size === 0) {
@@ -138,11 +157,17 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
       return;
     }
     const ids = Array.from(selectedCourses);
-    const results = await Promise.all(ids.map(id => CurriculumService.getAssignmentsByCourse(id)));
-    const map = new Map<number, AssignmentDto[]>();
-    ids.forEach((id, i) => map.set(id, results[i]));
-    setCourseAssignments(map);
-  }, [selectedCourses]);
+    try {
+      const results = await Promise.all(ids.map(id => CurriculumService.getAssignmentsByCourse(id)));
+      const map = new Map<number, AssignmentDto[]>();
+      ids.forEach((id, i) => map.set(id, results[i]));
+      setCourseAssignments(map);
+    } catch (e) {
+      // Пустая карта назначений = «никто не назначен»: вкладка предложит завести их заново,
+      // и человек заведёт дубли поверх существующих.
+      toast.failure(e, 'Не удалось загрузить назначения выбранных курсов.');
+    }
+  }, [selectedCourses, toast]);
 
   // Назначения нужны и для вкладки «Назначения», и для «Ограничения» (круг участников).
   useEffect(() => {
@@ -173,10 +198,10 @@ export const PlannerManager: React.FC<PlannerManagerProps> = ({ disciplines, edu
   // попали бы слоты невыбранного курса).
   const reloadCourseSlots = useCallback((courseId: number) => {
     if (!selectedCourses.has(courseId)) return;
-    CurriculumService.getSlotsByCourse(courseId).then(slots => {
-      setCourseSlots(prev => new Map(prev).set(courseId, slots));
-    });
-  }, [selectedCourses]);
+    CurriculumService.getSlotsByCourse(courseId)
+      .then(slots => { setCourseSlots(prev => new Map(prev).set(courseId, slots)); })
+      .catch((e) => toast.failure(e, 'Занятия курса не обновились — счётчик на экране устарел.'));
+  }, [selectedCourses, toast]);
 
   const totalSlots = Array.from(courseSlots.values()).flat().length;
 

@@ -1,8 +1,10 @@
 package ru.services.educator.dictionary;
 
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.InUseException;
 import ru.dto.educatorDictionary.DictionaryEntryDto;
 import ru.dto.educatorDictionary.DictionaryEntryFormDto;
 
@@ -72,12 +74,12 @@ public class EducatorDictionaryService {
     public void delete(EducatorDictionaryKind kind, Integer id) {
         EducatorDictionaryPort<?> port = port(kind);
         if (!port.exists(id)) {
-            throw new EntityNotFoundException(
+            throw new NotFoundException(
                     "Строка справочника «" + kind.getLabel() + "» с id=" + id + " не найдена.");
         }
         long used = port.countEducators(id);
         if (used > 0) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "Удаление невозможно: значение указано у " + used + " преподавателей. "
                             + "Снимите его у них или сделайте значение неактивным.");
         }
@@ -99,7 +101,7 @@ public class EducatorDictionaryService {
                 .filter(entry -> excludeId == null || !excludeId.equals(entry.id()))
                 .anyMatch(entry -> entry.shortName().equalsIgnoreCase(candidate));
         if (taken) {
-            throw new IllegalArgumentException(
+            throw new DuplicateException(
                     "Сокращение «" + candidate + "» уже занято в справочнике «" + kind.getLabel() + "».");
         }
     }

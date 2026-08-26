@@ -3,6 +3,7 @@ package ru.services.generation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import ru.exceptions.RuleViolationException;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.entity.Lesson;
 import ru.entity.StudyPeriod;
@@ -46,14 +47,14 @@ public class GenerationScopeResolver {
      */
     public GenerationScope resolve(Integer studyPeriodId, List<Integer> courseIds) {
         if (studyPeriodId == null) {
-            throw new IllegalArgumentException("Не указан учебный период для генерации (studyPeriodId)");
+            throw new RuleViolationException("Не указан учебный период для генерации (studyPeriodId)");
         }
 
         StudyPeriod period = studyPeriodService.getEntityById(studyPeriodId);
 
         List<Integer> effectiveCourseIds = resolveCourseIds(studyPeriodId, courseIds);
         if (effectiveCourseIds.isEmpty()) {
-            throw new IllegalStateException(
+            throw new RuleViolationException(
                     "Для периода '" + period.getName() + "' (id=" + studyPeriodId + ") нет курсов для генерации");
         }
 
@@ -79,7 +80,7 @@ public class GenerationScopeResolver {
         for (Integer courseId : courseIds) {
             DisciplineCourse course = disciplineCourseService.getEntityById(courseId);
             if (!course.getStudyPeriod().getId().equals(studyPeriodId)) {
-                throw new IllegalArgumentException(
+                throw new RuleViolationException(
                         "Курс id=" + courseId + " не относится к периоду id=" + studyPeriodId);
             }
         }

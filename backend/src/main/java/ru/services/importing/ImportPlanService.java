@@ -15,6 +15,8 @@ import ru.entity.logicSchema.StudyStream;
 import ru.entity.logicSchema.ThemeLesson;
 import ru.enums.KindOfStudy;
 import ru.enums.PeriodType;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.RuleViolationException;
 import ru.repository.AssignmentRepository;
 import ru.repository.CurriculumSlotRepository;
 import ru.repository.DisciplineCourseRepository;
@@ -181,10 +183,10 @@ public class ImportPlanService {
         if (periodId == null) {
             // Не NPE: для того, кто запускает импорт, это обычная ошибка запроса — период забыли
             // выбрать. Семестр курса считается от него, и подставить «активный» было бы догадкой.
-            throw new IllegalArgumentException("Период обязателен: без него не вычислить семестр курса");
+            throw new RuleViolationException("Период обязателен: без него не вычислить семестр курса");
         }
         StudyPeriod period = periodRepository.findById(periodId)
-                .orElseThrow(() -> new IllegalArgumentException("Периода с id " + periodId + " нет"));
+                .orElseThrow(() -> new NotFoundException("Периода с id " + periodId + " нет"));
 
         List<MergedLesson> lessons = ScheduleMerger
                 .merge(sheets, style, mergeService.bounds(periodId))

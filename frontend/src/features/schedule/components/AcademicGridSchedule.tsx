@@ -11,6 +11,8 @@ import {AcademicGridShell, DayDef, GridCellContext, SlotDef, SLOTS} from '../../
 import {kindStyleOfCategory} from '../kindStyles';
 import {useEnums} from '../../../context/EnumContext';
 import {isConstraintConflict} from '../../constraints/constraintAdmission';
+import {apiError} from '../../../services/apiError';
+import {useToast} from '../../../context/ToastContext';
 
 /** DayOfWeek (бэк) → id дня в каркасе сетки (DAYS: 1=Пн … 6=Сб; воскресенье не планируется). */
 const WEEKDAY_ID: Record<DayOfWeek, number> = {
@@ -582,6 +584,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
 
   // Сцепки слотов (SlotChain) — пары соседних слотов, идущих единой цепочкой.
   // Храним как множество канонических ключей "minId-maxId" для O(1)-проверки.
+  const toast = useToast();
   const [chainPairs, setChainPairs] = useState<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
@@ -595,6 +598,8 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         }
         setChainPairs(set);
       })
+      // Сцепки — оформление связи между парами: без них соседние занятия просто не покажут,
+      // что идут одной цепочкой. Ошибиться в решении это не заставляет, поэтому шума не поднимаем.
       .catch(() => { if (!cancelled) setChainPairs(new Set()); });
     return () => { cancelled = true; };
   }, []);
@@ -690,10 +695,16 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         for (const o of options) targets.set(`${o.date}_${o.timeSlot}`, o.timeSlot);
         setMoveTargets(targets);
       })
-      .catch(() => { if (!cancelled) setMoveTargets(new Map()); })
+      .catch((e) => {
+        if (cancelled) return;
+        // Пустая подсветка означает «поставить некуда» — при отказе запроса это неправда, и
+        // человек уходит искать место в другом периоде вместо того, чтобы повторить.
+        setMoveTargets(new Map());
+        toast.failure(e, 'Не удалось подобрать ячейки для установки — свободные места не подсвечены.');
+      })
       .finally(() => { if (!cancelled) setLoadingTargets(false); });
     return () => { cancelled = true; };
-  }, [candidateAssignmentId, candidateRootType, candidateRootId, sessionId, studyPeriodId]);
+  }, [candidateAssignmentId, candidateRootType, candidateRootId, sessionId, studyPeriodId, toast]);
 
   // Подбор доступных ячеек для ПЕРЕНОСА выбранного занятия/цепочки (подсветка зелёным).
   useEffect(() => {
@@ -740,7 +751,12 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           }
           setMoveTargets(targets);
         })
-        .catch(() => { if (!cancelled) setMoveTargets(new Map()); })
+        .catch((e) => {
+          if (cancelled) return;
+          // То же, что и при установке: «переносить некуда» — вывод, а не факт.
+          setMoveTargets(new Map());
+          toast.failure(e, 'Не удалось подобрать ячейки для переноса — свободные места не подсвечены.');
+        })
         .finally(() => { if (!cancelled) setLoadingTargets(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -805,7 +821,7 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
           const parts: string[] = [];
           if (chains > 0) parts.push(`сцепок распалось: ${chains}`);
           if (rooms > 0) parts.push(`аудиторий требуют проверки: ${rooms}`);
-          if (parts.length > 0) window.alert(`Готово. ${parts.join('; ')} — поправьте вручную.`);
+          if (parts.length > 0) toast.info(`Готово. ${parts.join('; ')} — поправьте вручную.`);
         }
 
         // Отдаём хосту свежую версию: без этого его следующая команда уйдёт с устаревшей и
@@ -818,19 +834,24 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
         s.onMoveLesson?.(movedId);
 
       } else if (result.conflict) {
-        // 409: расписание изменили параллельно (другой пользователь или соседняя вкладка —
-        // push-уведомлений пока нет, см. FOLLOWUPS «свежесть чтения»). Вкладка обязана
-        // ВОССТАНОВИТЬСЯ: подхватить актуальную версию из тела ответа и перечитать данные.
-        // Без этого она залипает на старой версии, и КАЖДЫЙ следующий перенос обречён на 409
-        // до ручного F5.
+        // 409 двух видов: CONFLICT — расписание изменили параллельно (другой пользователь или
+        // соседняя вкладка, push-уведомлений пока нет, см. FOLLOWUPS «свежесть чтения»);
+        // RESOURCE_CONFLICT — целевая ячейка занята. Вкладка в обоих случаях обязана
+        // ВОССТАНОВИТЬСЯ: подхватить актуальную версию из ответа и перечитать данные. Без этого
+        // она залипает на старой версии, и КАЖДЫЙ следующий перенос обречён на 409 до ручного F5.
         if (result.conflict.currentVersion != null) {
           s.onVersionChanged?.(result.conflict.currentVersion);
         }
         s.onMoveLesson?.(movedId); // перечитать сетку — расписание уже другое
-        window.alert('Расписание было изменено параллельно. Данные обновлены — повторите перенос.');
+        // Причину называет бэк: «занята аудитория» и «расписание изменилось параллельно» —
+        // разные новости, и подменять первую второй значит отправить человека повторять
+        // перенос, который не пройдёт и на второй раз.
+        toast.error(result.conflict.message);
       }
     } catch (e) {
-      console.error('Ошибка переноса:', e);
+      // Отказ переноса нельзя проглатывать: занятие остаётся на месте, и без сообщения это
+      // выглядит как «клик не сработал».
+      toast.failure(e, 'Не удалось перенести занятие.');
       clearSelection();
     } finally {
       setMoving(false);
@@ -851,14 +872,15 @@ export const AcademicGridSchedule: React.FC<AcademicGridScheduleProps> = ({
       s.onVersionChanged?.(session.version);
       s.onMoveLesson?.(placementId); // сигнал хосту перечитать сетку/доску
     } catch (e: any) {
-      if (e?.response?.status === 409) {
-        const conflict = e.response.data;
-        if (conflict?.currentVersion != null) s.onVersionChanged?.(conflict.currentVersion);
-        s.onMoveLesson?.(placementId);
-        window.alert('Расписание было изменено параллельно. Данные обновлены — повторите.');
-      } else {
-        console.error('Не удалось снять занятие:', e);
+      // Отказ снятия молча оставлял занятие на месте: человек видел, что ничего не произошло,
+      // и не знал почему. Текст берём с сервера — он называет причину (устаревшая версия,
+      // занятый ресурс), а не общее «не получилось».
+      const failure = apiError(e, 'Не удалось снять занятие.');
+      if (failure.status === 409) {
+        if (failure.currentVersion != null) s.onVersionChanged?.(failure.currentVersion);
+        s.onMoveLesson?.(placementId); // расписание уже другое — хост перечитает
       }
+      toast.error(failure.message);
     } finally {
       setMoving(false);
     }

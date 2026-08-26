@@ -320,6 +320,10 @@ public class ScheduleCommandController {
 
         // Конфликт версий (optimistic lock) ловит CommandExceptionHandler: он срабатывает на
         // КОММИТЕ транзакции и одинаков для всех команд — здесь ему делать нечего.
+        // ⚠️ Этот catch НЕ уезжает в ApiExceptionHandler (подметание контроллеров 2026-08-26),
+        // и это осознанно: ответ несёт не только текст, но и АКТУАЛЬНУЮ ВЕРСИЮ сессии, которую
+        // клиент подхватывает, чтобы не залипнуть на устаревшей. Версия берётся отдельным
+        // чтением по sessionId — advice его не сделает, он про исключение, а не про агрегат.
         } catch (LessonMoveConflictException e) {
             log.warn("❌ Resource conflict при переносе: {}", e.getMessage());
 

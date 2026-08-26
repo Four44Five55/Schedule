@@ -8,6 +8,8 @@ import {
   ChevronDown, ChevronRight, UserSquare2,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { apiError, isStaleVersion } from '../../../services/apiError';
+import { useToast } from '../../../context/ToastContext';
 
 type KindMode = 'all' | 'lectures' | 'nonLectures';
 
@@ -26,6 +28,7 @@ export const GenerationTab: React.FC<{
 }> = ({ selectedCourses, allCourses, totalSlots, selectedPeriod, onGenerate, isGenerating }) => {
   const { kindOfStudy } = useEnums();
   const [session, setSession] = useState<ScheduleSessionDto | null>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   // Счётчики «распределено N/M» по курсам (обновляются после генерации/очистки).
@@ -39,9 +42,15 @@ export const GenerationTab: React.FC<{
     let cancelled = false;
     CQRSService.getSessionForPeriod(selectedPeriod.id)
       .then((s) => { if (!cancelled) setSession(s); })
-      .catch(() => { if (!cancelled) setSession(null); });
+      .catch((e) => {
+        if (cancelled) return;
+        // Без сессии все кнопки вкладки погашены — то есть вкладка выглядит недоступной, и
+        // причина этого нигде не названа.
+        setSession(null);
+        toast.failure(e, 'Не удалось открыть сессию периода — генерация недоступна.');
+      });
     return () => { cancelled = true; };
-  }, [selectedPeriod?.id]);
+  }, [selectedPeriod?.id, toast]);
 
   const courses = useMemo(
     () => allCourses.filter((c) => selectedCourses.has(c.id)),
@@ -58,8 +67,12 @@ export const GenerationTab: React.FC<{
     try {
       const list = await CQRSService.getPlacementCounts(session.id, Array.from(selectedCourses));
       setCounts(new Map(list.map((c) => [c.courseId, c])));
-    } catch { /* счётчик не критичен */ }
-  }, [session, selectedCourses]);
+    } catch (e) {
+      // Счётчик «размещено N из M» — единственный ответ на вопрос «сработала ли генерация».
+      // Пустой, он читается как «ничего не разместилось».
+      toast.failure(e, 'Не удалось обновить счётчики размещённости.');
+    }
+  }, [session, selectedCourses, toast]);
 
   useEffect(() => { loadCounts(); }, [loadCounts]);
 
@@ -72,14 +85,15 @@ export const GenerationTab: React.FC<{
       // 409 «устаревшая версия»: расписание изменили параллельно (соседняя вкладка/другой
       // пользователь). Подхватываем актуальную версию из тела — иначе вкладка залипнет на старой
       // и каждая следующая генерация/очистка будет отвергнута до F5.
-      const body = e?.response?.data;
-      if (e?.response?.status === 409 && body?.error === 'CONFLICT') {
-        if (body.currentVersion != null) {
-          setSession((s) => (s ? { ...s, version: body.currentVersion } : s));
+      const failure = apiError(e, 'Ошибка операции');
+      if (isStaleVersion(e)) {
+        const version = failure.currentVersion;
+        if (version != null) {
+          setSession((s) => (s ? { ...s, version } : s));
         }
         setMessage('⚠️ Расписание изменено параллельно. Данные обновлены — повторите операцию.');
       } else {
-        setMessage('❌ Ошибка операции');
+        setMessage(`❌ ${failure.message}`);
       }
     }
     finally { setBusy(null); }

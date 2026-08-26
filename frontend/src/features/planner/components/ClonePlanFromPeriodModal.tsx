@@ -3,6 +3,8 @@ import { StudyPeriodDto, DisciplineCourseDto } from '../../../types/api';
 import { CurriculumService } from '../../../services/apiServices';
 import { X, Loader2, Copy } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 // Наполнение текущего периода копией курсов из другого периода. Глубокую копию
 // (слоты + сцепки + ремап) делает бэкенд; здесь только выбор источника и курсов.
@@ -32,6 +34,9 @@ export const ClonePlanFromPeriodModal: React.FC<{
     setSelectedIds(new Set());
     CurriculumService.getCourses(sourcePeriodId)
       .then(setSourceCourses)
+      // Пустой список источника означает «в том периоде копировать нечего» — при отказе
+      // запроса это неправда, и человек уходит искать другой период.
+      .catch((e) => setError(errorMessage(e, 'Не удалось загрузить курсы выбранного периода.')))
       .finally(() => setLoading(false));
   }, [sourcePeriodId]);
 
@@ -59,9 +64,8 @@ export const ClonePlanFromPeriodModal: React.FC<{
       });
       onCloned();
     } catch (err: any) {
-      const data = err?.response?.data;
       // 409 — курс уже есть в целевом периоде (операция атомарна, ничего не скопировано).
-      setError(typeof data === 'string' ? data : (data?.message || 'Не удалось скопировать курсы.'));
+      setError(errorMessage(err, 'Не удалось скопировать курсы.'));
     } finally {
       setSaving(false);
     }
@@ -87,7 +91,7 @@ export const ClonePlanFromPeriodModal: React.FC<{
 
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+            <ErrorBanner message={error} />
           )}
 
           <div className="space-y-1.5">

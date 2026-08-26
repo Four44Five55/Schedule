@@ -1,6 +1,5 @@
 package ru.controllers;
 
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -33,40 +32,26 @@ public class ConstraintKindController {
         return ResponseEntity.ok(service.findAll());
     }
 
+    /** Занятое имя или код — {@code DuplicateException} → 409 в {@link ApiExceptionHandler}. */
     @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody ConstraintKindFormDto form) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(service.create(form));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<ConstraintKindDto> create(@Valid @RequestBody ConstraintKindFormDto form) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(form));
     }
 
     @PutMapping("/{code}")
-    public ResponseEntity<?> update(@PathVariable String code,
-                                    @Valid @RequestBody ConstraintKindFormDto form) {
-        try {
-            return ResponseEntity.ok(service.update(code, form));
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<ConstraintKindDto> update(@PathVariable String code,
+                                                    @Valid @RequestBody ConstraintKindFormDto form) {
+        return ResponseEntity.ok(service.update(code, form));
     }
 
     /**
-     * Удаление. Вид, которым размечены ограничения, и вид, пришедший из кода, БД/сервис удалить
-     * не дадут — отказ приходит осмысленным 409 с числом ссылающихся, а не сырой ошибкой FK.
+     * Удаление. Вид, которым размечены ограничения, и вид, пришедший из кода, сервис удалить
+     * не даст — {@code InUseException} / {@code RuleViolationException} становятся 409 с числом
+     * ссылающихся, а не сырой ошибкой FK.
      */
     @DeleteMapping("/{code}")
-    public ResponseEntity<?> delete(@PathVariable String code) {
-        try {
-            service.delete(code);
-            return ResponseEntity.noContent().build();
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable String code) {
+        service.delete(code);
+        return ResponseEntity.noContent().build();
     }
 }

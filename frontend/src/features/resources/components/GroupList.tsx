@@ -4,6 +4,7 @@ import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { GroupFormModal } from './GroupFormModal';
 import { Users, Home, Plus, Pencil, Trash2, Network } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
 
 interface GroupListProps {
   groups: GroupDto[];
@@ -11,6 +12,7 @@ interface GroupListProps {
 }
 
 export const GroupList: React.FC<GroupListProps> = ({ groups, onGroupsChange }) => {
+  const toast = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<GroupDto | null>(null);
   const [deletingGroup, setDeletingGroup] = useState<GroupDto | null>(null);
@@ -49,8 +51,9 @@ export const GroupList: React.FC<GroupListProps> = ({ groups, onGroupsChange }) 
       setDeletingGroup(null);
       onGroupsChange();
     } catch (err) {
-      console.error('Ошибка удаления группы:', err);
-      alert('Не удалось удалить группу. Возможно, она используется в расписании.');
+      // Причину называет бэк — он один знает, СКОЛЬКО занятий мешает удалению. Прежняя
+      // фраза «возможно, используется» была догадкой на месте готового ответа.
+      toast.failure(err, 'Не удалось удалить группу.');
     } finally {
       setIsDeleting(false);
     }

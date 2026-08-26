@@ -1,9 +1,11 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.RuleViolationException;
 import ru.dto.studyPeriod.PeriodSignatureDto;
 import ru.dto.studyPeriod.StudyPeriodCreateDto;
 import ru.dto.studyPeriod.StudyPeriodDto;
@@ -27,10 +29,10 @@ public class StudyPeriodService {
     @Transactional
     public StudyPeriodDto createStudyPeriod(StudyPeriodCreateDto createDto) {
         if (createDto.startDate().isAfter(createDto.endDate())) {
-            throw new IllegalArgumentException("Дата начала не может быть позже даты окончания.");
+            throw new RuleViolationException("Дата начала не может быть позже даты окончания.");
         }
         if (studyPeriodRepository.existsByStudyYearAndPeriodType(createDto.studyYear(), createDto.periodType())) {
-            throw new IllegalStateException("Учебный период для года " + createDto.studyYear() + " и типа " + createDto.periodType() + " уже существует.");
+            throw new DuplicateException("Учебный период для года " + createDto.studyYear() + " и типа " + createDto.periodType() + " уже существует.");
         }
 
         StudyPeriod newPeriod = new StudyPeriod();
@@ -48,14 +50,14 @@ public class StudyPeriodService {
         StudyPeriod periodToUpdate = getEntityById(id);
 
         if (updateDto.startDate().isAfter(updateDto.endDate())) {
-            throw new IllegalArgumentException("Дата начала не может быть позже даты окончания.");
+            throw new RuleViolationException("Дата начала не может быть позже даты окончания.");
         }
 
         // Проверяем уникальность, если пара год/тип изменилась
         if (periodToUpdate.getStudyYear() != updateDto.studyYear() || periodToUpdate.getPeriodType() != updateDto.periodType()) {
             studyPeriodRepository.findByStudyYearAndPeriodType(updateDto.studyYear(), updateDto.periodType()).ifPresent(existing -> {
                 if (!existing.getId().equals(id)) {
-                    throw new IllegalStateException("Учебный период для года " + updateDto.studyYear() + " и типа " + updateDto.periodType() + " уже существует.");
+                    throw new DuplicateException("Учебный период для года " + updateDto.studyYear() + " и типа " + updateDto.periodType() + " уже существует.");
                 }
             });
         }
@@ -119,7 +121,7 @@ public class StudyPeriodService {
     @Transactional
     public void deleteStudyPeriod(Integer id) {
         if (!studyPeriodRepository.existsById(id)) {
-            throw new EntityNotFoundException("Учебный период с id=" + id + " не найден.");
+            throw new NotFoundException("Учебный период с id=" + id + " не найден.");
         }
         // TODO: Добавить проверку, не используется ли период в DisciplineCourse, перед удалением.
         studyPeriodRepository.deleteById(id);
@@ -130,6 +132,6 @@ public class StudyPeriodService {
     @Transactional(readOnly = true)
     public StudyPeriod getEntityById(Integer id) {
         return studyPeriodRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Учебный период с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Учебный период с id=" + id + " не найден."));
     }
 }

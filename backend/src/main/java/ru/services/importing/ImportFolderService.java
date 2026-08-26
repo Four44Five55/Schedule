@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.services.importing.FolderInspectionReport.ProblemCount;
 import ru.services.importing.ParsedSheet.CutKind;
+import ru.exceptions.RuleViolationException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -63,7 +64,8 @@ public class ImportFolderService {
      * @param locationId      локация для сверки аудиторий (И-17)
      * @param groupNameStyle  написание суффикса группы для наших имён («101/1» или «101-1»)
      * @param periodId        период импорта; по нему считаются выбросы за границы (И-8)
-     * @throws IllegalArgumentException если чтение выключено или каталог вне разрешённого корня
+     * @throws ru.exceptions.RuleViolationException если чтение выключено или каталог вне
+     *         разрешённого корня
      */
     public FolderInspectionReport inspectFolder(String folder, Integer locationId,
                                                 GroupNumberDecoder.SuffixStyle groupNameStyle,
@@ -177,7 +179,7 @@ public class ImportFolderService {
 
     private Path allowedRoot() {
         if (sourceRoot == null || sourceRoot.isBlank()) {
-            throw new IllegalArgumentException(
+            throw new RuleViolationException(
                     "Чтение выгрузки с диска выключено. Задайте import.source-root — каталог, "
                             + "внутри которого разрешено читать файлы.");
         }
@@ -194,10 +196,12 @@ public class ImportFolderService {
         Path target = (folder == null || folder.isBlank() ? root : Path.of(folder))
                 .toAbsolutePath().normalize();
         if (!target.startsWith(root)) {
-            throw new IllegalArgumentException("Каталог вне разрешённого корня: " + root);
+            throw new RuleViolationException("Каталог вне разрешённого корня: " + root);
         }
         if (!Files.isDirectory(target)) {
-            throw new IllegalArgumentException("Каталога нет: " + target);
+            // Не «не найдено»: эндпоинт на месте, а вот значение параметра указывает в пустоту —
+            // это ошибка запроса, и отвечать на неё 404-й значило бы сказать, что нет ЕГО.
+            throw new RuleViolationException("Каталога нет: " + target);
         }
         return target;
     }
@@ -210,6 +214,8 @@ public class ImportFolderService {
                     .sorted()
                     .toList();
         } catch (IOException e) {
+            // Намеренно НЕ доменное: обход каталога сорвался на уровне файловой системы —
+            // человеку тут решать нечего, это сбой. Уйдёт пятисоткой с correlationId.
             throw new UncheckedIOException(e);
         }
     }

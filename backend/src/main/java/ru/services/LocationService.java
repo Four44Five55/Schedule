@@ -1,9 +1,11 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.InUseException;
 import ru.dto.location.LocationCreateDto;
 import ru.dto.location.LocationDeletionImpactDto;
 import ru.dto.location.LocationDto;
@@ -29,7 +31,7 @@ public class LocationService {
     @Transactional
     public LocationDto createLocation(LocationCreateDto createDto) {
         if (locationRepository.existsByName(createDto.name())) {
-            throw new IllegalStateException("Локация с названием '" + createDto.name() + "' уже существует.");
+            throw new DuplicateException("Локация с названием '" + createDto.name() + "' уже существует.");
         }
         Location newLocation = new Location();
         newLocation.setName(createDto.name());
@@ -43,7 +45,7 @@ public class LocationService {
 
         locationRepository.findByName(updateDto.name()).ifPresent(existing -> {
             if (!existing.getId().equals(id)) {
-                throw new IllegalStateException("Локация с названием '" + updateDto.name() + "' уже существует.");
+                throw new DuplicateException("Локация с названием '" + updateDto.name() + "' уже существует.");
             }
         });
 
@@ -80,7 +82,7 @@ public class LocationService {
         // Одно правило — один источник: и предпросмотр, и отказ смотрят на тот же deletable.
         LocationDeletionImpactDto impact = deleteImpact(id); // бросит 404, если локации нет
         if (!impact.deletable()) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "Локацию нельзя удалить: к ней привязано " + impact.buildingCount()
                             + " корпусов. Сначала перенесите или удалите их.");
         }
@@ -108,6 +110,6 @@ public class LocationService {
     @Transactional(readOnly = true)
     public Location getEntityById(Integer id) {
         return locationRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Локация с id=" + id + " не найдена."));
+                .orElseThrow(() -> new NotFoundException("Локация с id=" + id + " не найдена."));
     }
 }

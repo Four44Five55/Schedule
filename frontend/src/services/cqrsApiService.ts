@@ -26,6 +26,25 @@ import {
   ClearPlacementsResponse,
   MoveLessonResponse
 } from '../types/cqrs';
+import { apiError } from './apiError';
+
+/**
+ * 409 команды расписания → единая форма конфликта.
+ *
+ * Тел у этой девятки два: `ConflictResponse` бэкенда (`{error, message, currentVersion}`) и
+ * `ProblemDetail` (`{code, detail, …}`) — второе приезжает оттуда, где контроллер уже перестал
+ * ловить доменное исключение сам. Прежний `as ConflictResponse` был необоснованным приведением:
+ * на `ProblemDetail` он молча давал `message === undefined`, и человек получал «undefined» вместо
+ * причины. Разбор один — общая дверь `apiError`.
+ */
+const asConflict = (error: unknown): ConflictResponse => {
+  const failure = apiError(error, 'Расписание изменилось параллельно — обновите данные и повторите.');
+  return {
+    error: failure.code ?? 'CONFLICT',
+    message: failure.message,
+    currentVersion: failure.currentVersion,
+  };
+};
 
 /**
  * CQRS API Service
@@ -323,8 +342,7 @@ export const CQRSService = {
     return api
       .post<ScheduleSessionDto>('/schedule/command/sessions/editable', null,
         periodId != null ? { params: { periodId } } : undefined)
-      .then(r => (r.status === 204 ? null : r.data))
-      .catch(() => null);
+      .then(r => (r.status === 204 ? null : r.data));
   },
 
   /**
@@ -364,10 +382,7 @@ export const CQRSService = {
     } catch (error: any) {
       // Обработка HTTP 409 Conflict
       if (error.response?.status === 409) {
-        return {
-          success: false,
-          conflict: error.response.data as ConflictResponse
-        };
+        return { success: false, conflict: asConflict(error) };
       }
       throw error;
     }
@@ -508,7 +523,7 @@ export const CQRSService = {
       };
     } catch (error: any) {
       if (error.response?.status === 409) {
-        return { success: false, conflict: error.response.data as ConflictResponse };
+        return { success: false, conflict: asConflict(error) };
       }
       throw error;
     }

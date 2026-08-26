@@ -1,6 +1,5 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +24,7 @@ import ru.services.projection.ProjectionSource;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import ru.exceptions.NotFoundException;
 
 @Service
 @RequiredArgsConstructor
@@ -186,7 +186,7 @@ public class CurriculumSlotService {
      * называется заранее в {@link #deleteImpact} и подтверждается в UI.</p>
      *
      * @param id ID удаляемого слота.
-     * @throws EntityNotFoundException если слот не найден.
+     * @throws NotFoundException если слот не найден.
      */
     @Transactional
     public void deleteSlot(Integer id) {
@@ -218,7 +218,7 @@ public class CurriculumSlotService {
     @Transactional(readOnly = true)
     public CurriculumSlot getEntityById(Integer id) {
         return curriculumSlotRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("CurriculumSlot с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("CurriculumSlot с id=" + id + " не найден."));
     }
 
     /** [СЛУЖЕБНЫЙ] Слоты курса (сущности), упорядоченные по позиции. */

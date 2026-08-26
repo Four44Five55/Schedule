@@ -2,6 +2,8 @@ package ru.controllers.command;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -32,6 +34,10 @@ import java.util.UUID;
  */
 @Slf4j
 @RestControllerAdvice(basePackageClasses = ScheduleCommandController.class)
+// Порядок задан явно: с появлением общего ru.controllers.ApiExceptionHandler оба advice имели бы
+// умолчание LOWEST_PRECEDENCE и спорили бы за конфликт версий недетерминированно. Этот
+// специфичнее — он отдаёт актуальную версию сессии, которую клиент подхватывает для повтора.
+@Order(Ordered.HIGHEST_PRECEDENCE)
 @RequiredArgsConstructor
 public class CommandExceptionHandler {
 

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { apiError } from './apiError';
 
 const api = axios.create({
   baseURL: '/api',
@@ -23,8 +24,17 @@ api.interceptors.response.use(
       return response;
     },
     (error) => {
+      // Отказ логируется ВСЕГДА, а не только в dev-сборке. Раньше здесь стоял тот же
+      // `import.meta.env.DEV`, что и у болтливых логов запроса/ответа, — и в проде у сбоя не
+      // оставалось никакого следа: ни в консоли, ни где-либо ещё. Строка короткая (метод, адрес,
+      // статус, код и текст отказа), тело ответа целиком по-прежнему печатается только в dev.
+      const e = apiError(error);
+      const where = `${error.config?.method?.toUpperCase() ?? '?'} ${error.config?.url ?? '?'}`;
+      console.error(`❌ Ошибка запроса: ${where} → ${e.status ?? 'нет ответа'}${e.code ? ` ${e.code}` : ''}: ${e.message}`
+          + (e.correlationId ? ` [${e.correlationId}]` : ''));
+
       if (import.meta.env.DEV) {
-        console.error('❌ Ошибка запроса:', error.config?.method?.toUpperCase(), error.config?.url, error.response?.status, error.response?.data || error.message);
+        console.error('   тело ответа:', error.response?.data ?? error.message);
       }
       return Promise.reject(error);
     }

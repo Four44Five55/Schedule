@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Layers, AlertCircle, Info, Plus, Edit2 } from 'lucide-react';
+import { X, Save, Loader2, Layers, Info, Plus, Edit2 } from 'lucide-react';
 import { AssessmentWindow, CurriculumSlotDto, KindOfStudy, ThemeLessonDto, AuditoriumDto, AuditoriumPoolDto } from '../../../types/api';
 import { ResourceService, CurriculumService } from '../../../services/apiServices';
 import { SlotFormValues } from '../planSource';
 import { useEnums } from '../../../context/EnumContext';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface CurriculumSlotFormModalProps {
     slot: CurriculumSlotDto | null;
@@ -79,7 +81,13 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
     useEffect(() => {
         setLoadingData(true);
         Promise.all([
-            CurriculumService.getThemesByDiscipline(disciplineId).catch(() => []),
+            // Темы отделены от остальных справочников намеренно: их отказ не должен уносить
+            // аудитории и наборы комнат. Но и молчать нельзя — пустой список тем читается как
+            // «тем у дисциплины не заведено».
+            CurriculumService.getThemesByDiscipline(disciplineId).catch((e) => {
+                setError(errorMessage(e, 'Не удалось загрузить темы дисциплины.'));
+                return [];
+            }),
             ResourceService.getAuditoriums(),
             ResourceService.getAuditoriumPools()
         ])
@@ -88,10 +96,11 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                 setAuditoriums(auds);
                 setAuditoriumPools(pools);
             })
-            .catch(() => {
+            .catch((err) => {
                 setThemeLessons([]);
                 setAuditoriums([]);
                 setAuditoriumPools([]);
+                setError(errorMessage(err, 'Не удалось загрузить справочники: темы, аудитории и наборы комнат.'));
             })
             .finally(() => setLoadingData(false));
     }, [disciplineId]);
@@ -143,12 +152,7 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
             }
         } catch (err: any) {
             console.error('Ошибка сохранения слота:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -178,9 +182,8 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
             setNewThemeNumber('');
             setNewThemeTitle('');
         } catch (err: any) {
-            const data = err?.response?.data;
             // 409 — тема с таким номером уже есть у дисциплины.
-            setThemeError(typeof data === 'string' ? data : (data?.message || 'Не удалось создать тему.'));
+            setThemeError(errorMessage(err, 'Не удалось создать тему.'));
         } finally {
             setCreatingTheme(false);
         }
@@ -213,8 +216,7 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
             setThemeLessons(prev => prev.map(t => (t.id === updated.id ? updated : t)));
             setShowEditTheme(false);
         } catch (err: any) {
-            const data = err?.response?.data;
-            setEditThemeError(typeof data === 'string' ? data : (data?.message || 'Не удалось сохранить тему.'));
+            setEditThemeError(errorMessage(err, 'Не удалось сохранить тему.'));
         } finally {
             setSavingTheme(false);
         }
@@ -253,10 +255,7 @@ export const CurriculumSlotFormModal: React.FC<CurriculumSlotFormModalProps> = (
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {/* Ошибка */}
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {loadingData ? (

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { StudyPeriodDto, StudyPeriodCreateDto, PeriodType } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { CalendarPlus, X, Loader2, Check } from 'lucide-react';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 const PERIOD_TYPE_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: 'FALL_SEMESTER', label: 'Осенний семестр' },
@@ -39,8 +41,7 @@ export const PeriodFormModal: React.FC<{
       const created = await ResourceService.createStudyPeriod(payload);
       onCreated(created);
     } catch (err: any) {
-      const data = err?.response?.data;
-      setError(typeof data === 'string' ? data : (data?.message || 'Не удалось создать период.'));
+      setError(errorMessage(err, 'Не удалось создать период.'));
     } finally {
       setSaving(false);
     }
@@ -61,7 +62,7 @@ export const PeriodFormModal: React.FC<{
 
         <div className="p-6 space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+            <ErrorBanner message={error} />
           )}
 
           <div className="space-y-1.5">

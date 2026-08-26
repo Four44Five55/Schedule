@@ -1,10 +1,12 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.InUseException;
 import ru.dto.discipline.DisciplineCreateDto;
 import ru.dto.discipline.DisciplineDto;
 import ru.dto.discipline.DisciplineUpdateDto;
@@ -36,7 +38,7 @@ public class DisciplineService {
     @Transactional
     public DisciplineDto createDiscipline(DisciplineCreateDto createDto) {
         if (disciplineRepository.existsByName(createDto.name())) {
-            throw new IllegalStateException("Дисциплина с названием '" + createDto.name() + "' уже существует.");
+            throw new DuplicateException("Дисциплина с названием '" + createDto.name() + "' уже существует.");
         }
 
         Discipline discipline = disciplineMapper.toEntity(createDto);
@@ -79,18 +81,18 @@ public class DisciplineService {
      * @param id        ID обновляемой дисциплины.
      * @param updateDto DTO с новыми данными.
      * @return DTO обновленной дисциплины.
-     * @throws EntityNotFoundException если дисциплина не найдена.
+     * @throws NotFoundException если дисциплина не найдена.
      * @throws IllegalStateException   если новое имя уже занято другой дисциплиной.
      */
     @Transactional
     public DisciplineDto updateDiscipline(Integer id, DisciplineUpdateDto updateDto) {
         Discipline disciplineToUpdate = disciplineRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Дисциплина с id=" + id + " не найдена."));
+                .orElseThrow(() -> new NotFoundException("Дисциплина с id=" + id + " не найдена."));
 
         // Проверяем, не занято ли новое имя другой дисциплиной
         disciplineRepository.findByName(updateDto.name()).ifPresent(existing -> {
             if (!existing.getId().equals(id)) {
-                throw new IllegalStateException("Дисциплина с названием '" + updateDto.name() + "' уже существует.");
+                throw new DuplicateException("Дисциплина с названием '" + updateDto.name() + "' уже существует.");
             }
         });
 
@@ -126,11 +128,11 @@ public class DisciplineService {
     public void deleteDiscipline(Integer id) {
         if (!disciplineRepository.existsById(id)) {
             // Можно просто ничего не делать, а можно бросить исключение для явной обратной связи
-            throw new EntityNotFoundException("Дисциплина с id=" + id + " не найдена.");
+            throw new NotFoundException("Дисциплина с id=" + id + " не найдена.");
         }
         long courses = disciplineCourseRepository.countByDisciplineId(id);
         if (courses > 0) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "У дисциплины есть учебные курсы (" + courses + "). Удаление снесло бы их планы, "
                             + "назначения и уже размещённые занятия. Сначала удалите курсы.");
         }
@@ -143,11 +145,11 @@ public class DisciplineService {
      * Он не возвращает DTO.
      *
      * @return Сущность Discipline.
-     * @throws EntityNotFoundException если не найдена.
+     * @throws NotFoundException если не найдена.
      */
     @Transactional(readOnly = true)
     Discipline getEntityById(Integer id) { // <-- package-private доступ
         return disciplineRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Дисциплина с id=" + id + " не найдена."));
+                .orElseThrow(() -> new NotFoundException("Дисциплина с id=" + id + " не найдена."));
     }
 }

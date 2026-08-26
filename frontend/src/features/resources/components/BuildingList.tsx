@@ -4,6 +4,9 @@ import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BuildingFormModal } from './BuildingFormModal';
 import { Building2, MapPin, Home, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { useToast } from '../../../context/ToastContext';
 
 interface BuildingListProps {
     /** Вызывается, когда удаление корпуса каскадом сносит его аудитории — чтобы хост перечитал их. */
@@ -11,8 +14,10 @@ interface BuildingListProps {
 }
 
 export const BuildingList: React.FC<BuildingListProps> = ({ onAuditoriumsChanged }) => {
+    const toast = useToast();
     const [buildings, setBuildings] = useState<BuildingDto[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBuilding, setEditingBuilding] = useState<BuildingDto | null>(null);
@@ -26,9 +31,12 @@ export const BuildingList: React.FC<BuildingListProps> = ({ onAuditoriumsChanged
 
     const reload = useCallback(() => {
         setLoading(true);
+        setLoadError(null);
         ResourceService.getBuildings()
             .then(setBuildings)
-            .catch((err) => console.error('Ошибка загрузки корпусов:', err))
+            // Пустой список и незагруженный выглядят одинаково, а делать надо разное:
+            // завести первую строку либо повторить запрос.
+            .catch((err) => setLoadError(errorMessage(err, 'Не удалось загрузить список корпусов.')))
             .finally(() => setLoading(false));
     }, []);
 
@@ -91,7 +99,7 @@ export const BuildingList: React.FC<BuildingListProps> = ({ onAuditoriumsChanged
             if (removedAuditoriums) onAuditoriumsChanged?.();
         } catch (err: any) {
             console.error('Ошибка удаления корпуса:', err);
-            alert(err?.response?.data || 'Не удалось удалить корпус.');
+            toast.failure(err, 'Не удалось удалить корпус.');
         } finally {
             setIsDeleting(false);
         }
@@ -139,6 +147,8 @@ export const BuildingList: React.FC<BuildingListProps> = ({ onAuditoriumsChanged
 
     return (
         <div className="space-y-4">
+            {loadError && <ErrorBanner message={loadError} onRetry={reload} />}
+
             {/* Панель действий */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-slate-500">

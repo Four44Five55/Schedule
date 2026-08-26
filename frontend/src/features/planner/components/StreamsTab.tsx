@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { StudyStreamDto, GroupDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { Plus, Users, Trash2 } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
 
 export const StreamsTab: React.FC<{
   streams: StudyStreamDto[];
   groups: GroupDto[];
   onStreamsChange: (streams: StudyStreamDto[]) => void;
 }> = ({ streams, groups, onStreamsChange }) => {
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [formName, setFormName] = useState('');
   const [formSemester, setFormSemester] = useState(1);
@@ -24,6 +26,10 @@ export const StreamsTab: React.FC<{
       setShowForm(false);
       setFormName('');
       setFormGroupIds([]);
+    } catch (e) {
+      // Отказ здесь не ловился вовсе: форма оставалась открытой с прежними значениями, и это
+      // читалось как «кнопка не сработала».
+      toast.failure(e, 'Не удалось создать поток.');
     } finally {
       setSaving(false);
     }
@@ -31,8 +37,14 @@ export const StreamsTab: React.FC<{
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Удалить поток?')) return;
-    await ResourceService.deleteStream(id);
-    onStreamsChange(streams.filter(s => s.id !== id));
+    try {
+      await ResourceService.deleteStream(id);
+      onStreamsChange(streams.filter(s => s.id !== id));
+    } catch (e) {
+      // Поток, за которым числятся назначения, бэк удалить не даст — и это осмысленный отказ
+      // с текстом, а не сбой. Молча он выглядел как «строка не исчезла».
+      toast.failure(e, 'Не удалось удалить поток.');
+    }
   };
 
   const toggleGroup = (id: number) => {

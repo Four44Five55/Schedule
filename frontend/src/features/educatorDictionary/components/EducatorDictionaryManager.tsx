@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Plus, Trash2, Save, Loader2, AlertCircle, BookMarked } from 'lucide-react';
+import { X, Plus, Trash2, Save, Loader2, BookMarked } from 'lucide-react';
 import { EducatorDictionaryService, type EducatorDictionaryKind } from '../../../services/apiServices';
 import type { DictionaryEntryDto, DictionaryKindDto } from '../../../types/api';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface Props {
     onClose: () => void;
@@ -107,10 +109,7 @@ export const EducatorDictionaryManager: React.FC<Props> = ({ onClose, onChanged 
 
                 <div className="p-6 space-y-3 overflow-y-auto flex-1">
                     {error && (
-                        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                            <span>{error}</span>
-                        </div>
+                        <ErrorBanner message={error} />
                     )}
 
                     {loading ? (
@@ -185,7 +184,7 @@ const DictionaryRow: React.FC<RowProps> = ({ kind, entry, onChanged, onError }) 
             await onChanged();
         } catch (e: any) {
             // Занятое сокращение → 400 с текстом: разбор по нему обязан быть однозначным.
-            onError(typeof e?.response?.data === 'string' ? e.response.data : 'Не удалось сохранить значение');
+            onError(errorMessage(e, 'Не удалось сохранить значение'));
         } finally {
             setSaving(false);
         }
@@ -198,7 +197,7 @@ const DictionaryRow: React.FC<RowProps> = ({ kind, entry, onChanged, onError }) 
             await EducatorDictionaryService.delete(kind, entry.id);
             await onChanged();
         } catch (e: any) {
-            onError(typeof e?.response?.data === 'string' ? e.response.data : 'Не удалось удалить значение');
+            onError(errorMessage(e, 'Не удалось удалить значение'));
         } finally {
             setSaving(false);
         }
@@ -315,7 +314,7 @@ const NewDictionaryRow: React.FC<NewRowProps> = ({ kind, onCreated, onError }) =
             setSortOrder('');
             await onCreated();
         } catch (e: any) {
-            onError(typeof e?.response?.data === 'string' ? e.response.data : 'Не удалось добавить значение');
+            onError(errorMessage(e, 'Не удалось добавить значение'));
         } finally {
             setSaving(false);
         }

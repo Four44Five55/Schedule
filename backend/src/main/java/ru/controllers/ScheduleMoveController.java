@@ -18,6 +18,15 @@ import ru.services.WorkspaceRecreationService;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * Подбор ячеек, куда занятие (или цепочка) помещается на актуальном расписании.
+ *
+ * <p><b>Пустой список здесь — это ответ, а не отказ.</b> Раньше оба метода ловили
+ * {@code Exception} и отвечали {@code 200 []}, то есть переводили любой сбой в утверждение
+ * «переносить некуда». Клиент верил: подсветка гасла, и человек уходил искать место в другом
+ * периоде вместо того, чтобы повторить. Теперь сбой уходит в {@link ApiExceptionHandler}
+ * пятисоткой с {@code correlationId}, а пустой список означает ровно то, что означает.</p>
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/schedule")
@@ -30,28 +39,30 @@ public class ScheduleMoveController {
 
     @PostMapping("/find-move-options")
     public ResponseEntity<List<MoveOptionDto>> findOptions(@RequestBody MoveSuggestionRequest request) {
-        try {
-            // 1. Пересоздаём workspace по самому размещению (сессию берём из него же,
-            //    а не из sessionId с фронта — он может указывать на другую сессию).
-            var recreated = workspaceRecreationService.recreateWorkspaceForPlacement(
-                request.placementId()
-            );
+        // 1. Пересоздаём workspace по самому размещению (сессию берём из него же,
+        //    а не из sessionId с фронта — он может указывать на другую сессию).
+        var recreated = workspaceRecreationService.recreateWorkspaceForPlacement(
+            request.placementId()
+        );
 
-            // 2. Находим целевое занятие по placementId — надёжному уникальному ключу
-            Lesson targetLesson = recreated.lessonByPlacementId().get(request.placementId());
-            if (targetLesson == null) {
-                log.warn("⚠️  Занятие с placementId={} не найдено в воркспейсе", request.placementId());
+        // 2. Находим целевое занятие по placementId — надёжному уникальному ключу.
+        //    Различаем два случая, как и в подборе для цепочки: пустая карта означает, что
+        //    размещения уже нет (сняли, пока клиент спрашивал) — законный пустой ответ;
+        //    занятие, потерявшееся в непустой карте, — испорченное состояние, и выдавать его
+        //    за «переносить некуда» нельзя.
+        Lesson targetLesson = recreated.lessonByPlacementId().get(request.placementId());
+        if (targetLesson == null) {
+            if (recreated.lessonByPlacementId().isEmpty()) {
+                log.warn("⚠️  Размещение placementId={} уже снято — вариантов нет", request.placementId());
                 return ResponseEntity.ok(Collections.emptyList());
             }
-
-            // 3. Ищем варианты переноса
-            return ResponseEntity.ok(moveService.findMoveSuggestions(
-                recreated.workspace(), targetLesson, request));
-
-        } catch (Exception e) {
-            log.error("❌ Ошибка при поиске вариантов: {}", e.getMessage(), e);
-            return ResponseEntity.ok(Collections.emptyList());
+            throw new IllegalStateException(
+                    "Занятие не восстановлено для размещения " + request.placementId());
         }
+
+        // 3. Ищем варианты переноса
+        return ResponseEntity.ok(moveService.findMoveSuggestions(
+            recreated.workspace(), targetLesson, request));
     }
 
     /**
@@ -62,13 +73,8 @@ public class ScheduleMoveController {
     @PostMapping("/find-chain-move-options")
     public ResponseEntity<List<MoveOptionDto>> findChainOptions(@RequestBody ChainMoveSuggestionRequest request) {
         log.info("Поиск вариантов переноса цепочки: {} звеньев", request.placementIds() != null ? request.placementIds().size() : 0);
-        try {
-            List<MoveOptionDto> options = chainMoveService.findChainMoveOptions(request.placementIds());
-            log.info("✅ Найдено {} вариантов для цепочки", options.size());
-            return ResponseEntity.ok(options);
-        } catch (Exception e) {
-            log.error("❌ Ошибка при поиске вариантов цепочки: {}", e.getMessage(), e);
-            return ResponseEntity.ok(Collections.emptyList());
-        }
+        List<MoveOptionDto> options = chainMoveService.findChainMoveOptions(request.placementIds());
+        log.info("✅ Найдено {} вариантов для цепочки", options.size());
+        return ResponseEntity.ok(options);
     }
 }

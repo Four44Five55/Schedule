@@ -1,6 +1,5 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +18,7 @@ import ru.services.projection.ProjectionSource;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import ru.exceptions.NotFoundException;
 
 /**
  * Сервис для управления Преподавателями.
@@ -110,7 +110,7 @@ public class EducatorService {
     @Transactional
     public void deleteEducator(Integer educatorId) {
         if (!educatorRepository.existsById(educatorId)) {
-            throw new EntityNotFoundException("Преподаватель с id=" + educatorId + " не найден.");
+            throw new NotFoundException("Преподаватель с id=" + educatorId + " не найден.");
         }
         // TODO: Добавить проверку, не назначен ли преподаватель на какие-либо 'Assignment', перед удалением.
         educatorRepository.deleteById(educatorId);
@@ -125,7 +125,7 @@ public class EducatorService {
     @Transactional(readOnly = true)
     public Educator getEntityById(Integer id) {
         return educatorRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Преподаватель с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Преподаватель с id=" + id + " не найден."));
     }
 
     /**
@@ -136,7 +136,7 @@ public class EducatorService {
     public List<Educator> getAllEntitiesByIds(List<Integer> ids) {
         List<Educator> educators = educatorRepository.findAllById(ids);
         if (educators.size() != ids.size()) {
-            throw new EntityNotFoundException("Один или несколько преподавателей из списка ID не найдены.");
+            throw new NotFoundException("Один или несколько преподавателей из списка ID не найдены.");
         }
         return educators;
     }

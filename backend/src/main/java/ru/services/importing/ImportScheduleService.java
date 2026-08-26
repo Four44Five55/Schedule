@@ -27,6 +27,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import ru.exceptions.NotFoundException;
 
 /**
  * Запись импортированного расписания в новую сессию.
@@ -93,7 +94,7 @@ public class ImportScheduleService {
     public ScheduleWriteReport write(List<ParsedSheet> sheets, Integer periodId, Integer locationId,
                                      SuffixStyle style, boolean project, String user) {
         StudyPeriod period = periodRepository.findById(periodId)
-                .orElseThrow(() -> new IllegalArgumentException("Периода с id " + periodId + " нет"));
+                .orElseThrow(() -> new NotFoundException("Периода с id " + periodId + " нет"));
 
         // Сначала план — размещение ссылается на назначение, а не на дисциплину и группу.
         PlanResolution plan = planService.createForSchedule(sheets, periodId, style);

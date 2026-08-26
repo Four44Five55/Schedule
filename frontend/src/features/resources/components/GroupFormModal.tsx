@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Users, Home, AlertCircle, Network, CalendarDays } from 'lucide-react';
+import { X, Save, Loader2, Users, Home, Network, CalendarDays } from 'lucide-react';
 import { GroupDto, GroupCreateDto, GroupUpdateDto, AuditoriumDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { useOrgUnits } from '../../orgUnit/hooks/useOrgUnits';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface GroupFormModalProps {
     /** Группа для редактирования (null = создание новой) */
@@ -49,7 +51,7 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
         setLoadingAuditoriums(true);
         ResourceService.getAuditoriums()
             .then(setAuditoriums)
-            .catch(() => setAuditoriums([]))
+            .catch((err) => { setAuditoriums([]); setError(errorMessage(err, 'Не удалось загрузить список аудиторий — домашнюю комнату выбрать не из чего.')); })
             .finally(() => setLoadingAuditoriums(false));
     }, []);
 
@@ -101,21 +103,8 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
         } catch (err: any) {
             console.error('Ошибка сохранения группы:', err);
 
-            // Обработка ошибок валидации от сервера
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                if (typeof serverError === 'string') {
-                    setError(serverError);
-                } else if (serverError.message) {
-                    setError(serverError.message);
-                } else {
-                    setError('Ошибка валидации данных');
-                }
-            } else if (err.response?.status === 409) {
-                setError('Группа с таким названием уже существует');
-            } else {
-                setError('Не удалось сохранить группу. Попробуйте ещё раз.');
-            }
+            // Текст отказа пишет бэк — он один знает, что именно совпало; здесь только запасной.
+            setError(errorMessage(err, 'Не удалось сохранить группу. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -149,10 +138,7 @@ export const GroupFormModal: React.FC<GroupFormModalProps> = ({
                 <form onSubmit={handleSubmit} className="p-6 space-y-5">
                     {/* Ошибка общая */}
                     {error && (
-                        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                            <span>{error}</span>
-                        </div>
+                        <ErrorBanner message={error} />
                     )}
 
                     {/* Название */}

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.RuleViolationException;
 import ru.dto.GroupDensityDto;
 import ru.entity.CellForLesson;
 import ru.entity.Group;
@@ -76,7 +77,7 @@ public class GroupDensityReportService {
         GenerationScope scope;
         try {
             scope = scopeResolver.resolve(periodId, null);
-        } catch (IllegalStateException e) {
+        } catch (RuleViolationException e) {
             // Период без курсов — распределять нечего.
             log.info("Group density: период id={} без курсов, пустой отчёт", periodId);
             return List.of();

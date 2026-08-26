@@ -2,12 +2,11 @@ package ru.controllers;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -411,21 +410,6 @@ public class ImportController {
         return rollbackService.rollbackPlan(periodId);
     }
 
-    /** Каталог не разрешён, не существует или чтение выключено — это ошибка запроса, а не сбой. */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e) {
-        log.warn("Отказ разбора каталога: {}", e.getMessage());
-        return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-    }
-
-    /**
-     * Пачка не влезла в лимит — отвечаем понятной строкой, а не общей 500-й.
-     *
-     * <p>Умолчание Spring отдаёт исключение без единой цифры, и на экране это выглядело как «файлы
-     * не разобрались» — то есть как дефект разбора, хотя запрос до разбора даже не дошёл. Здесь
-     * ошибка называет себя сама и подсказывает единственное верное действие: делить пачку. Поднимать
-     * потолок бесконечно нельзя — разбор держит в памяти по объекту на файл.</p>
-     */
     /**
      * Разбирает пачку файлов, пропуская нечитаемые.
      *
@@ -448,24 +432,27 @@ public class ImportController {
     }
 
     /**
-     * Названной сущности больше нет — 404 с текстом, а не сырая 500-я.
+     * Пачка не влезла в лимит запроса.
      *
-     * <p>Сюда приходит ручная привязка к подразделению, которое удалили между сверкой и заведением.
-     * Молча её проигнорировать нельзя: выбор сделан осознанно, и тихо завести человека «куда
-     * вывелось» — это ошибка, которую в расписании потом не увидеть.</p>
+     * <p><b>Единственный обработчик, который остаётся здесь</b> — и не потому, что общий не
+     * справится, а потому, что верный совет знает только этот контроллер: делить пачку по
+     * разрезам. Умолчание Spring отдаёт исключение без единой цифры, и на экране это выглядело
+     * как «файлы не разобрались», то есть как дефект разбора, хотя запрос до разбора не дошёл.
+     * Поднимать потолок бесконечно нельзя: разбор держит в памяти по объекту на файл.</p>
+     *
+     * <p>Форма тела — общая ({@code ProblemDetail}), чтобы клиент разбирал её тем же кодом, что и
+     * все остальные отказы.</p>
      */
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<Map<String, String>> notFound(EntityNotFoundException e) {
-        log.warn("Заведение прервано: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
-    }
-
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<Map<String, String>> tooLarge(MaxUploadSizeExceededException e) {
+    public ProblemDetail tooLarge(MaxUploadSizeExceededException e) {
         log.warn("Пачка файлов не влезла в лимит: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(Map.of("message", "Пачка файлов слишком велика для одного запроса. "
-                        + "Загрузите её частями — например, по одному разрезу за раз."));
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "Пачка файлов слишком велика для одного запроса. "
+                        + "Загрузите её частями — например, по одному разрезу за раз.");
+        problem.setTitle("Пачка слишком велика");
+        problem.setProperty("code", "UPLOAD_TOO_LARGE");
+        return problem;
     }
 
     private static SheetInspection unreadable(String name, IOException cause) {

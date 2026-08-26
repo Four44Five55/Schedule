@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { X, Save, Loader2, AlertCircle, Network } from 'lucide-react';
+import { X, Save, Loader2, Network } from 'lucide-react';
 import type { OrgUnitCreateDto, OrgUnitDto, OrgUnitType, OrgUnitUpdateDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
 import { cn } from '../../../utils/cn';
 import type { OrgUnitNode } from '../hooks/useOrgUnits';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface OrgUnitFormModalProps {
     /** Редактируемое подразделение либо null для создания. */
@@ -97,14 +99,8 @@ export const OrgUnitFormModal: React.FC<OrgUnitFormModalProps> = ({
             onSaved();
         } catch (err: any) {
             console.error('Ошибка сохранения подразделения:', err);
-            const body = err.response?.data;
-            const serverText = typeof body === 'string' ? body : body?.message;
-            if (err.response?.status === 400 || err.response?.status === 409) {
-                // Причина отказа приходит с бэка текстом — правило вложенности живёт там.
-                setError(serverText || 'Такое размещение подразделения недопустимо.');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            // Причина отказа приходит с бэка текстом — правило вложенности живёт там.
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -140,10 +136,7 @@ export const OrgUnitFormModal: React.FC<OrgUnitFormModalProps> = ({
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {/* Название */}

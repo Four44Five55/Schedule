@@ -1,6 +1,5 @@
 package ru.services.importing;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,6 +49,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import ru.exceptions.NotFoundException;
 
 /**
  * Заводит в справочниках то, чего сверка не нашла. Расписания и учебного плана <b>не касается</b>.
@@ -645,7 +645,7 @@ public class ImportCreationService {
             return OrgUnitHints.unique(units, fromFile);
         }
         return Optional.of(orgUnitRepository.findById(chosen).orElseThrow(
-                () -> new EntityNotFoundException("Подразделение с id=" + chosen + " не найдено")));
+                () -> new NotFoundException("Подразделение с id=" + chosen + " не найдено")));
     }
 
     /** Из отчёта сверки берутся только строки «в базе нет» — остальные пропускаются намеренно. */

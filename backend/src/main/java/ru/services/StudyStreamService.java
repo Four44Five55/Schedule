@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.studyStream.StudyStreamCreateDto;
 import ru.dto.studyStream.StudyStreamDto;
 import ru.dto.studyStream.StudyStreamUpdateDto;
@@ -40,7 +41,7 @@ public class StudyStreamService {
     @Transactional
     public StudyStreamDto createStudyStream(StudyStreamCreateDto createDto) {
         if (studyStreamRepository.existsByName(createDto.name())) {
-            throw new IllegalStateException("Поток с названием '" + createDto.name() + "' уже существует.");
+            throw new DuplicateException("Поток с названием '" + createDto.name() + "' уже существует.");
         }
 
         // Используем GroupService для получения сущностей
@@ -65,7 +66,7 @@ public class StudyStreamService {
     @Transactional
     public StudyStreamDto updateStudyStream(Integer streamId, StudyStreamUpdateDto updateDto) {
         StudyStream streamToUpdate = studyStreamRepository.findById(streamId)
-                .orElseThrow(() -> new EntityNotFoundException("Поток с id=" + streamId + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Поток с id=" + streamId + " не найден."));
 
         // Используем GroupService для получения сущностей
         List<Group> newGroups = groupService.getAllEntitiesByIds(updateDto.groupIds());
@@ -101,7 +102,7 @@ public class StudyStreamService {
     @Transactional
     public void deleteStudyStream(Integer streamId) {
         if (!studyStreamRepository.existsById(streamId)) {
-            throw new EntityNotFoundException("Поток с id=" + streamId + " не найден.");
+            throw new NotFoundException("Поток с id=" + streamId + " не найден.");
         }
         studyStreamRepository.deleteById(streamId);
     }
@@ -111,6 +112,6 @@ public class StudyStreamService {
     @Transactional(readOnly = true)
     public StudyStream getEntityById(Integer id) {
         return studyStreamRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Поток с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Поток с id=" + id + " не найден."));
     }
 }

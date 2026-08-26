@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.auditoriumPool.AuditoriumPoolCreateDto;
 import ru.dto.auditoriumPool.AuditoriumPoolDto;
 import ru.dto.auditoriumPool.AuditoriumPoolUpdateDto;
@@ -28,7 +29,7 @@ public class AuditoriumPoolService {
     @Transactional
     public AuditoriumPoolDto createPool(AuditoriumPoolCreateDto createDto) {
         if (auditoriumPoolRepository.existsByName(createDto.name())) {
-            throw new IllegalStateException("Пул аудиторий с названием '" + createDto.name() + "' уже существует.");
+            throw new DuplicateException("Пул аудиторий с названием '" + createDto.name() + "' уже существует.");
         }
 
         AuditoriumPool newPool = new AuditoriumPool();
@@ -46,7 +47,7 @@ public class AuditoriumPoolService {
     @Transactional
     public AuditoriumPoolDto updatePool(Integer poolId, AuditoriumPoolUpdateDto updateDto) {
         AuditoriumPool poolToUpdate = auditoriumPoolRepository.findById(poolId)
-                .orElseThrow(() -> new EntityNotFoundException("Пул аудиторий с id=" + poolId + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Пул аудиторий с id=" + poolId + " не найден."));
 
         poolToUpdate.setName(updateDto.name());
         poolToUpdate.setDescription(updateDto.description());
@@ -76,7 +77,7 @@ public class AuditoriumPoolService {
     @Transactional
     public void deletePool(Integer poolId) {
         if (!auditoriumPoolRepository.existsById(poolId)) {
-            throw new EntityNotFoundException("Пул аудиторий с id=" + poolId + " не найден.");
+            throw new NotFoundException("Пул аудиторий с id=" + poolId + " не найден.");
         }
         // TODO: Добавить проверку, не используется ли пул в CurriculumSlot, перед удалением.
         auditoriumPoolRepository.deleteById(poolId);
@@ -86,6 +87,6 @@ public class AuditoriumPoolService {
     @Transactional(readOnly = true)
     public AuditoriumPool getEntityById(Integer id) {
         return auditoriumPoolRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Пул аудиторий с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Пул аудиторий с id=" + id + " не найден."));
     }
 }

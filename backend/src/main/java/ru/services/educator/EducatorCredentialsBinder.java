@@ -1,6 +1,5 @@
 package ru.services.educator;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.entity.Educator;
@@ -9,6 +8,7 @@ import ru.enums.AcademicTitle;
 import ru.repository.RankServiceRepository;
 import ru.repository.ScienceBranchRepository;
 import ru.repository.SpecialRankRepository;
+import ru.exceptions.NotFoundException;
 
 /**
  * Проставляет регалии на преподавателя, разрешая id справочников в сущности.
@@ -56,7 +56,7 @@ public class EducatorCredentialsBinder {
         educator.setAcademicTitle(academicTitle);
     }
 
-    private EntityNotFoundException notFound(String what, Integer id) {
-        return new EntityNotFoundException("Значение справочника «" + what + "» с id=" + id + " не найдено.");
+    private NotFoundException notFound(String what, Integer id) {
+        return new NotFoundException("Значение справочника «" + what + "» с id=" + id + " не найдено.");
     }
 }

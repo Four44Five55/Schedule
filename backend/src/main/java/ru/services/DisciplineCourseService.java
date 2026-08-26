@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.disciplineCourse.DisciplineCourseCreateDto;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.dto.disciplineCourse.DisciplineCourseUpdateDto;
@@ -38,7 +39,7 @@ public class DisciplineCourseService {
         //    может существовать на разных семестрах (разный учебный план когорт).
         if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodIdAndSemester(
                 discipline.getId(), studyPeriod.getId(), createDto.semester())) {
-            throw new IllegalStateException("Курс для дисциплины '" + discipline.getName() + "', периода '"
+            throw new DuplicateException("Курс для дисциплины '" + discipline.getName() + "', периода '"
                     + studyPeriod.getName() + "' и семестра " + createDto.semester() + " уже существует.");
         }
 
@@ -82,7 +83,7 @@ public class DisciplineCourseService {
         // Проверяем, что мы не создаем дубликат, если период изменился
         if (!courseToUpdate.getStudyPeriod().getId().equals(newStudyPeriod.getId())) {
             if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodId(courseToUpdate.getDiscipline().getId(), newStudyPeriod.getId())) {
-                throw new IllegalStateException("Курс для данной дисциплины и периода '" + newStudyPeriod.getName() + "' уже существует.");
+                throw new DuplicateException("Курс для данной дисциплины и периода '" + newStudyPeriod.getName() + "' уже существует.");
             }
         }
 
@@ -111,6 +112,6 @@ public class DisciplineCourseService {
     @Transactional(readOnly = true)
     public DisciplineCourse getEntityById(Integer id) {
         return disciplineCourseRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Курс с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Курс с id=" + id + " не найден."));
     }
 }

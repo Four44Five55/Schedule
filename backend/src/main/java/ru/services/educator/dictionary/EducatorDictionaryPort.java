@@ -1,6 +1,5 @@
 package ru.services.educator.dictionary;
 
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 import ru.dto.educatorDictionary.DictionaryEntryDto;
 import ru.dto.educatorDictionary.DictionaryEntryFormDto;
@@ -8,6 +7,7 @@ import ru.entity.dictionary.AbstractEducatorDictionary;
 
 import java.util.List;
 import java.util.Optional;
+import ru.exceptions.NotFoundException;
 
 /**
  * Доступ к одному справочнику регалий. <b>Template Method (GoF):</b> вся механика CRUD и сборки
@@ -102,8 +102,8 @@ public abstract class EducatorDictionaryPort<T extends AbstractEducatorDictionar
         );
     }
 
-    private EntityNotFoundException notFound(Integer id) {
-        return new EntityNotFoundException(
+    private NotFoundException notFound(Integer id) {
+        return new NotFoundException(
                 "Строка справочника «" + kind().getLabel() + "» с id=" + id + " не найдена.");
     }
 }

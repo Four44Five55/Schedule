@@ -3,6 +3,7 @@ import { EnumService, ConstraintKindService } from '../services/apiServices';
 import type { ConstraintKindDto, EnumDto } from '../types/api';
 import { DEFAULT_KIND_CATEGORY, KindCategory } from '../features/schedule/kindStyles';
 import { ConstraintStyle, constraintStyleOfColor } from '../features/constraints/constraintStyles';
+import { useToast } from './ToastContext';
 
 /**
  * Данные всех enum-ов, загруженные с бэкенда.
@@ -78,6 +79,7 @@ const EnumContext = createContext<EnumContextType | null>(null);
  * Провайдер enum-ов. Оборачивает приложение, загружает enum-ы один раз при старте.
  */
 export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const toast = useToast();
     const [data, setData] = useState<EnumData>({
         kindOfStudy: [],
         daysOfWeek: [],
@@ -97,9 +99,11 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const kinds = await ConstraintKindService.getAll();
             setData((prev) => ({ ...prev, constraintKinds: kinds }));
         } catch (err) {
-            console.error('Ошибка загрузки видов ограничений:', err);
+            // Молчать нельзя: справочник перечитывают ПОСЛЕ правки, и невидимый отказ выглядит
+            // как «правка не сохранилась» — человек идёт править второй раз.
+            toast.failure(err, 'Виды ограничений не перечитались — список на экране устарел.');
         }
-    }, []);
+    }, [toast]);
 
     useEffect(() => {
         // Два источника: enum-ы (значения из кода) и справочник видов ограничений (данные
@@ -107,11 +111,16 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // в вечной загрузке — отсюда allSettled вместо all.
         Promise.allSettled([EnumService.getAll(), ConstraintKindService.getAll()])
             .then(([enumsResult, kindsResult]) => {
+                // Без перечней подписи вырождаются в коды («LECTURE» вместо «Лекция»), а выбор вида
+                // в формах становится пустым. Экран при этом рисуется — то есть выглядит рабочим,
+                // и без сообщения человек ищет причину в данных.
                 if (enumsResult.status === 'rejected') {
-                    console.error('Ошибка загрузки enum-ов:', enumsResult.reason);
+                    toast.failure(enumsResult.reason,
+                        'Не удалось загрузить перечни — подписи и списки выбора будут неполными.');
                 }
                 if (kindsResult.status === 'rejected') {
-                    console.error('Ошибка загрузки видов ограничений:', kindsResult.reason);
+                    toast.failure(kindsResult.reason,
+                        'Не удалось загрузить виды ограничений — разметка ограничений будет без подписей.');
                 }
                 const enums = enumsResult.status === 'fulfilled' ? enumsResult.value : null;
                 setData({
@@ -126,7 +135,7 @@ export const EnumProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     loading: false,
                 });
             });
-    }, []);
+    }, [toast]);
 
     // Хелперы мемоизируем — пересчитываются только при изменении данных
     const helpers = useMemo<EnumHelpers>(() => {

@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.themeLesson.ThemeLessonCreateDto;
 import ru.dto.themeLesson.ThemeLessonDto;
 import ru.dto.themeLesson.ThemeLessonUpdateDto;
@@ -39,7 +40,7 @@ public class ThemeLessonService {
     @Transactional
     public ThemeLessonDto createTheme(ThemeLessonCreateDto createDto) {
         if (themeLessonRepository.existsByDisciplineIdAndThemeNumber(createDto.disciplineId(), createDto.themeNumber())) {
-            throw new IllegalStateException("Тема с номером '" + createDto.themeNumber() + "' уже существует для данной дисциплины.");
+            throw new DuplicateException("Тема с номером '" + createDto.themeNumber() + "' уже существует для данной дисциплины.");
         }
 
         Discipline discipline = disciplineService.getEntityById(createDto.disciplineId());
@@ -93,7 +94,7 @@ public class ThemeLessonService {
                 !themeToUpdate.getThemeNumber().equals(updateDto.themeNumber())) {
 
             if (themeLessonRepository.existsByDisciplineIdAndThemeNumber(updateDto.disciplineId(), updateDto.themeNumber())) {
-                throw new IllegalStateException("Тема с номером '" + updateDto.themeNumber() + "' уже существует для целевой дисциплины.");
+                throw new DuplicateException("Тема с номером '" + updateDto.themeNumber() + "' уже существует для целевой дисциплины.");
             }
         }
 
@@ -120,7 +121,7 @@ public class ThemeLessonService {
     @Transactional
     public void deleteTheme(Integer id) {
         if (!themeLessonRepository.existsById(id)) {
-            throw new EntityNotFoundException("Тема с id=" + id + " не найдена.");
+            throw new NotFoundException("Тема с id=" + id + " не найдена.");
         }
         // TODO: Добавить проверку, не используется ли тема в CurriculumSlot, перед удалением.
         themeLessonRepository.deleteById(id);
@@ -133,11 +134,11 @@ public class ThemeLessonService {
      *
      * @param id ID темы.
      * @return Сущность ThemeLesson.
-     * @throws EntityNotFoundException если тема не найдена.
+     * @throws NotFoundException если тема не найдена.
      */
     @Transactional(readOnly = true)
     public ThemeLesson getEntityById(Integer id) {
         return themeLessonRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Тема с id=" + id + " не найдена."));
+                .orElseThrow(() -> new NotFoundException("Тема с id=" + id + " не найдена."));
     }
 }

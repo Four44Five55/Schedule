@@ -1,5 +1,4 @@
 package ru.controllers;
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -59,17 +58,12 @@ public class DisciplineCourseController {
     }
     /**
      * Клон учебного плана: глубокая копия выбранных курсов в целевой период. Атомарно —
-     * дубль курса (discipline+semester) в целевом периоде откатывает всю операцию (409).
-     * Глобального ControllerAdvice нет, поэтому статус маппим здесь (как в ScheduleCommandController).
+     * дубль курса (discipline+semester) в целевом периоде откатывает всю операцию:
+     * {@code DuplicateException} становится 409 в {@link ApiExceptionHandler}.
      */
     @PostMapping("/clone")
-    public ResponseEntity<?> clone(@Valid @RequestBody CourseCloneRequestDto dto) {
-        try {
-            List<DisciplineCourseDto> created = curriculumCloneService.cloneCourses(dto);
-            return ResponseEntity.status(HttpStatus.CREATED).body(created);
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
-        }
+    public ResponseEntity<List<DisciplineCourseDto>> clone(@Valid @RequestBody CourseCloneRequestDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(curriculumCloneService.cloneCourses(dto));
     }
     @PutMapping("/{id}")
     public ResponseEntity<DisciplineCourseDto> update(@PathVariable Integer id, @Valid @RequestBody DisciplineCourseUpdateDto dto) {
@@ -81,25 +75,14 @@ public class DisciplineCourseController {
      * Фронт показывает эти числа в подтверждении перед удалением.
      */
     @GetMapping("/{id}/deletion-impact")
-    public ResponseEntity<?> deletionImpact(@PathVariable Integer id) {
-        try {
-            return ResponseEntity.ok(courseDeletionService.preview(id));
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        }
+    public ResponseEntity<CourseDeletionImpactDto> deletionImpact(@PathVariable Integer id) {
+        return ResponseEntity.ok(courseDeletionService.preview(id));
     }
 
-    /**
-     * Каскадное удаление курса (слоты, назначения, размещения, сцепки + очистка read-модели).
-     * Глобального ControllerAdvice нет, поэтому 404 маппим здесь.
-     */
+    /** Каскадное удаление курса (слоты, назначения, размещения, сцепки + очистка read-модели). */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        try {
-            disciplineCourseService.deleteCourse(id);
-            return ResponseEntity.noContent().build();
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        }
+        disciplineCourseService.deleteCourse(id);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -1,9 +1,11 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.InUseException;
 import ru.dto.auditorium.AuditoriumCreateDto;
 import ru.dto.auditorium.AuditoriumDeletionImpactDto;
 import ru.dto.auditorium.AuditoriumDto;
@@ -59,7 +61,7 @@ public class AuditoriumService {
     public AuditoriumDto createAuditorium(AuditoriumCreateDto createDto) {
         // Проверяем, не существует ли уже аудитория с таким именем в данном корпусе
         if (auditoriumRepository.existsByNameAndBuildingId(createDto.name(), createDto.buildingId())) {
-            throw new IllegalStateException("Аудитория с названием '" + createDto.name() + "' уже существует в этом корпусе.");
+            throw new DuplicateException("Аудитория с названием '" + createDto.name() + "' уже существует в этом корпусе.");
         }
 
         // Получаем сущность корпуса через BuildingService
@@ -97,7 +99,7 @@ public class AuditoriumService {
         // Проверяем на уникальность, если имя или корпус изменились
         if (!auditoriumToUpdate.getName().equals(updateDto.name()) || !auditoriumToUpdate.getBuilding().getId().equals(updateDto.buildingId())) {
             if (auditoriumRepository.existsByNameAndBuildingId(updateDto.name(), updateDto.buildingId())) {
-                throw new IllegalStateException("Аудитория с названием '" + updateDto.name() + "' уже существует в целевом корпусе.");
+                throw new DuplicateException("Аудитория с названием '" + updateDto.name() + "' уже существует в целевом корпусе.");
             }
         }
 
@@ -185,7 +187,7 @@ public class AuditoriumService {
         // (иначе UI и бэк со временем разошлись бы в том, что считать «нельзя»).
         AuditoriumDeletionImpactDto impact = deleteImpact(id); // бросит 404, если аудитории нет
         if (!impact.deletable()) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "Аудиторию нельзя удалить: она указана требуемой или приоритетной в "
                             + impact.slotsRequiringIt() + " занятиях учебного плана. "
                             + "Сначала уберите её из плана.");
@@ -215,12 +217,12 @@ public class AuditoriumService {
      *
      * @param id ID аудитории.
      * @return Сущность Auditorium.
-     * @throws EntityNotFoundException если аудитория не найдена.
+     * @throws NotFoundException если аудитория не найдена.
      */
     @Transactional(readOnly = true)
     public Auditorium getEntityById(Integer id) {
         return auditoriumRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Аудитория с id=" + id + " не найдена."));
+                .orElseThrow(() -> new NotFoundException("Аудитория с id=" + id + " не найдена."));
     }
 
     /**
@@ -238,7 +240,7 @@ public class AuditoriumService {
      *
      * @param ids Список ID аудиторий.
      * @return Список найденных сущностей Auditorium.
-     * @throws EntityNotFoundException если хотя бы одна аудитория не найдена.
+     * @throws NotFoundException если хотя бы одна аудитория не найдена.
      */
     @Transactional(readOnly = true)
     public List<Auditorium> getAllEntitiesByIds(List<Integer> ids) {
@@ -246,7 +248,7 @@ public class AuditoriumService {
         // Проверяем, что количество найденных сущностей совпадает с количеством запрошенных ID
         if (auditoriums.size() != ids.size()) {
             // Эта проверка важна, чтобы убедиться в целостности данных
-            throw new EntityNotFoundException("Одна или несколько аудиторий из списка ID не найдены.");
+            throw new NotFoundException("Одна или несколько аудиторий из списка ID не найдены.");
         }
         return auditoriums;
     }

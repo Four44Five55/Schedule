@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Save, Loader2, User, AlertCircle, Calendar, Clock, Zap, Network, Award } from 'lucide-react';
+import { X, Save, Loader2, User, Calendar, Clock, Zap, Network, Award } from 'lucide-react';
 import {
     EducatorDto, EducatorCreateDto, EducatorUpdateDto, DayOfWeek, TimeSlotPair,
     AcademicDegree, AcademicTitle,
@@ -11,6 +11,8 @@ import {
     useEducatorCredentialDictionaries, selectableEntries,
 } from '../../educatorDictionary/hooks/useEducatorDictionaries';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface EducatorFormModalProps {
     educator: EducatorDto | null;
@@ -114,14 +116,8 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
             onSaved(saved);
         } catch (err: any) {
             console.error('Ошибка сохранения преподавателя:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации');
-            } else if (err.response?.status === 409) {
-                setError('Преподаватель с таким именем уже существует');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            // Текст отказа пишет бэк — он один знает, что именно совпало; здесь только запасной.
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -155,10 +151,7 @@ export const EducatorFormModal: React.FC<EducatorFormModalProps> = ({
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {/* Ошибка */}
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {/* ФИО */}

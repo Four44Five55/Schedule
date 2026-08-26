@@ -1,9 +1,12 @@
 package ru.services.constraints;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.InUseException;
+import ru.exceptions.RuleViolationException;
 import ru.dto.constraint.ConstraintKindDto;
 import ru.dto.constraint.ConstraintKindFormDto;
 import ru.entity.dictionary.KindOfConstraint;
@@ -84,7 +87,7 @@ public class ConstraintKindService {
     @Transactional
     public ConstraintKindDto update(String code, ConstraintKindFormDto form) {
         KindOfConstraint kind = repository.findById(code)
-                .orElseThrow(() -> new EntityNotFoundException("Вид ограничения не найден: " + code));
+                .orElseThrow(() -> new NotFoundException("Вид ограничения не найден: " + code));
         requireFreeLabels(form, code);
 
         // Системным правим всё, кроме кода: название «Командировка» можно переименовать в «Убытие»,
@@ -102,17 +105,17 @@ public class ConstraintKindService {
     @Transactional
     public void delete(String code) {
         KindOfConstraint kind = repository.findById(code)
-                .orElseThrow(() -> new EntityNotFoundException("Вид ограничения не найден: " + code));
+                .orElseThrow(() -> new NotFoundException("Вид ограничения не найден: " + code));
 
         if (kind.isSystem()) {
-            throw new IllegalStateException(
+            throw new RuleViolationException(
                     "Вид «" + kind.getName() + "» пришёл из кода и не удаляется. Его можно погасить: "
                             + "погашенный не предлагается при вводе, но уже проставленные ограничения сохранятся.");
         }
 
         long used = usageCount(code);
         if (used > 0) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "Видом «" + kind.getName() + "» размечено ограничений: " + used
                             + ". Удаление запрещено — сначала перенесите их на другой вид или погасите этот.");
         }
@@ -144,11 +147,11 @@ public class ConstraintKindService {
     private void requireFreeLabels(ConstraintKindFormDto form, String selfCode) {
         Optional<KindOfConstraint> byName = repository.findByNameIgnoreCase(form.name().trim());
         if (byName.isPresent() && !byName.get().getCode().equals(selfCode)) {
-            throw new IllegalArgumentException("Вид с названием «" + form.name().trim() + "» уже есть");
+            throw new DuplicateException("Вид с названием «" + form.name().trim() + "» уже есть");
         }
         Optional<KindOfConstraint> byShort = repository.findByShortNameIgnoreCase(form.shortName().trim());
         if (byShort.isPresent() && !byShort.get().getCode().equals(selfCode)) {
-            throw new IllegalArgumentException("Сокращение «" + form.shortName().trim() + "» уже занято");
+            throw new DuplicateException("Сокращение «" + form.shortName().trim() + "» уже занято");
         }
     }
 

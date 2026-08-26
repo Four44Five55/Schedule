@@ -11,6 +11,10 @@ import { kindStyleOfCategory, KIND_STYLES } from '../../schedule/kindStyles';
 import { useEnums } from '../../../context/EnumContext';
 import { Users, UserSquare2, ChevronRight, ChevronDown, Loader2, Lock, X, Trash2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { apiError, errorMessage, isStaleVersion } from '../../../services/apiError';
+import { useToast } from '../../../context/ToastContext';
+import { LoadFailure } from '../../../components/ui/LoadFailure';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 type ViewMode = 'group' | 'educator';
 
@@ -50,7 +54,11 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // Выбранное неразмещённое занятие из палитры (Фича 2, Фаза B — B5) и ошибка
   // последней попытки установки (409 конфликт ресурса).
   const [selectedUnplaced, setSelectedUnplaced] = useState<BoardLessonDto | null>(null);
+  const toast = useToast();
   const [placeError, setPlaceError] = useState<string | null>(null);
+  // Рабочее место без сессии периода — пустая палитра и пустая сетка, то есть «занятий нет»
+  // вместо «их не удалось спросить». Отказ бутстрапа показываем вместо содержимого.
+  const [bootError, setBootError] = useState<string | null>(null);
 
   // Находки правила порядка изучения: placementId → что не так (раньше своей лекции /
   // слишком далеко после неё). Сетка штрихует занятие красным или салатовым.
@@ -59,7 +67,16 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
 
   // Загрузка размещений периода для СЕТКИ (ручные пины проецируются в schedule_view).
   const reloadSchedule = useCallback(async () => {
-    const result = await ScheduleService.loadExisting(period.startDate, period.endDate);
+    // Не бросаем наружу: сетку перечитывают из шести мест, включая обработчик потока и
+    // «после команды», где обещание никто не ждёт. Отказ показываем тостом, а прежние занятия
+    // оставляем на экране — они всё ещё вернее пустоты.
+    let result;
+    try {
+      result = await ScheduleService.loadExisting(period.startDate, period.endDate);
+    } catch (e) {
+      toast.failure(e, 'Не удалось перечитать расписание — на экране прежние данные.');
+      return;
+    }
     if (result.status === 'loaded') {
       setLessons(result.lessons);
       setGrid(result.grid || {});
@@ -79,20 +96,22 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
         violations.map((v) => [v.placementId, { kind: v.kind, gapDays: v.gapDays }])
       ));
     } catch (e) {
-      console.error('Не удалось загрузить находки порядка изучения:', e);
+      // Пустая карта = «нарушений нет»: штриховка пропадает, и расписание выглядит здоровым.
+      // Молчать об этом нельзя — подсказка не просто исчезает, она превращается в неверную.
       setOrderViolations(new Map());
+      toast.failure(e, 'Не удалось загрузить находки порядка изучения — подсветка нарушений выключена.');
     }
-  }, []);
+  }, [toast]);
 
   // Находки по аудиториям — тем же приёмом, что и порядок: одна карта на всё расписание.
   const reloadAuditoriumViolations = useCallback(async (sessionId: string) => {
     try {
       setAuditoriumViolations(buildAuditoriumFindingMap(await CQRSService.getAuditoriumViolations(sessionId)));
     } catch (e) {
-      console.error('Не удалось загрузить находки по аудиториям:', e);
       setAuditoriumViolations(new Map());
+      toast.failure(e, 'Не удалось загрузить находки по аудиториям — подсветка конфликтов выключена.');
     }
-  }, []);
+  }, [toast]);
 
   // Загрузка доски (палитра + счётчики). Command Side читается напрямую — в отличие от
   // schedule_view, тут нет асинхронной проекции: свежие данные сразу после commit.
@@ -147,7 +166,10 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
 
     // Чужая правка: подхватываем поколение и обновляем палитру.
     if (e.version != null) setSession((s) => (s ? { ...s, version: e.version! } : s));
-    if (e.sessionId) reloadBoard(e.sessionId).catch(() => {});
+    if (e.sessionId) reloadBoard(e.sessionId)
+      // Чужая правка пришла, а палитра не обновилась: на экране остаются неразмещёнными
+      // занятия, которые уже поставил кто-то другой — и следующая попытка упрётся в 409.
+      .catch((err) => toast.failure(err, 'Палитра не обновилась после чужой правки — данные на экране устарели.'));
   });
 
   // Перечитать после своей команды. Если поток жив — не делаем ничего: звонок придёт сам, ровно
@@ -163,11 +185,11 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   // или соседняя вкладка — push-уведомлений пока нет), залипает на старой версии, и КАЖДАЯ его
   // следующая команда обречена на 409 до ручного F5.
   // Отличаем от RESOURCE_CONFLICT (слот занят) по коду ошибки: там версия ни при чём.
-  const recoverIfStale = useCallback((e: any) => {
-    const body = e?.response?.data;
-    if (e?.response?.status !== 409 || body?.error !== 'CONFLICT') return;
-    if (body.currentVersion != null) {
-      setSession((s) => (s ? { ...s, version: body.currentVersion } : s));
+  const recoverIfStale = useCallback((e: unknown) => {
+    if (!isStaleVersion(e)) return;
+    const version = apiError(e).currentVersion;
+    if (version != null) {
+      setSession((s) => (s ? { ...s, version } : s));
     }
     reloadSchedule(); // расписание уже другое — показываем актуальное
   }, [reloadSchedule]);
@@ -242,7 +264,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
       //   RESOURCE_CONFLICT — слот занят: выбор НЕ сбрасываем, пусть кликнет другую ячейку;
       //   CONFLICT — устаревшая версия (расписание изменили параллельно): подхватываем актуальную
       //   версию из тела и перечитываем данные, иначе окно залипнет на старой версии навсегда.
-      setPlaceError(e?.response?.data?.message || 'Не удалось разместить занятие: слот занят.');
+      setPlaceError(errorMessage(e, 'Не удалось разместить занятие: слот занят.'));
       recoverIfStale(e);
     }
   }, [session, period.id, reloadBoardLocal, reloadAfterCommand, selectedEntity, selectedUnplaced,
@@ -272,7 +294,9 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
       // асинхронна (@Async, AFTER_COMMIT) и НЕ успевает за фикс. паузу → перезагрузка затёрла бы
       // оптимистичный флип устаревшим значением (эффект «сработало на секунду и откатилось»).
     } catch (e) {
-      console.error('Не удалось изменить закрепление:', e);
+      // Флип был оптимистичным: замок на экране уже перерисовался, и без сообщения его откат
+      // выглядит как «нажатие не сработало».
+      setPlaceError(errorMessage(e, 'Не удалось изменить закрепление занятия.'));
       recoverIfStale(e);   // 409 по версии — подхватить актуальную
       reloadSchedule();    // откат оптимистичного флипа к состоянию сервера
     }
@@ -287,7 +311,7 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
       await reloadBoardLocal(session.id);
       reloadAfterCommand();
     } catch (e) {
-      console.error('Не удалось снять размещение:', e);
+      setPlaceError(errorMessage(e, 'Не удалось снять занятие с расписания.'));
       recoverIfStale(e);
     }
   }, [session, reloadBoardLocal, reloadAfterCommand, recoverIfStale]);
@@ -308,7 +332,9 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
         latest = await CQRSService.deletePlacement(id, latest.version);
       }
     } catch (e) {
-      console.error('Массовое снятие прервано:', e);
+      // Снятие идёт последовательно, поэтому отказ на середине оставляет часть занятий на местах.
+      // Молчание тут особенно дорого: экран показывает наполовину сделанное как результат.
+      setPlaceError(errorMessage(e, 'Снятие прервано — часть занятий осталась в расписании.'));
       recoverIfStale(e);
       return;
     } finally {
@@ -319,19 +345,21 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   }, [session, reloadBoardLocal, reloadAfterCommand, recoverIfStale]);
 
   // Бутстрап: сессия периода → сетка (доску грузит отдельный эффект по session/оси).
+  const [bootAttempt, setBootAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setBootError(null);
     CQRSService.getSessionForPeriod(period.id)
       .then(async (s) => {
         if (cancelled) return;
         setSession(s);
         await reloadSchedule();
       })
-      .catch((e) => console.error('Не удалось открыть сессию периода:', e))
+      .catch((e) => { if (!cancelled) setBootError(errorMessage(e, 'Не удалось открыть сессию периода.')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [period.id, reloadSchedule]);
+  }, [period.id, reloadSchedule, bootAttempt]);
 
   // Доска: перезагружается при появлении сессии и при смене оси (viewMode) — reloadBoard
   // зависит от viewMode/courseIds.
@@ -342,7 +370,10 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
   const sessionId = session?.id;
   useEffect(() => {
     if (!sessionId) return;
-    reloadBoard(sessionId).catch((e) => console.error('Не удалось загрузить доску раскладки:', e));
+    // Доска — источник счётчиков и очереди неразмещённых. Не загрузилась — палитра пуста,
+    // и это читается как «размещать нечего».
+    reloadBoard(sessionId).catch((e) => toast.failure(e, 'Не удалось загрузить доску раскладки.',
+      { label: 'Повторить', run: () => { void reloadBoard(sessionId); } }));
   }, [sessionId, reloadBoard]);
 
   // Нарушения порядка — вслед за сеткой: `lessons` меняется после КАЖДОЙ мутации
@@ -415,7 +446,14 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
         </div>
       </div>
 
-      {loading ? (
+      {bootError ? (
+        <LoadFailure
+          title="Рабочее место не открылось"
+          message={bootError}
+          onRetry={() => setBootAttempt((n) => n + 1)}
+          retrying={loading}
+        />
+      ) : loading ? (
         <div className="py-16 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
           <Loader2 size={16} className="animate-spin" /> Загрузка рабочего места...
         </div>
@@ -594,12 +632,11 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
           {/* Сетка выбранной сущности */}
           <div className="space-y-2">
             {placeError && (
-              <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-center justify-between gap-2">
-                <span>{placeError}</span>
-                <button onClick={() => setPlaceError(null)} className="text-red-400 hover:text-red-600 shrink-0">
-                  <X size={13} />
-                </button>
-              </div>
+              <ErrorBanner
+                message={placeError}
+                onDismiss={() => setPlaceError(null)}
+                className="px-3 py-2 text-xs"
+              />
             )}
             {selectedEntity ? (
               <AcademicGridSchedule
@@ -620,7 +657,8 @@ export const ManualPlacementWorkspace: React.FC<Props> = ({ period, courseIds })
                   // Доску можно перечитать сразу (она с Command Side, синхронна), а сетку —
                   // когда проекция будет готова: об этом сообщит поток (или запасная пауза).
                   // reloadBoardLocal ставит метку «своя мутация» → SSE-эхо доску не задублирует.
-                  if (session) reloadBoardLocal(session.id).catch(() => {});
+                  if (session) reloadBoardLocal(session.id)
+                    .catch((err) => toast.failure(err, 'Палитра не обновилась после переноса — счётчики на экране устарели.'));
                   reloadAfterCommand();
                 }}
                 // Версия приезжает в ответе самой команды (последней в цепочке move → reorder),

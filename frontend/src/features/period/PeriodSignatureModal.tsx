@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { StudyPeriodDto } from '../../types/api';
 import { ResourceService } from '../../services/apiServices';
 import { PenLine, X, Loader2, Check } from 'lucide-react';
+import { errorMessage } from '../../services/apiError';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
 
 /**
  * Подпись под расписанием: должность, регалии и фамилия с инициалами того, кто его подписывает.
@@ -40,8 +42,7 @@ export const PeriodSignatureModal: React.FC<{
       });
       onSaved(updated);
     } catch (err: any) {
-      const data = err?.response?.data;
-      setError(typeof data === 'string' ? data : (data?.message || 'Не удалось сохранить подпись.'));
+      setError(errorMessage(err, 'Не удалось сохранить подпись.'));
     } finally {
       setSaving(false);
     }
@@ -65,7 +66,7 @@ export const PeriodSignatureModal: React.FC<{
 
         <div className="p-6 space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+            <ErrorBanner message={error} />
           )}
 
           <p className="text-xs text-slate-500">

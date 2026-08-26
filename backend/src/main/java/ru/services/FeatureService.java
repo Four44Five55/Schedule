@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.feature.FeatureCreateDto;
 import ru.dto.feature.FeatureDto;
 import ru.dto.feature.FeatureUpdateDto;
@@ -24,7 +25,7 @@ public class FeatureService {
     @Transactional
     public FeatureDto create(FeatureCreateDto createDto) {
         if (featureRepository.existsByNameOrCode(createDto.name(), createDto.code())) {
-            throw new IllegalStateException("Оснащение с таким названием или кодом уже существует.");
+            throw new DuplicateException("Оснащение с таким названием или кодом уже существует.");
         }
         Feature feature = new Feature();
         feature.setName(createDto.name());
@@ -44,7 +45,7 @@ public class FeatureService {
     @Transactional
     public void delete(Integer id) {
         if (!featureRepository.existsById(id)) {
-            throw new EntityNotFoundException("Оснащение с id=" + id + " не найдено.");
+            throw new NotFoundException("Оснащение с id=" + id + " не найдено.");
         }
         // TODO: Добавить проверку, не используется ли оснащение в Auditorium или CurriculumSlot
         featureRepository.deleteById(id);
@@ -65,14 +66,14 @@ public class FeatureService {
     @Transactional(readOnly = true)
     public Feature getEntityById(Integer id) {
         return featureRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Оснащение с id=" + id + " не найдено."));
+                .orElseThrow(() -> new NotFoundException("Оснащение с id=" + id + " не найдено."));
     }
 
     @Transactional(readOnly = true)
     public List<Feature> getAllEntitiesByIds(List<Integer> ids) {
         List<Feature> features = featureRepository.findAllById(ids);
         if (features.size() != ids.size()) {
-            throw new EntityNotFoundException("Одно или несколько оснащений из списка ID не найдены.");
+            throw new NotFoundException("Одно или несколько оснащений из списка ID не найдены.");
         }
         return features;
     }

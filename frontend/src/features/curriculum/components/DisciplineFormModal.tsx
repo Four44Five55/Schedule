@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { X, Save, Loader2, BookOpen, AlertCircle } from 'lucide-react';
+import { X, Save, Loader2, BookOpen } from 'lucide-react';
 import { DisciplineDto, DisciplineCreateDto, DisciplineUpdateDto } from '../../../types/api';
 import { CurriculumService } from '../../../services/apiServices';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface DisciplineFormModalProps {
     discipline: DisciplineDto | null;
@@ -70,12 +72,7 @@ export const DisciplineFormModal: React.FC<DisciplineFormModalProps> = ({
             onSaved(saved);
         } catch (err: any) {
             console.error('Ошибка сохранения дисциплины:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -109,10 +106,7 @@ export const DisciplineFormModal: React.FC<DisciplineFormModalProps> = ({
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {/* Ошибка */}
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {/* Название */}

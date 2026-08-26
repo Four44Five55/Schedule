@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
 import ru.dto.disciplineCourse.CourseCloneRequestDto;
 import ru.dto.disciplineCourse.DisciplineCourseDto;
 import ru.entity.StudyPeriod;
@@ -52,7 +53,7 @@ public class CurriculumCloneService {
         List<DisciplineCourseDto> result = new ArrayList<>();
         for (Integer sourceId : request.sourceCourseIds()) {
             DisciplineCourse source = disciplineCourseRepository.findById(sourceId)
-                    .orElseThrow(() -> new EntityNotFoundException("Курс-источник с id=" + sourceId + " не найден."));
+                    .orElseThrow(() -> new NotFoundException("Курс-источник с id=" + sourceId + " не найден."));
             result.add(disciplineCourseMapper.toDto(cloneOne(source, target)));
         }
         return result;
@@ -65,7 +66,7 @@ public class CurriculumCloneService {
         // Дубль по уникальности (discipline, period, semester) — atomic-fail.
         if (disciplineCourseRepository.existsByDisciplineIdAndStudyPeriodIdAndSemester(
                 source.getDiscipline().getId(), target.getId(), source.getSemester())) {
-            throw new IllegalStateException("Курс «" + source.getDiscipline().getName() + "», семестр "
+            throw new DuplicateException("Курс «" + source.getDiscipline().getName() + "», семестр "
                     + source.getSemester() + " уже существует в периоде «" + target.getName() + "».");
         }
 

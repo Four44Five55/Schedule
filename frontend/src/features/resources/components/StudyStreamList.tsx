@@ -4,6 +4,7 @@ import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { StudyStreamFormModal } from './StudyStreamFormModal';
 import { Layers, Users, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
 
 interface StudyStreamListProps {
   streams: StudyStreamDto[];
@@ -11,6 +12,7 @@ interface StudyStreamListProps {
 }
 
 export const StudyStreamList: React.FC<StudyStreamListProps> = ({ streams, onStreamsChange }) => {
+  const toast = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStream, setEditingStream] = useState<StudyStreamDto | null>(null);
   const [deletingStream, setDeletingStream] = useState<StudyStreamDto | null>(null);
@@ -31,8 +33,9 @@ export const StudyStreamList: React.FC<StudyStreamListProps> = ({ streams, onStr
       setDeletingStream(null);
       onStreamsChange();
     } catch (err) {
-      console.error('Ошибка удаления потока:', err);
-      alert('Не удалось удалить поток. Возможно, он используется в расписании.');
+      // Причину называет бэк — он один знает, СКОЛЬКО занятий мешает удалению. Прежняя
+      // фраза «возможно, используется» была догадкой на месте готового ответа.
+      toast.failure(err, 'Не удалось удалить поток.');
     } finally {
       setIsDeleting(false);
     }

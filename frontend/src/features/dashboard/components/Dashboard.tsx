@@ -15,6 +15,9 @@ import {
   Users, School, BookOpen, Layers, Loader2, CalendarRange,
   AlertTriangle, CalendarClock, ArrowRight, FileSpreadsheet, RefreshCw, PenLine
 } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
+import { LoadFailure } from '../../../components/ui/LoadFailure';
+import { errorMessage } from '../../../services/apiError';
 
 interface DashboardProps {
   stats: {
@@ -42,7 +45,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
   const [readiness, setReadiness] = useState<PeriodReadinessDto | null>(null);
   const [quality, setQuality] = useState<PeriodScheduleQualityDto | null>(null);
   const [density, setDensity] = useState<GroupDensityDto[]>([]);
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
+  // Отказ загрузки сводки: без него дашборд рисует нули и пустые отчёты — «расписание пустое»
+  // вместо «его не удалось спросить». Разница ровно та, ради которой на дашборд и заходят.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [exportAxis, setExportAxis] = useState<ExportAxis>('GROUP');
   const [exporting, setExporting] = useState(false);
   // Подпись под расписанием — реквизит выгрузки, но хранится у периода: подписант один на семестр.
@@ -66,7 +74,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
     try {
       await ScheduleService.exportSchedule(period.id, exportAxis);
     } catch (e) {
-      console.error('Не удалось выгрузить расписание:', e);
+      // Выгрузка — действие переднего плана без своего места на экране: кнопка отжимается, файл
+      // не появляется, и молчание читается как «браузер не показал загрузку».
+      toast.failure(e, 'Не удалось выгрузить расписание в Excel.');
     } finally {
       setExporting(false);
     }
@@ -78,6 +88,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
     if (!period) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setRoomLoad(null); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     Promise.all([
       ScheduleService.getReadiness(period.id),
       ScheduleService.getEducatorQuality(period.id),
@@ -96,12 +107,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         setRoomLoad(rl);
       })
       .catch((e) => {
-        console.error('Дашборд: не удалось загрузить данные периода:', e);
-        if (!cancelled) { setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setRoomLoad(null); }
+        if (cancelled) return;
+        setReadiness(null); setQuality(null); setDensity([]); setHealth(null); setRooms(null); setRoomLoad(null);
+        setLoadError(errorMessage(e, 'Не удалось загрузить сводку по периоду.'));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedPeriodId, period?.id]);
+  }, [selectedPeriodId, period?.id, loadAttempt]);
 
   // Ремонт: пересобрать read-модель сессии из размещений (расписание не двигается) и пересверить.
   const handleRepairProjection = async () => {
@@ -111,7 +123,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
       await CQRSService.reproject(health.sessionId);
       setHealth(await ScheduleService.getProjectionHealth(period.id));
     } catch (e) {
-      console.error('Не удалось пересобрать read-модель:', e);
+      // Кнопка ремонта: без сообщения баннер «расписание отображается неполно» просто остаётся
+      // на месте, и выглядит это как «нажал — ничего не изменилось».
+      toast.failure(e, 'Не удалось пересобрать отображение расписания.');
     } finally {
       setRepairing(false);
     }
@@ -252,7 +266,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, onNavigate }) => {
         )}
       </div>
 
-      {loading ? (
+      {loadError ? (
+        <LoadFailure
+          title="Сводка по периоду не загрузилась"
+          message={loadError}
+          onRetry={() => setLoadAttempt((n) => n + 1)}
+          retrying={loading}
+        />
+      ) : loading ? (
         <div className="flex items-center justify-center h-64 text-slate-400 gap-3">
           <Loader2 className="animate-spin" size={20} />
           <span className="text-sm font-medium">Загрузка расписания периода…</span>

@@ -3,6 +3,8 @@ import { X, Save, Loader2, AlertCircle, Building2, MapPin } from 'lucide-react';
 import { BuildingDto, BuildingCreateDto, BuildingUpdateDto, LocationDto } from '../../../types/api';
 import { ResourceService } from '../../../services/apiServices';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface BuildingFormModalProps {
     building: BuildingDto | null;
@@ -32,7 +34,9 @@ export const BuildingFormModal: React.FC<BuildingFormModalProps> = ({
         setLoadingRefs(true);
         ResourceService.getLocations()
             .then(setLocations)
-            .catch((err) => console.error('Ошибка загрузки локаций:', err))
+            // Корпус обязан принадлежать локации: пустой список локаций делает форму
+            // непроходимой, и без сообщения причина этого не видна.
+            .catch((err) => setError(errorMessage(err, 'Не удалось загрузить список локаций.')))
             .finally(() => setLoadingRefs(false));
     }, []);
 
@@ -72,16 +76,8 @@ export const BuildingFormModal: React.FC<BuildingFormModalProps> = ({
             onSaved(saved);
         } catch (err: any) {
             console.error('Ошибка сохранения корпуса:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(
-                    typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации'
-                );
-            } else if (err.response?.status === 409) {
-                setError('Корпус с таким названием уже существует в этой локации');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            // Текст отказа пишет бэк — он один знает, что именно совпало; здесь только запасной.
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -121,10 +117,7 @@ export const BuildingFormModal: React.FC<BuildingFormModalProps> = ({
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {noLocations && (

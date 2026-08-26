@@ -16,6 +16,9 @@ import { ResourceService, CurriculumService } from './services/apiServices';
 import { CQRSService } from './services/cqrsApiService';
 import { PeriodProvider, usePeriod, PeriodSelect } from './features/period/PeriodContext';
 import { HelpCircle, CalendarRange } from 'lucide-react';
+import { useToast } from './context/ToastContext';
+import { LoadFailure } from './components/ui/LoadFailure';
+import { errorMessage } from './services/apiError';
 
 const ACTIVE_TAB_STORAGE_KEY = 'unischedule.activeTab';
 
@@ -44,8 +47,13 @@ function AppShell() {
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
 
+  const toast = useToast();
+
   // ========== Загрузка ресурсов ==========
   const [loading, setLoading] = useState(true);
+  // Отказ начальной загрузки нельзя проглатывать: без справочников все разделы показывают
+  // пустые списки, то есть врут — «преподавателей нет» вместо «их не удалось спросить».
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [educators, setEducators] = useState<EducatorDto[]>([]);
   const [auditoriums, setAuditoriums] = useState<AuditoriumDto[]>([]);
   const [groups, setGroups] = useState<GroupDto[]>([]);
@@ -53,7 +61,9 @@ function AppShell() {
   const [streams, setStreams] = useState<StudyStreamDto[]>([]);
 
   // Начальная загрузка всех ресурсов
-  useEffect(() => {
+  const loadResources = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     Promise.all([
       ResourceService.getEducators(),
       ResourceService.getAuditoriums(),
@@ -68,30 +78,40 @@ function AppShell() {
           setDisciplines(disc);
           setStreams(str);
         })
-        .catch((err) => console.error('Ошибка загрузки данных:', err))
+        .catch((err) => setLoadError(errorMessage(err, 'Не удалось загрузить справочники.')))
         .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => { loadResources(); }, [loadResources]);
+
   // ========== CRUD перезагрузки ==========
+  // Перечитывание после правки в разделе. Отказ здесь опаснее, чем при начальной загрузке:
+  // список остаётся ПРЕЖНИМ, и только что заведённая строка в нём не появляется — выглядит как
+  // «не сохранилось», хотя на сервере всё записано. Поэтому тост с «Повторить», а не молчание.
   const reloadGroups = useCallback(async () => {
-    try { setGroups(await ResourceService.getGroups()); } catch (err) { console.error('Ошибка загрузки групп:', err); }
-  }, []);
+    try { setGroups(await ResourceService.getGroups()); }
+    catch (err) { toast.failure(err, 'Список групп не обновился — данные на экране устарели.', { label: 'Повторить', run: () => { void reloadGroups(); } }); }
+  }, [toast]);
 
   const reloadEducators = useCallback(async () => {
-    try { setEducators(await ResourceService.getEducators()); } catch (err) { console.error('Ошибка загрузки преподавателей:', err); }
-  }, []);
+    try { setEducators(await ResourceService.getEducators()); }
+    catch (err) { toast.failure(err, 'Список преподавателей не обновился — данные на экране устарели.', { label: 'Повторить', run: () => { void reloadEducators(); } }); }
+  }, [toast]);
 
   const reloadAuditoriums = useCallback(async () => {
-    try { setAuditoriums(await ResourceService.getAuditoriums()); } catch (err) { console.error('Ошибка загрузки аудиторий:', err); }
-  }, []);
+    try { setAuditoriums(await ResourceService.getAuditoriums()); }
+    catch (err) { toast.failure(err, 'Список аудиторий не обновился — данные на экране устарели.', { label: 'Повторить', run: () => { void reloadAuditoriums(); } }); }
+  }, [toast]);
 
   const reloadDisciplines = useCallback(async () => {
-    try { setDisciplines(await CurriculumService.getDisciplines()); } catch (err) { console.error('Ошибка загрузки дисциплин:', err); }
-  }, []);
+    try { setDisciplines(await CurriculumService.getDisciplines()); }
+    catch (err) { toast.failure(err, 'Список дисциплин не обновился — данные на экране устарели.', { label: 'Повторить', run: () => { void reloadDisciplines(); } }); }
+  }, [toast]);
 
   const reloadStreams = useCallback(async () => {
-    try { setStreams(await ResourceService.getStreams()); } catch (err) { console.error('Ошибка загрузки потоков:', err); }
-  }, []);
+    try { setStreams(await ResourceService.getStreams()); }
+    catch (err) { toast.failure(err, 'Список потоков не обновился — данные на экране устарели.', { label: 'Повторить', run: () => { void reloadStreams(); } }); }
+  }, [toast]);
 
   // ========== Генерация расписания ==========
   const [isGenerating, setIsGenerating] = useState(false);
@@ -103,7 +123,7 @@ function AppShell() {
       // прочие вызовы fallback'ятся на активный период.
       const targetPeriod = period ?? await ResourceService.getActiveStudyPeriod();
       if (!targetPeriod) {
-        alert('Не выбран учебный период. Создайте/выберите период в планировщике.');
+        toast.error('Не выбран учебный период. Создайте или выберите период в планировщике.');
         return;
       }
 
@@ -122,8 +142,7 @@ function AppShell() {
       setSelectedPeriodId(targetPeriod.id);
       setActiveTab('schedule');
     } catch (err) {
-      console.error(err);
-      alert('Ошибка при генерации расписания');
+      toast.failure(err, 'Не удалось сгенерировать расписание.');
     } finally {
       setIsGenerating(false);
     }
@@ -131,6 +150,16 @@ function AppShell() {
 
   // ========== Рендер контента ==========
   const renderContent = () => {
+    if (loadError) {
+      return (
+          <LoadFailure
+              title="Справочники не загрузились"
+              message={loadError}
+              onRetry={loadResources}
+              retrying={loading}
+          />
+      );
+    }
     if (loading) {
       return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] gap-6">

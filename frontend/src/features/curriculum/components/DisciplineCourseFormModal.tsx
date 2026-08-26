@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Layers, AlertCircle } from 'lucide-react';
+import { X, Save, Loader2, Layers } from 'lucide-react';
 import { DisciplineCourseDto, DisciplineCourseCreateDto, DisciplineCourseUpdateDto, DisciplineDto, StudyPeriodDto } from '../../../types/api';
 import { CurriculumService, ResourceService } from '../../../services/apiServices';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface DisciplineCourseFormModalProps {
     course: DisciplineCourseDto | null;
@@ -63,9 +65,10 @@ export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps>
                     setStudyPeriodId(periods[0].id);
                 }
             })
-            .catch(() => {
+            .catch((err) => {
                 setDisciplines([]);
                 setStudyPeriods([]);
+                setError(errorMessage(err, 'Не удалось загрузить дисциплины и периоды.'));
             })
             .finally(() => setLoadingData(false));
     }, [course]);
@@ -115,12 +118,7 @@ export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps>
             onSaved(saved);
         } catch (err: any) {
             console.error('Ошибка сохранения курса:', err);
-            if (err.response?.status === 400) {
-                const serverError = err.response.data;
-                setError(typeof serverError === 'string' ? serverError : serverError.message || 'Ошибка валидации');
-            } else {
-                setError('Не удалось сохранить. Попробуйте ещё раз.');
-            }
+            setError(errorMessage(err, 'Не удалось сохранить. Попробуйте ещё раз.'));
         } finally {
             setSaving(false);
         }
@@ -154,10 +152,7 @@ export const DisciplineCourseFormModal: React.FC<DisciplineCourseFormModalProps>
                     <div className="p-6 space-y-5 overflow-y-auto flex-1">
                         {/* Ошибка */}
                         {error && (
-                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                                <span>{error}</span>
-                            </div>
+                            <ErrorBanner message={error} />
                         )}
 
                         {loadingData ? (

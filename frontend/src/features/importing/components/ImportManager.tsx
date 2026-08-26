@@ -18,6 +18,7 @@ import type {
   LocationDto, RollbackImpactDto, ScheduleWriteReportDto, SheetInspectionDto,
 } from '../../../types/api';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
 
 /**
  * Импорт расписания из сторонней программы — **пробный разбор**.
@@ -143,7 +144,9 @@ export const ImportManager: React.FC = () => {
         setLocations(list);
         if (list.length === 1) setLocationId(list[0].id);
       })
-      .catch((e) => console.error('Ошибка загрузки локаций:', e));
+      // Локация — обязательный параметр прогона: без списка импорт не запустить, а пустой
+      // выпадающий список объясняет это как «локаций не заведено».
+      .catch((e) => setError(errorMessage(e, 'Не удалось загрузить список локаций.')));
   }, []);
 
   /**
@@ -179,7 +182,7 @@ export const ImportManager: React.FC = () => {
       setReport(await ImportService.inspect(files, locationId, groupNameStyle, periodId));
     } catch (e) {
       console.error('Ошибка разбора файлов выгрузки:', e);
-      setError(serverMessage(e) ?? 'Не удалось разобрать файлы. Бэкенд ответил ошибкой — смотрите консоль и логи.');
+      setError(errorMessage(e, 'Не удалось разобрать файлы. Бэкенд ответил ошибкой — смотрите консоль и логи.'));
       setReport(null);
     } finally {
       setLoading(false);
@@ -194,7 +197,7 @@ export const ImportManager: React.FC = () => {
       setFolderReport(await ImportService.inspectFolder(folder.trim(), locationId, groupNameStyle, periodId));
     } catch (e) {
       console.error('Ошибка разбора каталога:', e);
-      setError(serverMessage(e) ?? 'Не удалось разобрать каталог — смотрите логи бэкенда.');
+      setError(errorMessage(e, 'Не удалось разобрать каталог — смотрите логи бэкенда.'));
       setFolderReport(null);
     } finally {
       setLoading(false);
@@ -225,7 +228,7 @@ export const ImportManager: React.FC = () => {
       }
     } catch (e) {
       console.error('Ошибка заведения подразделений:', e);
-      setError(serverMessage(e) ?? 'Не удалось завести подразделения — смотрите логи бэкенда.');
+      setError(errorMessage(e, 'Не удалось завести подразделения — смотрите логи бэкенда.'));
     } finally {
       setCreating(false);
     }
@@ -251,7 +254,7 @@ export const ImportManager: React.FC = () => {
       setOrgUnitParents({});
     } catch (e) {
       console.error('Ошибка заведения справочников:', e);
-      setError(serverMessage(e) ?? 'Не удалось завести справочники. Часть могла успеть создаться — смотрите логи.');
+      setError(errorMessage(e, 'Не удалось завести справочники. Часть могла успеть создаться — смотрите логи.'));
     } finally {
       setCreating(false);
     }
@@ -275,7 +278,7 @@ export const ImportManager: React.FC = () => {
       setPlanCreated(false);
     } catch (e) {
       console.error('Ошибка расчёта плана:', e);
-      setError(serverMessage(e) ?? 'Не удалось посчитать план — смотрите логи бэкенда.');
+      setError(errorMessage(e, 'Не удалось посчитать план — смотрите логи бэкенда.'));
       setPlan(null);
     } finally {
       setPlanning(false);
@@ -298,7 +301,7 @@ export const ImportManager: React.FC = () => {
       setPlanCreated(true);
     } catch (e) {
       console.error('Ошибка заведения плана:', e);
-      setError(serverMessage(e) ?? 'Не удалось завести план — смотрите логи бэкенда.');
+      setError(errorMessage(e, 'Не удалось завести план — смотрите логи бэкенда.'));
     } finally {
       setPlanCreating(false);
     }
@@ -323,7 +326,7 @@ export const ImportManager: React.FC = () => {
       await refreshRollback(periodId);
     } catch (e) {
       console.error('Ошибка записи расписания:', e);
-      setError(serverMessage(e) ?? 'Не удалось записать расписание — смотрите логи бэкенда.');
+      setError(errorMessage(e, 'Не удалось записать расписание — смотрите логи бэкенда.'));
     } finally {
       setWriting(false);
     }
@@ -339,7 +342,9 @@ export const ImportManager: React.FC = () => {
       setSessions(found);
       setImpact(price);
     } catch (e) {
-      console.error('Не удалось прочитать состояние периода:', e);
+      // Здесь показывается, что уже импортировано в период и во что обойдётся откат. Молчание
+      // равно «в периоде ничего нет» — и человек импортирует поверх существующего.
+      setError(errorMessage(e, 'Не удалось прочитать состояние периода — что уже импортировано, неизвестно.'));
     }
   };
 
@@ -352,7 +357,7 @@ export const ImportManager: React.FC = () => {
       if (write?.sessionId === id) setWrite(null);
     } catch (e) {
       console.error('Ошибка удаления сессии:', e);
-      setError(serverMessage(e) ?? 'Не удалось удалить сессию.');
+      setError(errorMessage(e, 'Не удалось удалить сессию.'));
     }
   };
 
@@ -374,7 +379,7 @@ export const ImportManager: React.FC = () => {
       await refreshRollback(periodId);
     } catch (e) {
       console.error('Ошибка отката плана:', e);
-      setError(serverMessage(e) ?? 'Не удалось снести план — смотрите логи бэкенда.');
+      setError(errorMessage(e, 'Не удалось снести план — смотрите логи бэкенда.'));
     } finally {
       setRollingBack(false);
     }
@@ -396,7 +401,7 @@ export const ImportManager: React.FC = () => {
       setWrite((prev) => (prev && prev.sessionId === id ? { ...prev, projected: rows } : prev));
     } catch (e) {
       console.error('Ошибка проекции сессии:', e);
-      setError(serverMessage(e) ?? 'Не удалось показать расписание в сетке.');
+      setError(errorMessage(e, 'Не удалось показать расписание в сетке.'));
     } finally {
       setProjecting(null);
     }
@@ -1977,16 +1982,6 @@ const SampleTable: React.FC<{ sheet: SheetInspectionDto }> = ({ sheet }) => {
 
 // ============================================================================
 
-/**
- * Текст ошибки, который прислал сервер. Своя формулировка на фронте годится только как запасная:
- * «пачка слишком велика» и «файлы не разобрались» — разные новости, и подменять первую второй
- * значит отправить человека искать дефект разбора там, где запрос до разбора не дошёл.
- */
-const serverMessage = (error: unknown): string | null => {
-  const data = (error as { response?: { data?: unknown } })?.response?.data;
-  const message = (data as { message?: unknown })?.message;
-  return typeof message === 'string' && message.trim() !== '' ? message : null;
-};
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU');
 

@@ -1,8 +1,10 @@
 package ru.services;
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.RuleViolationException;
 import ru.dto.slotChain.SlotChainCreateDto;
 import ru.dto.slotChain.SlotChainDto;
 import ru.entity.logicSchema.CurriculumSlot;
@@ -27,12 +29,12 @@ public class SlotChainService {
         Integer slotBId = createDto.slotBId();
 
         if (slotAId.equals(slotBId)) {
-            throw new IllegalArgumentException("Нельзя связать слот сам с собой.");
+            throw new RuleViolationException("Нельзя связать слот сам с собой.");
         }
         // Проверяем на дублирование в обе стороны
         if (slotChainRepository.existsBySlotAIdAndSlotBId(slotAId, slotBId) ||
                 slotChainRepository.existsBySlotAIdAndSlotBId(slotBId, slotAId)) {
-            throw new IllegalStateException("Такая сцепка или ее обратная версия уже существует.");
+            throw new DuplicateException("Такая сцепка или ее обратная версия уже существует.");
         }
 
         // УБИРАЕМ ПРОВЕРКУ, запрещающую длинные цепочки.
@@ -41,7 +43,7 @@ public class SlotChainService {
         CurriculumSlot slotB = curriculumSlotService.getEntityById(slotBId);
 
         if (!slotA.getDisciplineCourse().getId().equals(slotB.getDisciplineCourse().getId())) {
-            throw new IllegalArgumentException("Нельзя сцепить слоты из разных учебных курсов.");
+            throw new RuleViolationException("Нельзя сцепить слоты из разных учебных курсов.");
         }
 
         SlotChain newChain = new SlotChain(slotA, slotB);
@@ -51,7 +53,7 @@ public class SlotChainService {
     @Transactional
     public void deleteChain(Integer chainId) {
         if (!slotChainRepository.existsById(chainId)) {
-            throw new EntityNotFoundException("Сцепка с id=" + chainId + " не найдена.");
+            throw new NotFoundException("Сцепка с id=" + chainId + " не найдена.");
         }
         slotChainRepository.deleteById(chainId);
     }
@@ -73,7 +75,7 @@ public class SlotChainService {
     @Transactional(readOnly = true)
     public List<Integer> getFullChain(Integer startSlotId) {
         if (!curriculumSlotService.existsById(startSlotId)) {
-            throw new EntityNotFoundException("Слот с id=" + startSlotId + " не найден.");
+            throw new NotFoundException("Слот с id=" + startSlotId + " не найден.");
         }
 
         // Используем TreeSet для автоматической сортировки и уникальности

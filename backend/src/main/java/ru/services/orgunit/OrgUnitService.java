@@ -1,9 +1,12 @@
 package ru.services.orgunit;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.DuplicateException;
+import ru.exceptions.InUseException;
+import ru.exceptions.RuleViolationException;
 import ru.dto.orgUnit.OrgUnitCreateDto;
 import ru.dto.orgUnit.OrgUnitDeletionImpactDto;
 import ru.dto.orgUnit.OrgUnitDto;
@@ -137,7 +140,7 @@ public class OrgUnitService {
         // Одно правило — один источник: и предпросмотр, и отказ смотрят на тот же deletable.
         OrgUnitDeletionImpactDto impact = deleteImpact(id); // бросит 404, если подразделения нет
         if (!impact.deletable()) {
-            throw new IllegalStateException(
+            throw new InUseException(
                     "Подразделение «" + impact.name() + "» нельзя удалить: на него ссылаются "
                             + "вложенные подразделения (" + impact.childUnits() + "), "
                             + "преподаватели (" + impact.educators() + "), "
@@ -154,7 +157,7 @@ public class OrgUnitService {
     @Transactional(readOnly = true)
     public OrgUnit getEntityById(Integer id) {
         return orgUnitRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Подразделение с id=" + id + " не найдено."));
+                .orElseThrow(() -> new NotFoundException("Подразделение с id=" + id + " не найдено."));
     }
 
     // === СЛУЖЕБНОЕ ===
@@ -180,7 +183,7 @@ public class OrgUnitService {
                     OrgUnitType parentType = Optional.ofNullable(nodes.get(parentId))
                             .map(UnitNode::type)
                             .orElse(null);
-                    throw new IllegalArgumentException(switch (rejection) {
+                    throw new RuleViolationException(switch (rejection) {
                         case PARENT_NOT_FOUND ->
                                 "Вышестоящее подразделение с id=" + parentId + " не найдено.";
                         case SELF_PARENT ->
@@ -210,7 +213,7 @@ public class OrgUnitService {
                 .anyMatch(u -> u.getName().trim().equalsIgnoreCase(name.trim()));
 
         if (taken) {
-            throw new IllegalStateException("Подразделение с названием «" + name.trim()
+            throw new DuplicateException("Подразделение с названием «" + name.trim()
                     + "» уже есть на этом уровне.");
         }
     }

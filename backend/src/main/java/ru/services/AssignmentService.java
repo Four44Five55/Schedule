@@ -1,9 +1,10 @@
 package ru.services;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.exceptions.NotFoundException;
+import ru.exceptions.RuleViolationException;
 import ru.dto.assignment.ApplyAssignmentToCourseDto;
 import ru.dto.assignment.AssignmentCreateDto;
 import ru.dto.assignment.AssignmentDto;
@@ -304,7 +305,7 @@ public class AssignmentService {
         Set<Integer> leading = educatorIds == null ? Set.of() : new HashSet<>(educatorIds);
         List<Integer> both = reserveEducatorIds.stream().filter(leading::contains).toList();
         if (!both.isEmpty()) {
-            throw new IllegalArgumentException(
+            throw new RuleViolationException(
                     "Преподаватель не может быть одновременно ведущим и запасным на одном назначении: id="
                             + both.stream().map(String::valueOf).collect(Collectors.joining(", ")));
         }
@@ -314,7 +315,7 @@ public class AssignmentService {
     @Transactional
     public AssignmentDto updateAssignment(Integer assignmentId, AssignmentUpdateDto updateDto) {
         Assignment assignment = assignmentRepository.findById(assignmentId)
-                .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + assignmentId + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Assignment с id=" + assignmentId + " не найден."));
 
         // Находим новые связанные сущности через сервисы
         StudyStream stream = studyStreamService.getEntityById(updateDto.studyStreamId());
@@ -338,7 +339,7 @@ public class AssignmentService {
     @Transactional
     public void deleteAssignment(Integer assignmentId) {
         Assignment assignment = assignmentRepository.findById(assignmentId)
-                .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + assignmentId + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Assignment с id=" + assignmentId + " не найден."));
         // Через общий примитив — чтобы точечное удаление тоже чистило read-модель.
         purge(List.of(assignment));
     }
@@ -385,7 +386,7 @@ public class AssignmentService {
     @Transactional(readOnly = true)
     public Assignment getEntityById(Integer id) {
         return assignmentRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Assignment с id=" + id + " не найден."));
+                .orElseThrow(() -> new NotFoundException("Assignment с id=" + id + " не найден."));
     }
 
     @Transactional(readOnly = true)

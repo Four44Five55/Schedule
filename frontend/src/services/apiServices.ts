@@ -441,15 +441,34 @@ export const EducatorDictionaryService = {
       api.delete<void>(`/educator-dictionaries/${kind}/${id}`).then((r) => r.data),
 };
 
+/**
+ * Подменяет Blob в теле отказа разобранным JSON — чтобы дальше его читала общая дверь.
+ *
+ * <p>Меняется только `error.response.data`; сам объект ошибки остаётся тем же, поэтому вызывающий
+ * по-прежнему видит привычный axios-отказ со статусом и заголовками. Не JSON внутри (HTML-страница
+ * прокси, обрыв) — оставляем как есть: запасная фраза честнее выдуманной.</p>
+ */
+async function unwrapBlobError(error: unknown): Promise<unknown> {
+  const response = (error as { response?: { data?: unknown } })?.response;
+  if (!(response?.data instanceof Blob)) return error;
+
+  try {
+    response.data = JSON.parse(await response.data.text());
+  } catch {
+    response.data = undefined;
+  }
+  return error;
+}
+
 // ============ 2. РЕСУРСЫ ============
 export const ResourceService = {
-  getEducators: () => api.get<EducatorDto[]>('/educators').then((r) => r.data).catch(() => []),
+  getEducators: () => api.get<EducatorDto[]>('/educators').then((r) => r.data),
   getEducator: (id: number) => api.get<EducatorDto>(`/educators/${id}`).then((r) => r.data),
   createEducator: (data: EducatorCreateDto) => api.post<EducatorDto>('/educators', data).then((r) => r.data),
   updateEducator: (id: number, data: EducatorUpdateDto) => api.put<EducatorDto>(`/educators/${id}`, data).then((r) => r.data),
   deleteEducator: (id: number) => api.delete(`/educators/${id}`).then(() => {}),
 
-  getAuditoriums: () => api.get<AuditoriumDto[]>('/auditoriums').then((r) => r.data).catch(() => []),
+  getAuditoriums: () => api.get<AuditoriumDto[]>('/auditoriums').then((r) => r.data),
   getAuditorium: (id: number) => api.get<AuditoriumDto>(`/auditoriums/${id}`).then((r) => r.data),
   createAuditorium: (data: AuditoriumCreateDto) => api.post<AuditoriumDto>('/auditoriums', data).then((r) => r.data),
   updateAuditorium: (id: number, data: AuditoriumUpdateDto) => api.put<AuditoriumDto>(`/auditoriums/${id}`, data).then((r) => r.data),
@@ -461,13 +480,13 @@ export const ResourceService = {
       api.get<AuditoriumDeletionImpactDto>(`/auditoriums/${id}/delete-impact`).then((r) => r.data),
   deleteAuditorium: (id: number) => api.delete(`/auditoriums/${id}`).then(() => {}),
 
-  getGroups: () => api.get<GroupDto[]>('/groups').then((r) => r.data).catch(() => []),
+  getGroups: () => api.get<GroupDto[]>('/groups').then((r) => r.data),
   getGroup: (id: number) => api.get<GroupDto>(`/groups/${id}`).then((r) => r.data),
   createGroup: (data: GroupCreateDto) => api.post<GroupDto>('/groups', data).then((r) => r.data),
   updateGroup: (id: number, data: GroupUpdateDto) => api.put<GroupDto>(`/groups/${id}`, data).then((r) => r.data),
   deleteGroup: (id: number) => api.delete(`/groups/${id}`).then(() => {}),
 
-  getStreams: () => api.get<StudyStreamDto[]>('/study-streams').then((r) => r.data).catch(() => []),
+  getStreams: () => api.get<StudyStreamDto[]>('/study-streams').then((r) => r.data),
   createStream: (data: StudyStreamCreateDto) => api.post<StudyStreamDto>('/study-streams', data).then((r) => r.data),
   updateStream: (id: number, data: StudyStreamUpdateDto) => api.put<StudyStreamDto>(`/study-streams/${id}`, data).then((r) => r.data),
   deleteStream: (id: number) => api.delete(`/study-streams/${id}`).then(() => {}),
@@ -517,6 +536,9 @@ export const ResourceService = {
   /**
    * Получить активный учебный период (содержит сегодняшнюю дату).
    */
+  // Единственное чтение, где отказ намеренно превращается в null: «активного периода нет» —
+  // законный ответ, и отличить его от сбоя по этому эндпоинту нельзя. Выбор периода от него не
+  // зависит (падает на сохранённый или первый), поэтому ошибиться из-за молчания негде.
   getActiveStudyPeriod: () =>
       api.get<StudyPeriodDto>('/study-periods/active')
         .then((r) => r.data)
@@ -525,7 +547,7 @@ export const ResourceService = {
 
 // ============ 3. УЧЕБНЫЙ ПЛАН ============
 export const CurriculumService = {
-  getDisciplines: () => api.get<DisciplineDto[]>('/disciplines').then((r) => r.data).catch(() => []),
+  getDisciplines: () => api.get<DisciplineDto[]>('/disciplines').then((r) => r.data),
   getDiscipline: (id: number) => api.get<DisciplineDto>(`/disciplines/${id}`).then((r) => r.data),
   createDiscipline: (data: DisciplineCreateDto) => api.post<DisciplineDto>('/disciplines', data).then((r) => r.data),
   updateDiscipline: (id: number, data: DisciplineUpdateDto) => api.put<DisciplineDto>(`/disciplines/${id}`, data).then((r) => r.data),
@@ -562,7 +584,7 @@ export const CurriculumService = {
   getSlotChains: () => api.get<SlotChainDto[]>('/slot-chains').then((r) => r.data),
   createChain: (data: SlotChainCreateDto) => api.post<SlotChainDto>('/slot-chains', data).then((r) => r.data),
   deleteChain: (id: number) => api.delete(`/slot-chains/${id}`).then(() => {}),
-  getAssignmentsByCourse: (courseId: number) => api.get<AssignmentDto[]>(`/assignments/by-course/${courseId}`).then((r) => r.data).catch(() => []),
+  getAssignmentsByCourse: (courseId: number) => api.get<AssignmentDto[]>(`/assignments/by-course/${courseId}`).then((r) => r.data),
   createAssignment: (data: AssignmentCreateDto) => api.post<AssignmentDto[]>('/assignments', data).then((r) => r.data),
   applyAssignmentToCourse: (data: ApplyAssignmentToCourseDto) => api.post<AssignmentDto[]>('/assignments/apply-to-course', data).then((r) => r.data),
   getRemoveAssignmentsImpact: (data: RemoveAssignmentsFromCourseDto) =>
@@ -577,14 +599,14 @@ export const CurriculumService = {
 
 // ============ 4. ОГРАНИЧЕНИЯ ============
 export const ConstraintsService = {
-  getEducatorConstraints: () => api.get<EducatorConstraintDto[]>('/educator-constraints').then((r) => r.data).catch(() => []),
-  getEducatorConstraintsByEducator: (id: number) => api.get<EducatorConstraintDto[]>(`/educator-constraints/by-educator/${id}`).then((r) => r.data).catch(() => []),
+  getEducatorConstraints: () => api.get<EducatorConstraintDto[]>('/educator-constraints').then((r) => r.data),
+  getEducatorConstraintsByEducator: (id: number) => api.get<EducatorConstraintDto[]>(`/educator-constraints/by-educator/${id}`).then((r) => r.data),
 
-  getGroupConstraints: () => api.get<GroupConstraintDto[]>('/group-constraints').then((r) => r.data).catch(() => []),
-  getGroupConstraintsByGroup: (id: number) => api.get<GroupConstraintDto[]>(`/group-constraints/by-group/${id}`).then((r) => r.data).catch(() => []),
+  getGroupConstraints: () => api.get<GroupConstraintDto[]>('/group-constraints').then((r) => r.data),
+  getGroupConstraintsByGroup: (id: number) => api.get<GroupConstraintDto[]>(`/group-constraints/by-group/${id}`).then((r) => r.data),
 
-  getAuditoriumConstraints: () => api.get<AuditoriumConstraintDto[]>('/auditorium-constraints').then((r) => r.data).catch(() => []),
-  getAuditoriumConstraintsByAuditorium: (id: number) => api.get<AuditoriumConstraintDto[]>(`/auditorium-constraints/by-auditorium/${id}`).then((r) => r.data).catch(() => []),
+  getAuditoriumConstraints: () => api.get<AuditoriumConstraintDto[]>('/auditorium-constraints').then((r) => r.data),
+  getAuditoriumConstraintsByAuditorium: (id: number) => api.get<AuditoriumConstraintDto[]>(`/auditorium-constraints/by-auditorium/${id}`).then((r) => r.data),
 
   createEducatorConstraint: (data: EducatorConstraintCreateDto) => api.post<EducatorConstraintDto>('/educator-constraints', data).then((r) => r.data),
   deleteEducatorConstraint: (id: number) => api.delete(`/educator-constraints/${id}`).then(() => {}),
@@ -610,8 +632,7 @@ export const ScheduleService = {
    */
   getReadiness: (periodId: number): Promise<PeriodReadinessDto> =>
       api.get<PeriodReadinessDto>('/schedule/query/readiness', { params: { periodId } })
-      .then((r) => r.data)
-      .catch(() => ({ total: 0, placed: 0, unplaced: 0 })),
+      .then((r) => r.data),
 
   /**
    * Здоровье проекции: сходится ли read-модель с write-стороной за период.
@@ -620,8 +641,7 @@ export const ScheduleService = {
    */
   getProjectionHealth: (periodId: number): Promise<ProjectionHealthDto | null> =>
       api.get<ProjectionHealthDto>('/schedule/query/projection-health', { params: { periodId } })
-      .then((r) => r.data)
-      .catch(() => null),
+      .then((r) => r.data),
 
   /**
    * Здоровье аудиторий: не стоят ли двое в одной комнате и все ли помещаются.
@@ -630,20 +650,17 @@ export const ScheduleService = {
    */
   getAuditoriumHealth: (periodId: number): Promise<AuditoriumHealthDto | null> =>
       api.get<AuditoriumHealthDto>('/schedule/query/auditorium-health', { params: { periodId } })
-      .then((r) => r.data)
-      .catch(() => null),
+      .then((r) => r.data),
 
   /** Качество расписания преподавателей за период: компактность + равномерность (суббота). */
   getEducatorQuality: (periodId: number): Promise<PeriodScheduleQualityDto | null> =>
       api.get<PeriodScheduleQualityDto>('/schedule/query/reports/educator-quality', { params: { periodId } })
-      .then((r) => r.data)
-      .catch(() => null),
+      .then((r) => r.data),
 
   /** Загрузка аудиторий за период (утилизация): формат как у преподавателей. */
   getAuditoriumLoad: (periodId: number): Promise<PeriodAuditoriumLoadDto | null> =>
       api.get<PeriodAuditoriumLoadDto>('/schedule/query/reports/auditorium-load', { params: { periodId } })
-      .then((r) => r.data)
-      .catch(() => null),
+      .then((r) => r.data),
 
   /**
    * Плотность групп в парах 1–3: спрос/размещено/остаток и ЧЕСТНАЯ свободная ёмкость
@@ -651,8 +668,7 @@ export const ScheduleService = {
    */
   getGroupDensity: (periodId: number): Promise<GroupDensityDto[]> =>
       api.get<GroupDensityDto[]>('/schedule/query/reports/group-density', { params: { periodId } })
-      .then((r) => r.data)
-      .catch(() => []),
+      .then((r) => r.data),
 
   /**
    * Выгрузка расписания периода из schedule_view (то, что реально размещено). С entityId — одна
@@ -661,31 +677,26 @@ export const ScheduleService = {
    * (xlsx/zip) берём из Content-Disposition, downloadBlob расширение не навязывает.
    */
   exportSchedule: async (periodId: number, axis: ExportAxis = 'GROUP', entityId?: number): Promise<void> => {
-      const response = await api.get('/schedule/query/export', {
-        params: { periodId, axis, ...(entityId != null ? { entityId } : {}) },
-        responseType: 'blob',
-      });
-      const filename = filenameFromContentDisposition(response.headers['content-disposition']) ?? 'schedule.xlsx';
-      downloadBlob(response.data as Blob, filename);
+      try {
+        const response = await api.get('/schedule/query/export', {
+          params: { periodId, axis, ...(entityId != null ? { entityId } : {}) },
+          responseType: 'blob',
+        });
+        const filename = filenameFromContentDisposition(response.headers['content-disposition']) ?? 'schedule.xlsx';
+        downloadBlob(response.data as Blob, filename);
+      } catch (error) {
+        // `responseType: 'blob'` действует и на ОТКАЗ: тело ошибки приезжает Blob'ом, и
+        // ProblemDetail внутри него общая дверь (`apiError`) прочитать не может — она
+        // синхронная, а Blob читается асинхронно. Без этой распаковки любой отказ выгрузки
+        // показывался запасной фразой, то есть причина, которую бэк назвал, до человека не
+        // доходила. Разворачиваем здесь — в единственном месте, которое просило Blob.
+        throw await unwrapBlobError(error);
+      }
   },
 
   loadExisting: (startDate: string, endDate: string): Promise<ScheduleResultDto> =>
       api.get<ScheduleResultDto>('/schedule/query/all', {
         params: { start: startDate, end: endDate }
       })
-      .then((r) => r.data)
-      .catch(() => {
-        // Если данных нет или ошибка - возвращаем пустой результат
-        return {
-          status: "empty",
-          lessons: [],
-          grid: {},
-          placedCount: 0,
-          unplacedCount: 0,
-          startDate,
-          endDate,
-          totalSlots: 0,
-          usedSlots: 0
-        };
-      }),
+      .then((r) => r.data),
 };

@@ -6,6 +6,7 @@ import { CurriculumPlanSource, SlotFormValues } from '../planSource';
 import { CurriculumService } from '../../../services/apiServices';
 import { useEnums } from '../../../context/EnumContext';
 import { cn } from '../../../utils/cn';
+import { useToast } from '../../../context/ToastContext';
 
 export const KIND_LABELS: Record<string, string> = {
   LECTURE: 'Лекция',
@@ -86,6 +87,7 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
   const sourceRef = useRef(planSource);
   sourceRef.current = planSource;
 
+  const toast = useToast();
   const { kindOfStudy: kindsEnum, getStudyCategory } = useEnums();
   // Уникальный id для <datalist>: при нескольких раскрытых редакторах общий id
   // приводил к привязке input'а к чужому списку (темы другой дисциплины).
@@ -120,17 +122,26 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       setSlots(loadedSlots);
       // Сцепки приходят глобально — оставляем только внутри этого набора слотов.
       setChains(allChains.filter(c => ids.has(c.slotA.id) && ids.has(c.slotB.id)));
+    } catch (e) {
+      // Пустой план читается как «занятий не заведено» — и человек заводит их поверх
+      // существующих. Отказ не бросаем наружу: reload зовут из шести обработчиков.
+      toast.failure(e, 'Не удалось загрузить занятия плана.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { reload(); }, [reload]);
 
   // Темы дисциплины — для inline-добавления (модал грузит свои отдельно).
   useEffect(() => {
-    CurriculumService.getThemesByDiscipline(disciplineId).then(setThemes).catch(() => setThemes([]));
-  }, [disciplineId]);
+    CurriculumService.getThemesByDiscipline(disciplineId)
+      .then(setThemes)
+      .catch((e) => {
+        setThemes([]);
+        toast.failure(e, 'Не удалось загрузить темы дисциплины — выбрать тему для занятия не выйдет.');
+      });
+  }, [disciplineId, toast]);
 
   const nextPosition = slots.length > 0 ? Math.max(...slots.map(s => s.position)) + 1 : 1;
 
@@ -164,8 +175,12 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
           + (impact.lockedLessons > 0 ? '\n\nРучная раскладка этих занятий будет потеряна.' : '')
           + '\n\nЭто действие нельзя отменить.';
       }
-    } catch (e) {
-      console.error('Не удалось получить последствия удаления занятия плана:', e);
+    } catch {
+      // Цену узнать не удалось — говорим об этом В САМОМ ВОПРОСЕ. Молчаливый откат к
+      // «Удалить занятие?» выглядит как «терять нечего», хотя каскад уносит и раскладку.
+      question = 'Удалить занятие плана?\n\nПроверить, что будет снесено вместе с ним, не удалось '
+        + '(сервер не ответил). Каскадом уходят назначения и уже размещённые занятия, '
+        + 'включая закреплённые вручную.\n\nЭто действие нельзя отменить.';
     }
     if (!confirm(question)) return;
     setDeletingSlot(slot.id);
@@ -173,8 +188,10 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       await sourceRef.current.remove(slot.id);
       await reload();
       onChanged?.();
-    } catch {
-      alert('Не удалось удалить занятие');
+    } catch (e) {
+      // Фиксированная фраза здесь скрывала причину, которую бэк называет сам
+      // (занятие в расписании, нарушенное правило) — показываем его текст.
+      toast.failure(e, 'Не удалось удалить занятие плана.');
     } finally {
       setDeletingSlot(null);
     }
@@ -204,8 +221,8 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       });
       await reload();
       onChanged?.();
-    } catch {
-      alert('Не удалось дублировать занятие');
+    } catch (e) {
+      toast.failure(e, 'Не удалось дублировать занятие.');
     } finally {
       setDuplicatingSlot(null);
     }
@@ -243,8 +260,8 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       setQuickThemeTitle('');
       await reload();
       onChanged?.();
-    } catch {
-      alert('Не удалось добавить занятие');
+    } catch (e) {
+      toast.failure(e, 'Не удалось добавить занятие в план.');
     } finally {
       setQuickAdding(false);
     }
@@ -263,8 +280,8 @@ export const CurriculumPlanEditor: React.FC<CurriculumPlanEditorProps> = ({ disc
       else await sourceRef.current.link(slot.id, next.id);
       await reload();
       onChanged?.();
-    } catch {
-      alert('Не удалось изменить сцепку');
+    } catch (e) {
+      toast.failure(e, 'Не удалось изменить сцепку занятий.');
     }
   };
 

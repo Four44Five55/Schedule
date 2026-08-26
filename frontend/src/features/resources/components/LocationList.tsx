@@ -4,6 +4,9 @@ import { ResourceService } from '../../../services/apiServices';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { LocationFormModal } from './LocationFormModal';
 import { MapPin, Building2, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { useToast } from '../../../context/ToastContext';
 
 interface LocationListProps {
     /** Вызывается после изменения локаций — чтобы хост при желании освежил зависимое (корпуса). */
@@ -11,8 +14,10 @@ interface LocationListProps {
 }
 
 export const LocationList: React.FC<LocationListProps> = ({ onChanged }) => {
+    const toast = useToast();
     const [locations, setLocations] = useState<LocationDto[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLocation, setEditingLocation] = useState<LocationDto | null>(null);
@@ -25,9 +30,12 @@ export const LocationList: React.FC<LocationListProps> = ({ onChanged }) => {
 
     const reload = useCallback(() => {
         setLoading(true);
+        setLoadError(null);
         ResourceService.getLocations()
             .then(setLocations)
-            .catch((err) => console.error('Ошибка загрузки локаций:', err))
+            // Пустой список и незагруженный выглядят одинаково, а делать надо разное:
+            // завести первую строку либо повторить запрос.
+            .catch((err) => setLoadError(errorMessage(err, 'Не удалось загрузить список локаций.')))
             .finally(() => setLoading(false));
     }, []);
 
@@ -86,7 +94,7 @@ export const LocationList: React.FC<LocationListProps> = ({ onChanged }) => {
             onChanged?.();
         } catch (err: any) {
             console.error('Ошибка удаления локации:', err);
-            alert(err?.response?.data || 'Не удалось удалить локацию.');
+            toast.failure(err, 'Не удалось удалить локацию.');
         } finally {
             setIsDeleting(false);
         }
@@ -118,6 +126,8 @@ export const LocationList: React.FC<LocationListProps> = ({ onChanged }) => {
 
     return (
         <div className="space-y-4">
+            {loadError && <ErrorBanner message={loadError} onRetry={reload} />}
+
             {/* Панель действий */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-slate-500">

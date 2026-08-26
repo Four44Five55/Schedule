@@ -5,6 +5,8 @@ import { ConstraintKindService } from '../../../services/apiServices';
 import { CONSTRAINT_COLOR_KEYS, constraintStyleOfColor } from '../constraintStyles';
 import { useEnums } from '../../../context/EnumContext';
 import { cn } from '../../../utils/cn';
+import { errorMessage } from '../../../services/apiError';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 
 interface Props {
   onClose: () => void;
@@ -76,7 +78,7 @@ export const ConstraintKindsModal: React.FC<Props> = ({ onClose }) => {
       // иначе новый вид не появится в выборе до перезагрузки страницы.
       await reloadConstraintKinds();
     } catch (e: any) {
-      setError(typeof e?.response?.data === 'string' ? e.response.data : 'Не удалось сохранить');
+      setError(errorMessage(e, 'Не удалось сохранить'));
     } finally {
       setBusy(false);
     }
@@ -92,7 +94,7 @@ export const ConstraintKindsModal: React.FC<Props> = ({ onClose }) => {
       await reloadConstraintKinds();
     } catch (e: any) {
       // 409 приходит с внятным текстом (сколько ограничений размечено / вид системный).
-      setError(typeof e?.response?.data === 'string' ? e.response.data : 'Не удалось удалить');
+      setError(errorMessage(e, 'Не удалось удалить'));
     } finally {
       setBusy(false);
     }
@@ -112,9 +114,7 @@ export const ConstraintKindsModal: React.FC<Props> = ({ onClose }) => {
         </div>
 
         {error && (
-          <div className="mx-4 mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">
-            {error}
-          </div>
+          <ErrorBanner message={error} className="mx-4 mt-3 px-3 py-2 text-[11px]" />
         )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">

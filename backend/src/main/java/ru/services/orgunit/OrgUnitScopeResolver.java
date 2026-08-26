@@ -1,6 +1,5 @@
 package ru.services.orgunit;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +12,7 @@ import ru.repository.OrgUnitRepository;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import ru.exceptions.NotFoundException;
 
 /**
  * Разрешение охвата подразделения: «кафедра» → множества id преподавателей и групп, с учётом
@@ -48,7 +48,7 @@ public class OrgUnitScopeResolver {
     /**
      * Идентификаторы подразделения и всех вложенных в него, на любую глубину.
      *
-     * @throws EntityNotFoundException если подразделения с таким id нет
+     * @throws NotFoundException если подразделения с таким id нет
      */
     @Transactional(readOnly = true)
     public Set<Integer> unitIds(Integer orgUnitId) {
@@ -116,7 +116,7 @@ public class OrgUnitScopeResolver {
     private Set<Integer> requireSubtree(Integer orgUnitId, List<OrgUnit> allUnits) {
         Set<Integer> ids = subtree.idsOf(orgUnitId, OrgUnitNodes.byId(allUnits));
         if (ids.isEmpty()) {
-            throw new EntityNotFoundException("Подразделение с id=" + orgUnitId + " не найдено.");
+            throw new NotFoundException("Подразделение с id=" + orgUnitId + " не найдено.");
         }
         return ids;
     }
