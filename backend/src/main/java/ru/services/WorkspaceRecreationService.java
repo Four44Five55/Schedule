@@ -8,7 +8,6 @@ import ru.entity.*;
 import ru.entity.write.LessonPlacement;
 import ru.services.constraints.AllConstraints;
 import ru.services.constraints.ConstraintService;
-import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -33,6 +32,7 @@ public class WorkspaceRecreationService {
     private final ConstraintService constraintService;
     private final AssignmentService assignmentService;
     private final ru.repository.write.LessonPlacementRepository placementRepo;
+    private final ru.repository.write.ScheduleSessionRepository sessionRepo;
     private final WorkspacePlacementSeeder placementSeeder;
 
     /**
@@ -67,17 +67,17 @@ public class WorkspaceRecreationService {
     public RecreatedWorkspace recreateWorkspaceFromSession(UUID sessionId) {
         List<LessonPlacement> placements = placementRepo.findBySessionId(sessionId);
 
+        // 1. Границы планирования — у СЕССИИ, а не у размещений (см. periodOf).
+        //    Пустая сессия — это НЕ повод для «периода по умолчанию»: ручная раскладка начинается
+        //    ровно с такой сессии, и палитра обязана предлагать ячейки её периода, а не месяц от
+        //    сегодняшнего дня. Запасной путь остаётся только для сессии без периода и без размещений.
+        DateRange period = periodOf(sessionId, placements);
         if (placements.isEmpty()) {
-            log.warn("⚠️  Сессия не содержит placements");
-            return new RecreatedWorkspace(createEmptyWorkspace(), Map.of());
+            log.debug("Сессия {} пуста — workspace строится на её период {}…{}",
+                    sessionId, period.startDate, period.endDate);
         }
 
-        // 1. Определяем период из placements
-        DateRange period = determinePeriod(placements);
-
-        // 2. Создаём пустой workspace
-        CellForLessonFactory.initializeCellCache(period.startDate, period.endDate);
-
+        // 2. Создаём пустой workspace на границы периода — календарь ячеек он строит от них сам
         ru.services.solver.ScheduleWorkspace workspace = new ru.services.solver.ScheduleWorkspace(
             period.startDate,
             period.endDate,
@@ -123,8 +123,6 @@ public class WorkspaceRecreationService {
      */
     @Transactional(readOnly = true)
     public RecreatedWorkspace recreateWorkspaceForPeriod(UUID sessionId, LocalDate start, LocalDate end) {
-        CellForLessonFactory.initializeCellCache(start, end);
-
         ru.services.solver.ScheduleWorkspace workspace = new ru.services.solver.ScheduleWorkspace(
             start, end,
             educatorService.getAllEntities(),
@@ -149,7 +147,33 @@ public class WorkspaceRecreationService {
     }
 
     /**
-     * Определить период (начало и конец) из placements.
+     * Границы планирования сессии: сначала её собственный период, и только потом — размещения.
+     *
+     * <p><b>Почему не min/max размещений</b> (так было до 2026-08-27). Границы workspace — это ответ
+     * на вопрос «слот принадлежит планируемому периоду», на нём стоит отказ переноса. Считая их по
+     * уже размещённым занятиям, мы отвечали «периодом» там, где на самом деле «диапазон того, что
+     * уже расставлено»: перенос в пустую последнюю неделю семестра отклонялся как «вне периода»,
+     * хотя неделя в периоде есть. Ручная установка тем временем строила workspace по настоящим
+     * границам ({@code recreateWorkspaceForPeriod}) — два пути отвечали по-разному об одном.</p>
+     *
+     * <p>Размещения остаются запасным путём: у сессии может не быть периода (старые записи), и
+     * тогда лучше узкие границы, чем никакие.</p>
+     */
+    private DateRange periodOf(UUID sessionId, List<LessonPlacement> placements) {
+        DateRange fromSession = sessionRepo.findById(sessionId)
+                .map(ru.entity.write.ScheduleSession::getStudyPeriod)
+                .filter(java.util.Objects::nonNull)
+                .map(period -> new DateRange(period.getStartDate(), period.getEndDate()))
+                .orElse(null);
+        if (fromSession != null && fromSession.startDate != null && fromSession.endDate != null) {
+            return fromSession;
+        }
+        log.debug("У сессии {} нет периода — границы берём по размещениям", sessionId);
+        return determinePeriod(placements); // пусто → месяц от сегодня, как было
+    }
+
+    /**
+     * Определить период (начало и конец) из placements — запасной путь, см. {@link #periodOf}.
      */
     private DateRange determinePeriod(List<LessonPlacement> placements) {
         LocalDate minDate = null;
@@ -175,12 +199,23 @@ public class WorkspaceRecreationService {
     }
 
     /**
+     * Сессия, которой принадлежит размещение; {@code null} — размещения уже нет.
+     *
+     * <p>Отдельный дешёвый запрос: кэш workspace ключуется сессией, а подбор вариантов приходит с
+     * {@code placementId}. Ходить за целым workspace, чтобы узнать его ключ, было бы кругом.</p>
+     */
+    @Transactional(readOnly = true)
+    public UUID sessionIdOfPlacement(UUID placementId) {
+        return placementRepo.findById(placementId)
+                .map(placement -> placement.getSession().getId())
+                .orElse(null);
+    }
+
+    /**
      * Создать пустой workspace (если нет placements).
      */
     private ru.services.solver.ScheduleWorkspace createEmptyWorkspace() {
         LocalDate now = LocalDate.now();
-        CellForLessonFactory.initializeCellCache(now, now.plusMonths(1));
-
         return new ru.services.solver.ScheduleWorkspace(
             now,
             now.plusMonths(1),

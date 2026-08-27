@@ -11,6 +11,7 @@ import ru.enums.TimeSlotPair;
 import java.time.LocalDate;
 
 @Entity
+@jakarta.persistence.EntityListeners(ru.services.workspace.ConstraintChangeListener.class)
 @Table(name = "educator_constraint")
 @Getter
 @Setter

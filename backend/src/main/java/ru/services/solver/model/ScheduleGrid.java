@@ -3,9 +3,7 @@ package ru.services.solver.model;
 import ru.abstracts.AbstractGrid;
 import ru.abstracts.AbstractLesson;
 import ru.entity.CellForLesson;
-import ru.services.factories.CellForLessonFactory;
 
-import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -25,32 +23,20 @@ public class ScheduleGrid extends AbstractGrid {
     private final Map<CellForLesson, List<AbstractLesson>> scheduleGridMap = new HashMap<>();
 
     /**
-     * Конструктор по умолчанию.
-     * Использует startDate и endDate из интерфейса IGrid.
-     */
-    public ScheduleGrid() {
-        super();
-        fillBlankCellLessonForSchedule();
-    }
-
-    /**
-     * Создает экземпляр сетки расписания с указанием временных рамок.
+     * Создаёт сетку по календарю периода.
      *
-     * @param startDate дата начала периода.
-     * @param endDate   дата окончания периода.
+     * <p>Календарь — единственный источник того, какие ячейки в сетке есть. Прежний конструктор
+     * принимал {@code startDate}/{@code endDate} и <b>не использовал их</b>: ячейки приезжали из
+     * глобальной статики, заполненной последним запросом, — сетка одного периода могла оказаться
+     * построенной по чужому. Даты остались (их спрашивают через {@link ru.abstracts.AbstractGrid}),
+     * но теперь они и содержимое сетки — из одного места.</p>
+     *
+     * @param calendar календарь периода планирования
      */
-    public ScheduleGrid(LocalDate startDate, LocalDate endDate) {
-        super(startDate, endDate);
-        fillBlankCellLessonForSchedule();
-    }
-
-    /**
-     * Заполняет расписание занятий днями(дата и пара)
-     */
-    private void fillBlankCellLessonForSchedule() {
-        List<CellForLesson> cellForLessons = CellForLessonFactory.getAllCells();
-        for (CellForLesson cellForLesson : cellForLessons) {
-            scheduleGridMap.put(cellForLesson, new ArrayList<>());
+    public ScheduleGrid(AcademicCalendar calendar) {
+        super(calendar.startDate(), calendar.endDate());
+        for (CellForLesson cell : calendar.cells()) {
+            scheduleGridMap.put(cell, new ArrayList<>());
         }
     }
 

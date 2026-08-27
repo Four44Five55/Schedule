@@ -15,8 +15,8 @@ import ru.enums.TimeSlotPair;
 import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
 import ru.repository.write.LessonPlacementRepository;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.session.ScheduleSessionGate;
+import ru.services.workspace.WorkspaceProvider;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -48,6 +48,8 @@ import java.util.UUID;
 public class LessonChainMoveService {
 
     private final WorkspaceRecreationService workspaceRecreationService;
+    /** Читающие пути берут снимок здесь: провайдер может отдать его из кэша. */
+    private final WorkspaceProvider workspaceProvider;
     private final LessonPlacementRepository placementRepo;
     private final ScheduleSessionGate sessionGate;
     private final TrackReorderService trackReorderService;
@@ -63,7 +65,13 @@ public class LessonChainMoveService {
     public List<MoveOptionDto> findChainMoveOptions(List<UUID> placementIds) {
         if (placementIds == null || placementIds.isEmpty()) return List.of();
 
-        var recreated = workspaceRecreationService.recreateWorkspaceForPlacement(placementIds.get(0));
+        // Снимок одалживается у провайдера (возможно, из кэша) на время подбора.
+        return workspaceProvider.withWorkspaceOfPlacement(placementIds.get(0),
+                recreated -> chainOptionsOn(recreated, placementIds));
+    }
+
+    private List<MoveOptionDto> chainOptionsOn(WorkspaceRecreationService.RecreatedWorkspace recreated,
+                                               List<UUID> placementIds) {
         ScheduleWorkspace workspace = recreated.workspace();
 
         List<Lesson> chain = resolveChainLessons(placementIds, recreated.lessonByPlacementId());
@@ -86,16 +94,21 @@ public class LessonChainMoveService {
         // Текущее начало цепочки — чтобы не предлагать перенос «туда же».
         CellForLesson currentStart = workspace.getCellForLesson(chain.get(0));
 
-        // Изымаем всю цепочку: её ресурсы освобождаются, ячейки выглядят свободными.
-        chain.forEach(workspace::removePlacement);
+        // Изымаем всю цепочку: её ресурсы освобождаются, ячейки выглядят свободными. Возврат на
+        // место — гарантией withoutPlacements (finally), а не строкой в конце метода: раньше
+        // возврата не было ВООБЩЕ, и это безобидно ровно до тех пор, пока workspace выбрасывается
+        // вместе с запросом. С кэшем такой подбор стирал бы цепочку из общего снимка.
+        return workspace.withoutPlacements(chain, () -> chainOptions(workspace, chain, currentStart));
+    }
 
+    /** Перебор стартовых ячеек — выполняется, когда цепочка уже изъята из сетки. */
+    private List<MoveOptionDto> chainOptions(ScheduleWorkspace workspace, List<Lesson> chain,
+                                             CellForLesson currentStart) {
         int n = chain.size();
         TimeSlotPair[] slots = TimeSlotPair.values();
-        List<LocalDate> dates = CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate).distinct().sorted().toList();
 
         List<MoveOptionDto> options = new ArrayList<>();
-        for (LocalDate date : dates) {
+        for (LocalDate date : workspace.getCalendar().dates()) {
             for (int start = 0; start + n <= slots.length; start++) {
                 if (currentStart != null
                         && date.equals(currentStart.getDate())
@@ -168,10 +181,8 @@ public class LessonChainMoveService {
         List<PlacementOption> options = new ArrayList<>(n);
         for (int k = 0; k < n; k++) {
             TimeSlotPair slot = slots[startOrdinal + k];
-            CellForLesson cell = CellForLessonFactory.getCell(newStartDate, slot);
-            if (cell == null) {
-                throw new LessonMoveConflictException("слот цепочки вне планируемого периода");
-            }
+            CellForLesson cell = workspace.getCalendar().cellAt(newStartDate, slot)
+                    .orElseThrow(() -> new LessonMoveConflictException("слот цепочки вне планируемого периода"));
             // HONOR_WINDOWS: цепочку двигает человек — см. LessonMoveService.
             PlacementOption option = workspace.findPlacementOption(chain.get(k), cell,
                     ScheduleWorkspace.ConstraintPolicy.HONOR_WINDOWS);
@@ -227,7 +238,7 @@ public class LessonChainMoveService {
     private boolean chainFits(ScheduleWorkspace workspace, List<Lesson> chain,
                               LocalDate date, TimeSlotPair[] slots, int start) {
         for (int k = 0; k < chain.size(); k++) {
-            CellForLesson cell = CellForLessonFactory.getCell(date, slots[start + k]);
+            CellForLesson cell = workspace.getCalendar().cellAt(date, slots[start + k]).orElse(null);
             // Подсказка обязана совпадать с фактическим переносом, иначе зелёная ячейка приведёт
             // к 409 — поэтому политика здесь та же, что в moveChain.
             if (cell == null || !workspace.findPlacementOption(chain.get(k), cell,

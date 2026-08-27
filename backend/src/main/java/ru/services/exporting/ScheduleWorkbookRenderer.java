@@ -110,12 +110,19 @@ public class ScheduleWorkbookRenderer {
     // лист стал заканчиваться на 96). Область печати считается от последней ЗАПОЛНЕННОЙ строки.
 
     /**
-     * Один лист выгрузки: имя (сущность), сетка «date_SLOT → занятия» (как отдаёт Query Side),
+     * Один лист выгрузки: имя (сущность), реквизиты шапки (факультет и курс — только у группы),
+     * сетка «date_SLOT → занятия» (как отдаёт Query Side),
      * карта ограничений «date_SLOT → аббревиатура» (для пустых ячеек, как в историческом экспорте),
      * строки легенды «Обозначения» и две расшифровки аббревиатур — виды занятий и прочие обозначения
      * (все три заполняются только для группы; для препода/аудитории пусто).
+     *
+     * <p>Факультет и курс приезжают уже разрешёнными ({@link GroupRequisites}) — рендерер о БД не
+     * знает, ровно как и с подписью под расписанием. {@code null} в любом из них означает «графу
+     * оставить пустой»: пустая графа честнее подставленного значения.</p>
      */
     public record SheetData(String name,
+                            String faculty,
+                            Integer course,
                             Map<String, List<ScheduledLessonDto>> grid,
                             Map<String, String> constraintAbbr,
                             List<LegendRow> legend,
@@ -224,7 +231,7 @@ public class ScheduleWorkbookRenderer {
     private void fillSheet(Sheet sheet, SheetData data, LocalDate start, LocalDate end, LocalDate cropEnd,
                            ExportAxis axis, CellStyle dateStyle, CellStyler styler, Signature signature) {
         writeMonthHeader(sheet, start, end);
-        writeEntityHeader(sheet, data.name(), start, end, axis);
+        writeEntityHeader(sheet, data, start, end, axis);
         // Стили свободной зоны — ДО удаления таблицы «Обозначения»: образец шрифта берётся из неё,
         // а у преподавателя и аудитории её строки сейчас будут удалены. Возьми стили после — и шрифт
         // молча откатится к умолчанию книги (ровно эта мина уже срабатывала, см. blockStyles).
@@ -672,10 +679,15 @@ public class ScheduleWorkbookRenderer {
 
     /**
      * Заполняет шапку по оси: год и семестр (в бланке захардкожены «2023/2024 / ВЕСЕННИЙ») —
-     * из дат периода; поле сущности (N4:O4) её реквизитами и метку (K4) под ось. Для преподавателя
-     * убирает группо-специфичные поля бланка (ФАКУЛЬТЕТ, АУД.САМОСТ.РАБОТЫ).
+     * из дат периода; поле сущности (N4:O4) её реквизитами и метку (K4) под ось. Группе заполняет
+     * ещё две графы бланка — ФАКУЛЬТЕТ (N2:O2) и КУРС (N3:O3); для преподавателя убирает
+     * группо-специфичные поля целиком (ФАКУЛЬТЕТ, КУРС, АУД.САМОСТ.РАБОТЫ).
+     *
+     * <p>Обе графы стояли в бланке подписанными и пустыми: слово есть, значения нет. Значения
+     * приезжают в {@link SheetData} разрешёнными ({@link GroupRequisites}) — {@code null} означает
+     * «оставить графу пустой».</p>
      */
-    private void writeEntityHeader(Sheet sheet, String entityName, LocalDate start, LocalDate end, ExportAxis axis) {
+    private void writeEntityHeader(Sheet sheet, SheetData data, LocalDate start, LocalDate end, ExportAxis axis) {
         boolean autumn = start.getMonthValue() >= 8;
         int academicYear = autumn ? start.getYear() : start.getYear() - 1;
         String semester = autumn ? "ОСЕННИЙ" : "ВЕСЕННИЙ";
@@ -683,16 +695,23 @@ public class ScheduleWorkbookRenderer {
         setString(sheet, 2, 0, academicYear + "/" + (academicYear + 1) + " УЧЕБНЫЙ ГОД");   // A3
 
         // Поле сущности бланка: метка K4 + значение N4 (в бланке «УЧЕБНАЯ ГРУППА», пусто).
-        setString(sheet, 3, 13, entityName != null ? entityName : ""); // N4 — реквизиты (для преподавателя ФИО)
-        setString(sheet, 3, 10, switch (axis) {                        // K4 — метка под ось
+        setString(sheet, 3, 13, data.name() != null ? data.name() : ""); // N4 — реквизиты (для преподавателя ФИО)
+        setString(sheet, 3, 10, switch (axis) {                          // K4 — метка под ось
             case EDUCATOR -> "ПРЕПОДАВАТЕЛЬ";
             case AUDITORIUM -> "АУДИТОРИЯ";
             default -> "УЧЕБНАЯ ГРУППА";
         });
 
+        if (axis == ExportAxis.GROUP) {
+            setString(sheet, 1, 13, data.faculty() != null ? data.faculty() : "");                 // N2:O2 — факультет
+            setString(sheet, 2, 13, data.course() != null ? String.valueOf(data.course()) : "");   // N3:O3 — курс
+        }
+
         if (axis == ExportAxis.EDUCATOR) {
             blank(sheet, 1, 10);  // K2 «ФАКУЛЬТЕТ»
             blank(sheet, 1, 13);  // поле N2:O2 факультета
+            blank(sheet, 2, 10);  // K3 «КУРС» — курс есть у группы, а не у преподавателя
+            blank(sheet, 2, 13);  // поле N3:O3 курса
             blank(sheet, 2, 18);  // S3 «АУД.САМОСТ.РАБОТЫ»
         }
     }

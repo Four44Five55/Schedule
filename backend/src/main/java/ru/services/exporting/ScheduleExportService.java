@@ -14,13 +14,17 @@ import ru.entity.Educator;
 import ru.entity.OrgUnit;
 import ru.entity.read.ScheduleView;
 import ru.enums.KindOfStudy;
+import ru.enums.OrgUnitType;
 import ru.repository.AssignmentRepository;
 import ru.repository.EducatorRepository;
+import ru.repository.GroupRepository;
+import ru.repository.OrgUnitRepository;
 import ru.repository.read.ScheduleViewRepository;
 import ru.services.ScheduleResponseService;
 import ru.services.StudyPeriodService;
 import ru.services.constraints.ConstraintService;
 import ru.services.educator.EducatorCredentialsAssembler;
+import ru.services.orgunit.OrgUnitAncestry;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -62,6 +66,8 @@ public class ScheduleExportService {
     private final ConstraintService constraintService;
     private final EducatorRepository educatorRepository;
     private final AssignmentRepository assignmentRepository;
+    private final GroupRepository groupRepository;
+    private final OrgUnitRepository orgUnitRepository;
     private final ScheduleWorkbookRenderer renderer;
 
     /** Результат выгрузки: байты, имя файла (кириллица, кодируется в контроллером) и MIME-тип. */
@@ -96,6 +102,10 @@ public class ScheduleExportService {
         // тот же запрос: подпись им нужна ровно та же, а второго похода в БД она не стоит.
         Map<Integer, EducatorLabel> educatorLabels = axis == ExportAxis.GROUP
                 ? labelsByEducator(relevant, reserveEducatorIds(reserve)) : Map.of();
+        // Реквизиты шапки бланка (ФАКУЛЬТЕТ, КУРС) — тоже только для группы: у преподавателя эти
+        // графы из бланка убираются, у аудитории их заполнять нечем.
+        Map<Integer, GroupRequisites> requisites = axis == ExportAxis.GROUP
+                ? requisitesByGroup(relevant, axis, period) : Map.of();
 
         // Правый край листов: последняя дата, на которой в расписании периода есть занятие.
         LocalDate contentEnd = contentEnd(relevant, end);
@@ -110,7 +120,7 @@ public class ScheduleExportService {
                     .toList();
             String scopeName = rows.isEmpty() ? ("#" + entityId) : axis.entityName(rows.get(0));
             var sheet = sheetOf(scopeName, entityId, rows, axisConstraints, start, end, axis,
-                    streamGroups, educatorLabels, reserve);
+                    streamGroups, educatorLabels, reserve, requisites);
             byte[] bytes = renderer.render(List.of(sheet), start, end, contentEnd, axis, signature);
             String filename = buildFilename(period, axis, scopeName, ".xlsx");
             log.info("Экспорт расписания (бланк, .xlsx): период id={}, ось={}, сущность={}, {} байт",
@@ -128,7 +138,7 @@ public class ScheduleExportService {
                         String.CASE_INSENSITIVE_ORDER))
                 .map(e -> sheetOf(axis.entityName(e.getValue().get(0)), e.getKey(),
                         e.getValue(), axisConstraints, start, end, axis, streamGroups, educatorLabels,
-                        reserve))
+                        reserve, requisites))
                 .toList();
 
         byte[] bytes = zipPerEntity(sheets, start, end, contentEnd, axis, signature);
@@ -193,7 +203,8 @@ public class ScheduleExportService {
                                                        LocalDate start, LocalDate end, ExportAxis axis,
                                                        Map<UUID, Set<String>> streamGroups,
                                                        Map<Integer, EducatorLabel> educatorLabels,
-                                                       Map<Integer, Map<String, ReserveSlot>> reserve) {
+                                                       Map<Integer, Map<String, ReserveSlot>> reserve,
+                                                       Map<Integer, GroupRequisites> requisites) {
         Map<String, List<ScheduledLessonDto>> grid = responseService.buildGridFromViews(rows);
         List<ConstraintData> constraints = axisConstraints.get(entityId);
         Map<String, String> constraintAbbr = constraintMapFor(constraints, start, end);
@@ -206,7 +217,9 @@ public class ScheduleExportService {
                 : List.of();
         List<ScheduleWorkbookRenderer.Mark> kindMarks = group ? kindMarksOf(rows) : List.of();
         List<ScheduleWorkbookRenderer.Mark> otherMarks = group ? constraintMarksOf(constraints, start, end) : List.of();
-        return new ScheduleWorkbookRenderer.SheetData(name, grid, constraintAbbr, legend, kindMarks, otherMarks);
+        GroupRequisites blankRequisites = requisites.getOrDefault(entityId, GroupRequisites.EMPTY);
+        return new ScheduleWorkbookRenderer.SheetData(name, blankRequisites.faculty(), blankRequisites.course(),
+                grid, constraintAbbr, legend, kindMarks, otherMarks);
     }
 
     /**
@@ -500,6 +513,40 @@ public class ScheduleExportService {
                         .computeIfAbsent(key, k -> ReserveSlot.empty());
                 (lecture ? slot.lecturers() : slot.others()).addAll(ids);
             }
+        }
+        return byGroup;
+    }
+
+    /**
+     * Реквизиты шапки бланка по группам выгрузки: факультет и курс (графы ФАКУЛЬТЕТ и КУРС).
+     *
+     * <p>Два похода в БД на всю выгрузку, а не на лист: группы — одним {@code findAllById}, дерево
+     * подразделений — целиком (их десятки, и {@code GET /api/org-units} грузит его так же). Подъём
+     * к факультету идёт по этой карте, а не по ссылкам {@code parent}: иначе ZIP на сотню групп
+     * доставал бы каждого предка отдельным ленивым запросом.</p>
+     *
+     * <p>Курса в выгрузке сторонней программы нет — графа «Курс» там напечатана пустой, — поэтому
+     * он считается от года набора и учебного года периода ({@link GroupRequisites}).</p>
+     */
+    private Map<Integer, GroupRequisites> requisitesByGroup(List<ScheduleView> rows, ExportAxis axis,
+                                                            StudyPeriod period) {
+        Set<Integer> groupIds = rows.stream()
+                .map(axis::entityId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (groupIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, OrgUnit> unitsById = orgUnitRepository.findAll().stream()
+                .collect(Collectors.toMap(OrgUnit::getId, unit -> unit));
+
+        Map<Integer, GroupRequisites> byGroup = new HashMap<>();
+        for (Group group : groupRepository.findAllById(groupIds)) {
+            // Идентификатор подразделения берётся у прокси без его загрузки — сама строка уже есть
+            // в карте дерева.
+            Integer unitId = group.getOrgUnit() == null ? null : group.getOrgUnit().getId();
+            OrgUnit faculty = OrgUnitAncestry.nearestOfType(unitId, OrgUnitType.FACULTY, unitsById);
+            byGroup.put(group.getId(), GroupRequisites.of(group, faculty, period.getStudyYear()));
         }
         return byGroup;
     }

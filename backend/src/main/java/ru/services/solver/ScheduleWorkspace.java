@@ -6,11 +6,13 @@ import ru.services.constraints.AllConstraints;
 import ru.services.constraints.ConstraintAdmissionRule;
 import ru.services.solver.availability.ResourceAvailabilityManager;
 import ru.services.solver.model.AuditoriumResource;
+import ru.services.solver.model.AcademicCalendar;
 import ru.services.solver.model.SchedulableResource;
 import ru.services.solver.model.ScheduleGrid;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +34,15 @@ public final class ScheduleWorkspace {
     private final LocalDate startDate;
     @Getter
     private final LocalDate endDate;
+
+    /**
+     * Какие ячейки существуют в этом периоде. Раньше на этот вопрос отвечала глобальная статика
+     * {@code CellForLessonFactory}, которую перезаполнял каждый запрос; теперь — значение,
+     * принадлежащее конкретному workspace. Спрашивать календарь надо у того workspace, в чьём
+     * периоде идёт работа: другого «текущего периода» в системе больше нет.
+     */
+    @Getter
+    private final AcademicCalendar calendar;
 
     /**
      * Политика подбора комнаты. Без состояния — workspace держит занятость, селектор решает,
@@ -60,7 +71,8 @@ public final class ScheduleWorkspace {
     ) {
         this.startDate = startDate;
         this.endDate = endDate;
-        this.grid = new ScheduleGrid(startDate, endDate);
+        this.calendar = AcademicCalendar.of(startDate, endDate);
+        this.grid = new ScheduleGrid(this.calendar);
         this.resourceManager = new ResourceAvailabilityManager(allEducators, allGroups, allAuditoriums, allConstraints);
     }
 
@@ -224,6 +236,53 @@ public final class ScheduleWorkspace {
         // Проставляем занятость
         participants.forEach(p -> p.occupy(cell, lesson));
     }
+
+    /**
+     * Выполняет чтение так, будто указанных занятий в расписании нет, и <b>возвращает их на место</b>.
+     *
+     * <p>Подбор «куда можно перенести» обязан временно изъять само занятие: иначе его собственные
+     * ресурсы (преподаватель, группа, комната) выглядят занятыми, и правильный ответ выродится в
+     * «переносить некуда». Изъятие — операция над состоянием, а метод по смыслу запрос: единственный
+     * способ не нарушить CQS наружу — сделать «как было» <b>гарантией</b>, а не соглашением.</p>
+     *
+     * <p><b>Почему {@code finally}, а не обработчик исключений.</b> Advice отвечает, что показать
+     * человеку; вернуть изменённый объект в памяти он не может. Пока workspace жил один запрос и
+     * выбрасывался, разницы не было. С кэшем workspace переживает запрос, и исключение посреди
+     * подбора (например {@code findAvailableAuditoriumsFor} на потоке без групп) оставило бы
+     * занятие изъятым <b>в кэше</b> — расписание молча теряет занятие, и ни одной ошибки в логе.</p>
+     *
+     * <p>Порядок возврата обратный порядку изъятия, а снимок — {@code (ячейка, аудитории)} на момент
+     * изъятия: {@link #removePlacement} освобождает ресурсы по <b>текущим</b> аудиториям занятия, и
+     * без копии списка восстановление зависело бы от того, не переписал ли их кто-то в теле.</p>
+     *
+     * @param lessons занятия, которые нужно временно изъять; не размещённые пропускаются
+     * @param body    само чтение (фильтры, подбор вариантов)
+     * @return то, что вернуло чтение
+     */
+    public <T> T withoutPlacements(Collection<Lesson> lessons, Supplier<T> body) {
+        List<RemovedPlacement> removed = new ArrayList<>();
+        try {
+            for (Lesson lesson : lessons) {
+                CellForLesson cell = grid.getCellForLesson(lesson);
+                if (cell == null) {
+                    continue; // занятия нет в сетке — изымать нечего, и возвращать потом тоже
+                }
+                List<Auditorium> rooms = lesson.getAssignedAuditoriums() == null
+                        ? List.of() : List.copyOf(lesson.getAssignedAuditoriums());
+                removePlacement(lesson);
+                removed.add(new RemovedPlacement(lesson, cell, rooms));
+            }
+            return body.get();
+        } finally {
+            for (int i = removed.size() - 1; i >= 0; i--) {
+                RemovedPlacement placement = removed.get(i);
+                forcePlacement(placement.lesson(), placement.cell(), placement.auditoriums());
+            }
+        }
+    }
+
+    /** Снимок изъятого размещения: чем именно его возвращать на место. */
+    private record RemovedPlacement(Lesson lesson, CellForLesson cell, List<Auditorium> auditoriums) {}
 
     /**
      * Находит ячейку, в которой размещено занятие.

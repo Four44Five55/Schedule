@@ -9,7 +9,6 @@ import ru.entity.*;
 import ru.entity.constraints.ConstraintKindRef;
 import ru.enums.TimeSlotPair;
 import ru.inter.IMaterialEntity;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.ScheduleWorkspace;
 import ru.services.solver.model.SchedulableResource;
 import ru.services.solver.model.ScheduleGrid;
@@ -90,7 +89,7 @@ public class ExcelExportService {
                     continue; // Пропускаем запрещённые слоты
                 }
 
-                CellForLesson cell = CellForLessonFactory.getCell(checkedDate, timeSlotPair);
+                CellForLesson cell = workspace.getCalendar().cellAt(checkedDate, timeSlotPair).orElse(null);
                 SchedulableResource resource = workspace.getResourceManager().getResource(entity);
                 Lesson lesson = resource.getLessonInCell(cell);
 

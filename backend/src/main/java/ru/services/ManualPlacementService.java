@@ -26,8 +26,8 @@ import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.repository.write.ScheduleSessionRepository;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.session.ScheduleSessionGate;
+import ru.services.workspace.WorkspaceProvider;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -59,6 +59,8 @@ public class ManualPlacementService {
     private final ScheduleSessionGate sessionGate;
     private final StudyPeriodService studyPeriodService;
     private final WorkspaceRecreationService workspaceRecreationService;
+    /** Читающие пути берут снимок здесь: провайдер может отдать его из кэша. */
+    private final WorkspaceProvider workspaceProvider;
     private final WorkspacePlacementSeeder placementSeeder;
     private final MoveLessonSuggestionService moveSuggestionService;
     private final ApplicationEventPublisher eventPublisher;
@@ -109,15 +111,17 @@ public class ManualPlacementService {
     @Transactional(readOnly = true)
     public List<MoveOptionDto> findPlacementOptions(UUID sessionId, Integer assignmentId,
                                                     String rootType, Integer rootId, Integer studyPeriodId) {
-        StudyPeriod period = studyPeriodService.getEntityById(studyPeriodId);
-        ScheduleWorkspace workspace = workspaceRecreationService
-                .recreateWorkspaceForPeriod(sessionId, period.getStartDate(), period.getEndDate())
-                .workspace();
-
         Assignment assignment = assignmentService.getEntityById(assignmentId);
         Lesson lesson = placementSeeder.buildLesson(assignment);
 
-        return moveSuggestionService.findPlacementSuggestions(workspace, lesson, rootType, rootId);
+        // Рамки ячеек больше не передаём отдельно: workspace сессии строится по периоду САМОЙ
+        // сессии (см. WorkspaceRecreationService.periodOf). Раньше палитра просила период явно, а
+        // перенос считал его по min/max размещений — два пути отвечали по-разному на один вопрос
+        // «слот в периоде?». Параметр studyPeriodId остаётся в подписи: он часть контракта запроса
+        // и используется путём записи.
+        return workspaceProvider.withWorkspaceOfSession(sessionId, recreated ->
+                moveSuggestionService.findPlacementSuggestions(
+                        recreated.workspace(), lesson, rootType, rootId));
     }
 
     /**
@@ -153,10 +157,10 @@ public class ManualPlacementService {
                 .workspace();
 
         TimeSlotPair slot = TimeSlotPair.valueOf(slotName);
-        CellForLesson cell = CellForLessonFactory.getCell(date, slot);
-        if (cell == null) {
-            throw new LessonMoveConflictException("выбранный слот вне планируемого периода");
-        }
+        // Границы спрашиваем у workspace, построенного на период ЭТОЙ сессии: «вне периода» —
+        // суждение о конкретном периоде, а не о том, что кто-то инициализировал последним.
+        CellForLesson cell = workspace.getCalendar().cellAt(date, slot)
+                .orElseThrow(() -> new LessonMoveConflictException("выбранный слот вне планируемого периода"));
 
         Assignment assignment = assignmentService.getEntityById(assignmentId);
         Lesson lesson = placementSeeder.buildLesson(assignment);

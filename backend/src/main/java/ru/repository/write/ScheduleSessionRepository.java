@@ -43,6 +43,16 @@ import java.util.UUID;
 public interface ScheduleSessionRepository extends org.springframework.data.jpa.repository.JpaRepository<ScheduleSession, UUID> {
 
     /**
+     * Только версия сессии — без загрузки самой сессии и её размещений.
+     *
+     * <p>Ключ кэша workspace: {@code (sessionId, version)}. Версия честна с 2026-07-14
+     * ({@code ScheduleSessionGate} поднимает её на каждой мутации размещений), поэтому сравнение
+     * двух чисел заменяет пересоздание снимка на 125–165 мс.</p>
+     */
+    @Query("select s.version from ScheduleSession s where s.id = :id")
+    Optional<Long> findVersionById(@Param("id") UUID id);
+
+    /**
      * Найти сессию с optimistic lock.
      *
      * <p>Используется при редактировании сессии для предотвращения конфликтов.</p>

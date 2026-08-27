@@ -6,7 +6,6 @@ import ru.entity.Educator;
 import ru.entity.Lesson;
 import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -43,7 +42,7 @@ public class LessonPlacementService {
      * @param skipPairs пары, которые нужно пропустить
      */
     public boolean canPlace(Lesson lesson, LocalDate date, Set<TimeSlotPair> skipPairs) {
-        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
+        List<CellForLesson> dayCells = workspace.getCalendar().cellsOn(date);
 
         for (CellForLesson cell : dayCells) {
             if (shouldSkipCell(cell, skipPairs)) continue;
@@ -74,7 +73,7 @@ public class LessonPlacementService {
      * @return true если размещение успешно
      */
     public boolean place(Lesson lesson, LocalDate date, Set<TimeSlotPair> skipPairs) {
-        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
+        List<CellForLesson> dayCells = workspace.getCalendar().cellsOn(date);
 
         for (CellForLesson cell : dayCells) {
             if (shouldSkipCell(cell, skipPairs)) continue;
@@ -153,7 +152,7 @@ public class LessonPlacementService {
         // Проверяем каждый ресурс отдельно
         List<String> reasons = new ArrayList<>();
 
-        List<CellForLesson> cells = CellForLessonFactory.getCellsForDate(date).stream()
+        List<CellForLesson> cells = workspace.getCalendar().cellsOn(date).stream()
                 .filter(c -> !skipPairs.contains(c.getTimeSlotPair()))
                 .toList();
 
@@ -299,13 +298,10 @@ public class LessonPlacementService {
      * Получает список доступных дат для указанного занятия.
      */
     public List<LocalDate> getAvailableDates(Lesson lesson, LocalDate startDate, LocalDate endDate) {
-        return CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
+        return workspace.getCalendar().dates().stream()
                 .filter(d -> !d.isBefore(startDate))
                 .filter(d -> !d.isAfter(endDate))
                 .filter(d -> canPlace(lesson, d))
-                .sorted()
                 .collect(Collectors.toList());
     }
 }

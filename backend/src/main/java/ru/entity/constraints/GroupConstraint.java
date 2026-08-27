@@ -10,6 +10,7 @@ import ru.enums.TimeSlotPair;
 import java.time.LocalDate;
 
 @Entity
+@jakarta.persistence.EntityListeners(ru.services.workspace.ConstraintChangeListener.class)
 @Getter
 @Setter
 @Table(name = "group_constraint")

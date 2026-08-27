@@ -8,7 +8,6 @@ import ru.dto.moveLesson.MoveSuggestionRequest;
 import ru.entity.CellForLesson;
 import ru.entity.Lesson;
 import ru.services.constraints.ConstraintAdmissionRule;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.ScheduleWorkspace;
 import ru.services.solver.model.SchedulableResource;
 
@@ -33,14 +32,21 @@ public class MoveLessonSuggestionService {
         //    (см. WorkspaceRecreationService.RecreatedWorkspace) — это тот же объект,
         //    что лежит в сетке, поэтому операции ниже консистентны.
 
-        // 2. ВАЖНО: Виртуально изымаем занятие из воркспейса.
-        // Это освобождает ресурсы (преподавателя, группу, аудиторию),
-        // чтобы мы могли проверить их доступность в других слотах.
+        // 2. ВАЖНО: Виртуально изымаем занятие из воркспейса — но только на время подбора.
+        // Это освобождает ресурсы (преподавателя, группу, аудиторию), чтобы мы могли проверить
+        // их доступность в других слотах. Возврат на место гарантирует withoutPlacements
+        // (finally): при кэшировании workspace переживает запрос, и «изъял и не вернул» стало бы
+        // потерей занятия в кэше — без единой ошибки в логе.
         CellForLesson originalCell = workspace.getCellForLesson(targetLesson);
-        workspace.removePlacement(targetLesson);
+        return workspace.withoutPlacements(List.of(targetLesson),
+                () -> suggestFor(workspace, targetLesson, request, originalCell));
+    }
 
+    /** Сам каскадный подбор — выполняется, когда занятие уже изъято из сетки. */
+    private List<MoveOptionDto> suggestFor(ScheduleWorkspace workspace, Lesson targetLesson,
+                                           MoveSuggestionRequest request, CellForLesson originalCell) {
         // 3. Получаем исходное множество всех ячеек семестра
-        List<CellForLesson> candidates = new ArrayList<>(CellForLessonFactory.getAllCells());
+        List<CellForLesson> candidates = new ArrayList<>(workspace.getCalendar().cells());
 
         // Исключаем текущую ячейку занятия: на шаге 2 мы его виртуально изъяли,
         // поэтому его собственный слот выглядит «свободным». Предлагать перенос
@@ -80,10 +86,8 @@ public class MoveLessonSuggestionService {
             });
         }
 
-        // 4. Восстанавливаем воркспейс (возвращаем занятие на место)
-        workspace.forcePlacement(targetLesson, originalCell, targetLesson.getAssignedAuditoriums());
-
-        // 5. Маппим результат в DTO
+        // 4. Маппим результат в DTO. Возврат занятия на место делает withoutPlacements —
+        // в finally, то есть и на исключении из любого фильтра выше.
         return candidates.stream()
                 .map(cell -> new MoveOptionDto(cell.getDate(), cell.getTimeSlotPair()))
                 .collect(Collectors.toList());
@@ -104,7 +108,7 @@ public class MoveLessonSuggestionService {
      */
     public List<MoveOptionDto> findPlacementSuggestions(ScheduleWorkspace workspace, Lesson lesson,
                                                         String rootType, Integer rootId) {
-        List<CellForLesson> candidates = new ArrayList<>(CellForLessonFactory.getAllCells());
+        List<CellForLesson> candidates = new ArrayList<>(workspace.getCalendar().cells());
 
         // Как и в findMoveSuggestions: подсветка палитры идёт по тем же правилам, что установка.
         ConstraintAdmissionRule.Admission admission = ConstraintAdmissionRule.Admission.of(lesson);

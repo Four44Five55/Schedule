@@ -8,7 +8,6 @@ import ru.entity.Group;
 import ru.entity.Lesson;
 import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
-import ru.services.factories.CellForLessonFactory;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -59,12 +58,9 @@ public class LessonDateFinder {
      * @return отсортированный список доступных дат
      */
     public List<LocalDate> getAvailableDates(Lesson lesson, LocalDate semesterEnd) {
-        return CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
+        return context.getWorkspace().getCalendar().dates().stream()
                 .filter(d -> !d.isAfter(semesterEnd))
                 .filter(d -> canPlaceOn(lesson, d))
-                .sorted()
                 .toList();
     }
 
@@ -78,12 +74,9 @@ public class LessonDateFinder {
         }
 
         Lesson prototype = lessons.getFirst();
-        return CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
+        return context.getWorkspace().getCalendar().dates().stream()
                 .filter(d -> !d.isAfter(semesterEnd))
                 .filter(d -> canPlaceOn(prototype, d))
-                .sorted()
                 .toList();
     }
 
@@ -257,19 +250,8 @@ public class LessonDateFinder {
     public List<LocalDate> getAvailableDates(Lesson lesson,
                                              LocalDate semesterEnd,
                                              Set<TimeSlotPair> skipPairs) {
-        /*return CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
+        List<LocalDate> allDates = context.getWorkspace().getCalendar().dates().stream()
                 .filter(d -> !d.isAfter(semesterEnd))
-                .filter(d -> placement.canPlace(lesson, d, skipPairs))
-                .sorted()
-                .toList();*/
-
-        List<LocalDate> allDates = CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
-                .filter(d -> !d.isAfter(semesterEnd))
-                .sorted()
                 .toList();
 
         List<LocalDate> available = new ArrayList<>();
@@ -380,9 +362,7 @@ public class LessonDateFinder {
                 ? minDate : targetDate.minusDays(windowDays);
         LocalDate windowEnd = targetDate.plusDays(windowDays);
 
-        List<LocalDate> candidates = CellForLessonFactory.getAllCells().stream()
-                .map(CellForLesson::getDate)
-                .distinct()
+        List<LocalDate> candidates = context.getWorkspace().getCalendar().dates().stream()
                 .filter(d -> !d.isBefore(windowStart))
                 .filter(d -> !d.isAfter(windowEnd))
                 .filter(d -> !d.isAfter(semesterEnd))

@@ -14,7 +14,6 @@ import ru.enums.TimeSlotPair;
 import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
 import ru.repository.write.LessonPlacementRepository;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.session.ScheduleSessionGate;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
@@ -106,10 +105,8 @@ public class LessonMoveService {
 
         // 4. Целевая ячейка должна принадлежать планируемому периоду.
         TimeSlotPair slot = TimeSlotPair.valueOf(newSlot);
-        CellForLesson targetCell = CellForLessonFactory.getCell(newDate, slot);
-        if (targetCell == null) {
-            throw new LessonMoveConflictException("выбранный слот вне планируемого периода");
-        }
+        CellForLesson targetCell = workspace.getCalendar().cellAt(newDate, slot)
+                .orElseThrow(() -> new LessonMoveConflictException("выбранный слот вне планируемого периода"));
 
         // 5. Виртуально изымаем занятие — освобождаем его ресурсы (включая текущую
         //    аудиторию), чтобы повторная проверка видела целевой слот без него самого.

@@ -8,7 +8,6 @@ import ru.entity.logicSchema.DisciplineCourse;
 import ru.enums.KindOfStudy;
 import ru.enums.TimeSlotPair;
 import ru.services.LessonSortingService;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -46,7 +45,7 @@ public class LegacyAlgorithmRunner {
         boolean streamSorted = false;
         List<Lesson> sortedLessons = lessonSorterService.changeOrderLessons(new ArrayList<>(lessonsToPlace), streamSorted);
 
-        List<CellForLesson> allCells = CellForLessonFactory.getAllCells();
+        List<CellForLesson> allCells = workspace.getCalendar().cells();
 
         for (Lesson lesson : sortedLessons) {
             boolean placed = false;

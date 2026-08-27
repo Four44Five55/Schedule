@@ -2,9 +2,14 @@ package ru.inter;
 
 import java.time.LocalDate;
 
+/**
+ * Сетка, знающая свои календарные границы.
+ *
+ * <p>Здесь <b>намеренно нет умолчаний</b> вроде «период — весна 2026». Такие константы стояли тут
+ * до 2026-08-27 и доставались всякому, кто позвал конструктор без дат: сетка молча получала чужой
+ * период вместо отказа. Период приходит из {@code study_period}, а до кода — параметром.</p>
+ */
 public interface IGrid {
-    static final LocalDate START_DATE = LocalDate.of(2026, 2, 9);
-    static final LocalDate END_DATE = LocalDate.of(2026, 8, 31);
 
     LocalDate getStartDate();
 

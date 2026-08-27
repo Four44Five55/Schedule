@@ -5,7 +5,6 @@ import ru.entity.CellForLesson;
 import ru.entity.Lesson;
 import ru.enums.TimeSlotPair;
 import ru.services.SlotChainService;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.solver.PlacementOption;
 import ru.services.solver.ScheduleWorkspace;
 
@@ -79,8 +78,9 @@ public class ChainPlacementHandler {
             return placement.place(chain.getFirst(), date, skipPairs);
         }
 
-        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
-        dayCells.sort(Comparator.comparing(CellForLesson::getTimeSlotPair));
+        // Порядок пар в дне гарантирует календарь (контракт AcademicCalendar.cellsOn) —
+        // раньше каждый вызывающий сортировал сам, полагаясь на то, что фабрика вернула копию.
+        List<CellForLesson> dayCells = workspace.getCalendar().cellsOn(date);
 
         int chainSize = chain.size();
 
@@ -113,8 +113,9 @@ public class ChainPlacementHandler {
             return placement.canPlace(chain.getFirst(), date, skipPairs);
         }
 
-        List<CellForLesson> dayCells = CellForLessonFactory.getCellsForDate(date);
-        dayCells.sort(Comparator.comparing(CellForLesson::getTimeSlotPair));
+        // Порядок пар в дне гарантирует календарь (контракт AcademicCalendar.cellsOn) —
+        // раньше каждый вызывающий сортировал сам, полагаясь на то, что фабрика вернула копию.
+        List<CellForLesson> dayCells = workspace.getCalendar().cellsOn(date);
 
         int chainSize = chain.size();
         for (int i = 0; i <= dayCells.size() - chainSize; i++) {

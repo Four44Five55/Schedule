@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.entity.*;
 import ru.services.constraints.ConstraintService;
 import ru.services.distribution.DistributionDiscipline;
-import ru.services.factories.CellForLessonFactory;
 import ru.services.generation.GenerationScope;
 import ru.services.generation.GenerationScopeResolver;
 import ru.services.solver.ScheduleWorkspace;
@@ -71,9 +70,8 @@ public class ScheduleGenerationService {
     ) {
         StudyPeriod period = scope.period();
 
-        // Кэш всех ячеек на рамки периода
-        CellForLessonFactory.initializeCellCache(period.getStartDate(), period.getEndDate());
-
+        // Ячейки периода workspace строит сам (AcademicCalendar от своих же дат) — глобального
+        // «текущего периода» в системе больше нет.
         ScheduleWorkspace workspace = new ScheduleWorkspace(
                 period.getStartDate(),
                 period.getEndDate(),
