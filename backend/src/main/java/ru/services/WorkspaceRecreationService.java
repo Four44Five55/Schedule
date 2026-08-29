@@ -92,6 +92,7 @@ public class WorkspaceRecreationService {
         //    персистентности, где UUID размещения и in-memory Lesson встречаются.
         //    Сам Lesson о своём placementId ничего не знает.
         Map<UUID, Lesson> lessonByPlacementId = new HashMap<>();
+        int seedFailures = 0;
         for (LessonPlacement placement : placements) {
             try {
                 Lesson lesson = placementSeeder.seedInto(workspace, placement);
@@ -99,12 +100,16 @@ public class WorkspaceRecreationService {
                     lessonByPlacementId.put(placement.getId(), lesson);
                 }
             } catch (Exception e) {
+                // Битая ссылка в данных: продолжаем, но снимок объявляем неполным — см.
+                // RecreatedWorkspace#complete. Раньше пропуск оставался только в логе, и
+                // отличить полный снимок от дырявого вызывающему было нечем.
+                seedFailures++;
                 log.error("❌ Ошибка размещения placementId={}: {}",
                     placement.getId(), e.getMessage());
             }
         }
 
-        return new RecreatedWorkspace(workspace, lessonByPlacementId);
+        return new RecreatedWorkspace(workspace, lessonByPlacementId, seedFailures);
     }
 
     /**
@@ -132,6 +137,7 @@ public class WorkspaceRecreationService {
         );
 
         Map<UUID, Lesson> lessonByPlacementId = new HashMap<>();
+        int seedFailures = 0;
         for (LessonPlacement placement : placementRepo.findBySessionId(sessionId)) {
             try {
                 Lesson lesson = placementSeeder.seedInto(workspace, placement);
@@ -139,11 +145,12 @@ public class WorkspaceRecreationService {
                     lessonByPlacementId.put(placement.getId(), lesson);
                 }
             } catch (Exception e) {
+                seedFailures++;
                 log.error("❌ Ошибка посева placementId={}: {}", placement.getId(), e.getMessage());
             }
         }
 
-        return new RecreatedWorkspace(workspace, lessonByPlacementId);
+        return new RecreatedWorkspace(workspace, lessonByPlacementId, seedFailures);
     }
 
     /**
@@ -239,11 +246,35 @@ public class WorkspaceRecreationService {
      * занятием. Позволяет надёжно (и уникально) находить занятие для операций
      * вроде поиска вариантов переноса, не «протекая» placementId в доменный Lesson.</p>
      *
+     * <p>Третья составляющая — <b>число не восстановленных размещений</b>. Посев переживает битую
+     * строку (иначе одна испорченная ссылка роняла бы весь экран расписания сессии), но факт
+     * пропуска обязан доехать до вызывающего: снимок без занятия отвечает «свободно» там, где
+     * занято. Числом, а не флагом, — по тем же соображениям, что {@code AuditoriumResource
+     * .shortfall}: число можно и показать, и сравнить, а флаг умеет только запрещать.</p>
+     *
      * @param workspace           пересозданное рабочее пространство решателя
      * @param lessonByPlacementId соответствие UUID размещения → размещённый Lesson
+     * @param seedFailures        сколько размещений сессии не удалось восстановить (0 — снимок полон)
      */
     public record RecreatedWorkspace(
             ru.services.solver.ScheduleWorkspace workspace,
-            Map<UUID, Lesson> lessonByPlacementId
-    ) {}
+            Map<UUID, Lesson> lessonByPlacementId,
+            int seedFailures
+    ) {
+        /** Снимок, у которого посев прошёл целиком (пустой workspace — частный случай). */
+        public RecreatedWorkspace(ru.services.solver.ScheduleWorkspace workspace,
+                                  Map<UUID, Lesson> lessonByPlacementId) {
+            this(workspace, lessonByPlacementId, 0);
+        }
+
+        /**
+         * Полон ли снимок. Неполный отвечает «свободно» там, где занято, — по нему можно
+         * ответить на текущий вопрос (лучше, чем уронить весь экран из-за одной битой строки),
+         * но <b>кэшировать его нельзя</b>: ошибка одного запроса превратилась бы в ошибку всех
+         * запросов следующей минуты.
+         */
+        public boolean complete() {
+            return seedFailures == 0;
+        }
+    }
 }

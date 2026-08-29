@@ -26,7 +26,7 @@ public interface StudyPeriodRepository extends JpaRepository<StudyPeriod, Intege
 
     /**
      * Находит активный учебный период, который содержит сегодняшнюю дату.
-     * Активный период - это период, где startDate <= сегодня <= endDate.
+     * Активный период — это период, где {@code startDate <= сегодня <= endDate}.
      *
      * @return Optional с активным периодом или пустой, если активного периода нет
      */

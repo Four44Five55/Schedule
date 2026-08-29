@@ -47,7 +47,7 @@ Schedule/
 ├── backend/          # Spring Boot application
 ├── frontend/         # React application
 ├── scripts/          # Shared development scripts
-├── docs/             # Documentation
+├── docs/             # Documentation (not in git; archive/ holds compressed-out detail)
 ├── docker-compose.yml
 └── .env
 ```
@@ -132,13 +132,22 @@ cd backend
 
 ## Documentation
 
-- [Follow-ups / tech debt](docs/FOLLOWUPS.md) — **the living doc**: open issues, decisions, and what was already done (incl. tests and dead code)
-- [API Examples](docs/API_EXAMPLES.md) — actual REST contracts
+> `docs/` is not in git (see `.gitignore`) — these files live on the working machine only.
+> Request-and-response schemas are **not** documented by hand: Swagger UI (`/swagger-ui.html`)
+> generates them from live DTOs.
+
+- [Follow-ups / tech debt](docs/FOLLOWUPS.md) — **the living doc**: what is open and why. Closed items are one-liners; full post-mortems live in `docs/archive/`
+- [Project rules](docs/CONVENTIONS.md) — enum vs user dictionary, Liquibase-only schema, where to catch errors
+- [REST API semantics](docs/API_EXAMPLES.md) — error contract, versioning rules, operation scope; the *why* behind contracts (schemas: Swagger)
 - [Database schema](docs/DATABASE.md) — tables, fields, relations (Liquibase is the source of truth)
-- [CQRS Architecture](docs/CQRS_ARCHITECTURE.md) — read/write split, where it leaks
+- [CQRS Architecture](docs/CQRS_ARCHITECTURE.md) — read/write split, where it leaks, measured performance
 - [Development Context](docs/DEVELOPMENT_CONTEXT.md) — architecture and distribution algorithm
+- [Import format](docs/IMPORT_FORMAT.md) — third-party export format + the И-1…И-31 decision registry
+- [Architecture audit](docs/ARCHITECTURE_AUDIT_2026-07-18.md) — generation pipeline, strengths, priorities
+- [Fair generation north star](docs/NORTH_STAR_FAIR_GENERATION.md) — why compactness is redistributed, not created
 - [Types & Swagger](docs/TYPES_AND_SWAGGER.md) — keeping Java DTOs and TS types in sync
 - [Order highlight: rolled-back attempt](docs/ORDER_HIGHLIGHT_ROLLBACK.md) — why three rule formulations failed; read before revisiting
+- `docs/archive/` — reserve: full texts compressed out of the docs above. Not for regular reading
 
 ## Docker Deployment
 

@@ -47,7 +47,8 @@ public class AuditoriumPurposeService {
         if (!auditoriumPurposeRepository.existsById(id)) {
             throw new NotFoundException("Назначение аудитории с id=" + id + " не найдено.");
         }
-        // TODO: Добавить проверку, не используется ли это назначение в Auditorium, перед удалением
+        // Цена удаления не называется заранее (общий долг CRUD-слоя, см. FOLLOWUPS: «Удаление
+        // без предупреждения»). Образец решения — delete-impact у аудитории и назначения.
         auditoriumPurposeRepository.deleteById(id);
     }
 

@@ -112,7 +112,8 @@ public class EducatorService {
         if (!educatorRepository.existsById(educatorId)) {
             throw new NotFoundException("Преподаватель с id=" + educatorId + " не найден.");
         }
-        // TODO: Добавить проверку, не назначен ли преподаватель на какие-либо 'Assignment', перед удалением.
+        // Цена удаления не называется заранее (общий долг CRUD-слоя, см. FOLLOWUPS: «Удаление
+        // без предупреждения»). Образец решения — delete-impact у аудитории и назначения.
         educatorRepository.deleteById(educatorId);
     }
 

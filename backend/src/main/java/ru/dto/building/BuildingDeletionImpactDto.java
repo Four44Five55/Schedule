@@ -13,7 +13,7 @@ package ru.dto.building;
  * ({@code required/priority_auditorium_id} — без каскада), и раньше это вылезло бы сырым 500.
  * Тогда {@code deletable = false}.</p>
  *
- * <p><b>{@code deletable} — поле, а не вывод на фронте</b> (прецедент — {@link AuditoriumDeletionImpactDto}):
+ * <p><b>{@code deletable} — поле, а не вывод на фронте</b> (прецедент — {@link ru.dto.auditorium.AuditoriumDeletionImpactDto}):
  * правило считается ЗДЕСЬ, {@code BuildingService.deleteBuilding} им же и отказывает, UI лишь
  * показывает семантику.</p>
  *

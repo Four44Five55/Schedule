@@ -123,7 +123,8 @@ public class StudyPeriodService {
         if (!studyPeriodRepository.existsById(id)) {
             throw new NotFoundException("Учебный период с id=" + id + " не найден.");
         }
-        // TODO: Добавить проверку, не используется ли период в DisciplineCourse, перед удалением.
+        // Цена удаления не называется заранее (общий долг CRUD-слоя, см. FOLLOWUPS: «Удаление
+        // без предупреждения»). Образец решения — delete-impact у аудитории и назначения.
         studyPeriodRepository.deleteById(id);
     }
 

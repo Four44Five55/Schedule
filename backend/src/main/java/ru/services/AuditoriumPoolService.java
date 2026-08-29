@@ -79,7 +79,8 @@ public class AuditoriumPoolService {
         if (!auditoriumPoolRepository.existsById(poolId)) {
             throw new NotFoundException("Пул аудиторий с id=" + poolId + " не найден.");
         }
-        // TODO: Добавить проверку, не используется ли пул в CurriculumSlot, перед удалением.
+        // Цена удаления не называется заранее (общий долг CRUD-слоя, см. FOLLOWUPS: «Удаление
+        // без предупреждения»). Образец решения — delete-impact у аудитории и назначения.
         auditoriumPoolRepository.deleteById(poolId);
     }
 

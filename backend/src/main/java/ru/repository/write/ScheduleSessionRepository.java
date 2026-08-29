@@ -153,7 +153,7 @@ public interface ScheduleSessionRepository extends org.springframework.data.jpa.
     /**
      * Найти сессии, созданные за период.
      *
-     * @param daysWithin Порог в днях
+     * @param threshold Момент, позже которого сессия считается свежей
      * @return Список "свежих" сессий
      */
     @Query("SELECT s FROM ScheduleSession s WHERE s.createdAt >= :threshold")
@@ -164,7 +164,7 @@ public interface ScheduleSessionRepository extends org.springframework.data.jpa.
      *
      * <p>Используется для очистки старых сессий.</p>
      *
-     * @param daysWithin Порог в днях
+     * @param threshold Момент, раньше которого сессия считается устаревшей
      * @return Список устаревших сессий
      */
     @Query("SELECT s FROM ScheduleSession s WHERE s.updatedAt < :threshold")
@@ -201,7 +201,8 @@ public interface ScheduleSessionRepository extends org.springframework.data.jpa.
      *
      * <p>Используется для периодической очистки.</p>
      *
-     * @param daysThreshold Порог в днях (старше N дней)
+     * @param archivedStatus Статус «архивная»
+     * @param threshold Момент, раньше которого архивная сессия удаляется
      * @return Количество удалённых сессий
      */
     @Modifying

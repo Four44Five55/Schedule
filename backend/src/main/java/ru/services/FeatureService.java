@@ -47,7 +47,8 @@ public class FeatureService {
         if (!featureRepository.existsById(id)) {
             throw new NotFoundException("Оснащение с id=" + id + " не найдено.");
         }
-        // TODO: Добавить проверку, не используется ли оснащение в Auditorium или CurriculumSlot
+        // Цена удаления не называется заранее (общий долг CRUD-слоя, см. FOLLOWUPS: «Удаление
+        // без предупреждения»). Образец решения — delete-impact у аудитории и назначения.
         featureRepository.deleteById(id);
     }
 

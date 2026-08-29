@@ -2,6 +2,7 @@ package ru.services.workspace;
 
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.LazyInitializationException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -83,6 +84,9 @@ public class CachingWorkspaceProvider implements WorkspaceProvider {
         }
     };
 
+    // Конструкторов два (второй — тестовый), поэтому выбор обязан быть явным: при нескольких
+    // конструкторах без @Autowired Spring ищет безаргументный и падает «No default constructor».
+    @Autowired
     public CachingWorkspaceProvider(RebuildingWorkspaceProvider delegate,
                                     ScheduleSessionRepository sessions,
                                     WorkspaceRecreationService recreationService) {
@@ -183,7 +187,15 @@ public class CachingWorkspaceProvider implements WorkspaceProvider {
 
         RecreatedWorkspace workspace = delegate.withWorkspaceOfSession(sessionId, Function.identity());
 
-        if (version != null) {
+        if (!workspace.complete()) {
+            // Посев потерял размещения (битые ссылки в данных). Ответить на текущий вопрос таким
+            // снимком можно — это лучше, чем уронить весь экран из-за одной строки, — но положить
+            // его в кэш нельзя: ошибка одного запроса стала бы ответом на все запросы следующей
+            // минуты, причём для всех читателей сессии. Пересборка стоит 130 мс, ошибка дороже —
+            // тот же размен, что у сброса по ProjectionStaleEvent.
+            log.warn("Снимок сессии {} неполон ({} размещений не восстановлено) — не кэшируем",
+                    sessionId, workspace.seedFailures());
+        } else if (version != null) {
             put(sessionId, new Entry(version, constraintsGeneration, nanoTime.getAsLong(), workspace));
         }
         log.info("⏱ Снимок сессии {} собран за {} мс (версия {})",

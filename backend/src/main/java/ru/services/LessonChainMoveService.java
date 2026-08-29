@@ -14,6 +14,7 @@ import ru.entity.write.ScheduleSession;
 import ru.enums.TimeSlotPair;
 import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
+import ru.exceptions.NotFoundException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.session.ScheduleSessionGate;
 import ru.services.workspace.WorkspaceProvider;
@@ -154,7 +155,7 @@ public class LessonChainMoveService {
         List<LessonPlacement> placements = new ArrayList<>(placementIds.size());
         for (UUID id : placementIds) {
             placements.add(placementRepo.findById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + id)));
+                    .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + id)));
         }
         // Сессия — через единую дверь: сверка версии + подъём поколения на коммите.
         ScheduleSession session = sessionGate.forWriteOf(placements.get(0), expectedVersion);

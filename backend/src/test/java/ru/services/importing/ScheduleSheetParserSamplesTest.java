@@ -9,6 +9,8 @@ import ru.services.importing.ParsedSheet.CutKind;
 import ru.services.importing.ParsedSheet.SheetCell;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -21,8 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Характеризующие тесты на <b>живых</b> файлах выгрузки (2025/2026, осенний семестр).
  *
- * <p><b>Сами себя пропускают, если образцов нет:</b> каталог {@code docs/} лежит в
- * {@code .gitignore}, значит на чистой машине этих файлов не будет, а сборка ломаться не должна.
+ * <p>Образцы лежат в тест-ресурсах ({@code src/test/resources/import-samples}) — с 2026-08-29,
+ * до этого в {@code docs/samples}, который не в git. <b>Тесты по-прежнему сами себя пропускают,
+ * если образцов нет:</b> на чистой машине их может не оказаться, а сборка ломаться не должна.
  * Правило разбора стерегут синтетические тесты в {@link ScheduleSheetParserTest}; здесь —
  * страховка от расхождения правила с реальностью.</p>
  *
@@ -34,6 +37,19 @@ class ScheduleSheetParserSamplesTest {
     private static final Path SAMPLES = findSamples();
 
     private static Path findSamples() {
+        // Основной путь — тест-классpath: не зависит от рабочего каталога, из которого запущена сборка.
+        URL onClasspath = ScheduleSheetParserSamplesTest.class.getResource("/import-samples");
+        if (onClasspath != null) {
+            try {
+                Path dir = Path.of(onClasspath.toURI());
+                if (Files.isDirectory(dir)) {
+                    return dir;
+                }
+            } catch (URISyntaxException ignored) {
+                // не classpath-каталог на диске — пробуем запасные пути ниже
+            }
+        }
+        // Запасные: прежнее место образцов, если у кого-то остался старый рабочий каталог.
         for (Path candidate : List.of(Path.of("docs", "samples"), Path.of("..", "docs", "samples"))) {
             if (Files.isDirectory(candidate)) {
                 return candidate;
@@ -43,7 +59,7 @@ class ScheduleSheetParserSamplesTest {
     }
 
     private static ParsedSheet sample(String name) throws IOException {
-        Assumptions.assumeTrue(SAMPLES != null, "нет каталога docs/samples — тест пропущен");
+        Assumptions.assumeTrue(SAMPLES != null, "нет каталога с образцами выгрузки — тест пропущен");
         Path file = SAMPLES.resolve(name);
         Assumptions.assumeTrue(Files.exists(file), "нет образца " + name + " — тест пропущен");
         return ScheduleSheetParser.parse(Files.readAllBytes(file));
@@ -57,7 +73,7 @@ class ScheduleSheetParserSamplesTest {
      * зависеть от того, чьи именно образцы лежат в каталоге.</p>
      */
     private static ParsedSheet anySample(CutKind kind) throws IOException {
-        Assumptions.assumeTrue(SAMPLES != null, "нет каталога docs/samples — тест пропущен");
+        Assumptions.assumeTrue(SAMPLES != null, "нет каталога с образцами выгрузки — тест пропущен");
         try (Stream<Path> files = Files.list(SAMPLES)) {
             for (Path file : files.filter(p -> p.toString().endsWith(".html")).toList()) {
                 ParsedSheet sheet = ScheduleSheetParser.parse(Files.readAllBytes(file));

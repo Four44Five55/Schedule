@@ -24,6 +24,7 @@ import ru.enums.PlacementSource;
 import ru.enums.TimeSlotPair;
 import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
+import ru.exceptions.NotFoundException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.repository.write.ScheduleSessionRepository;
 import ru.services.session.ScheduleSessionGate;
@@ -199,7 +200,7 @@ public class ManualPlacementService {
     @Transactional
     public ScheduleSession remove(UUID placementId, Long expectedVersion, String user) {
         LessonPlacement placement = placementRepo.findById(placementId)
-                .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
+                .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + placementId));
         ScheduleSession session = sessionGate.forWriteOf(placement, expectedVersion);
         UUID id = placement.getId();
 

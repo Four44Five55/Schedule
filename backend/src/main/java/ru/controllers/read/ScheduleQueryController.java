@@ -53,12 +53,12 @@ public class ScheduleQueryController {
     private final ru.services.auditorium.AuditoriumLoadReportService auditoriumLoadReportService;
 
     /**
-     * GET /api/schedule/query/student/{streamId}?start=X&end=Y
+     * GET /api/schedule/query/student/{streamId}?start=X&amp;end=Y
      *
      * <p>Расписание для студента (группы) на период.</p>
      *
      * <p>Пример запроса:</p>
-     * <pre>GET /api/schedule/query/student/123?start=2025-01-11&end=2025-01-17</pre>
+     * <pre>GET /api/schedule/query/student/123?start=2025-01-11&amp;end=2025-01-17</pre>
      *
      * <p>Используется когда студент открывает своё расписание на неделю/семестр.</p>
      *
@@ -101,12 +101,12 @@ public class ScheduleQueryController {
     }
 
     /**
-     * GET /api/schedule/query/educator/{educatorId}/period?start=X&end=Y
+     * GET /api/schedule/query/educator/{educatorId}/period?start=X&amp;end=Y
      *
      * <p>Расписание для преподавателя на период (неделя/месяц).</p>
      *
      * <p>Пример запроса:</p>
-     * <pre>GET /api/schedule/query/educator/456/period?start=2025-01-11&end=2025-01-17</pre>
+     * <pre>GET /api/schedule/query/educator/456/period?start=2025-01-11&amp;end=2025-01-17</pre>
      *
      * @param educatorId ID преподавателя
      * @param start Начальная дата (формат: YYYY-MM-DD)
@@ -147,12 +147,12 @@ public class ScheduleQueryController {
     }
 
     /**
-     * GET /api/schedule/query/reports/auditorium-utilization?start=X&end=Y
+     * GET /api/schedule/query/reports/auditorium-utilization?start=X&amp;end=Y
      *
      * <p>Отчёт по загруженности аудиторий.</p>
      *
      * <p>Пример запроса:</p>
-     * <pre>GET /api/schedule/query/reports/auditorium-utilization?start=2025-01-11&end=2025-01-17</pre>
+     * <pre>GET /api/schedule/query/reports/auditorium-utilization?start=2025-01-11&amp;end=2025-01-17</pre>
      *
      * <p>Возвращает: [{"auditoriumId": 789, "count": 15, "date": "2025-01-11"}, ...]</p>
      *
@@ -170,12 +170,12 @@ public class ScheduleQueryController {
     }
 
     /**
-     * GET /api/schedule/query/reports/educator-load?start=X&end=Y
+     * GET /api/schedule/query/reports/educator-load?start=X&amp;end=Y
      *
      * <p>Отчёт по загруженности преподавателей.</p>
      *
      * <p>Пример запроса:</p>
-     * <pre>GET /api/schedule/query/reports/educator-load?start=2025-01-11&end=2025-01-17</pre>
+     * <pre>GET /api/schedule/query/reports/educator-load?start=2025-01-11&amp;end=2025-01-17</pre>
      *
      * <p>Возвращает: [{"educatorId": 456, "educatorName": "Иванов", "count": 20, "date": "2025-01-11"}, ...]</p>
      *
@@ -231,12 +231,12 @@ public class ScheduleQueryController {
     }
 
     /**
-     * GET /api/schedule/query/check-auditorium?auditoriumId=X&date=Y&slot=Z
+     * GET /api/schedule/query/check-auditorium?auditoriumId=X&amp;date=Y&amp;slot=Z
      *
      * <p>Проверить свободность аудитории.</p>
      *
      * <p>Пример запроса:</p>
-     * <pre>GET /api/schedule/query/check-auditorium?auditoriumId=789&date=2025-01-12&slot=FIRST</pre>
+     * <pre>GET /api/schedule/query/check-auditorium?auditoriumId=789&amp;date=2025-01-12&amp;slot=FIRST</pre>
      *
      * @param auditoriumId ID аудитории
      * @param date Дата (формат: YYYY-MM-DD)
@@ -254,12 +254,12 @@ public class ScheduleQueryController {
     }
 
     /**
-     * GET /api/schedule/query/all?start=X&end=Y
+     * GET /api/schedule/query/all?start=X&amp;end=Y
      *
      * <p>Получить все занятия за период.</p>
      *
      * <p>Пример запроса:</p>
-     * <pre>GET /api/schedule/query/all?start=2025-01-11&end=2025-07-31</pre>
+     * <pre>GET /api/schedule/query/all?start=2025-01-11&amp;end=2025-07-31</pre>
      *
      * <p>Используется для загрузки существующего расписания на фронтенд.</p>
      *
@@ -431,7 +431,7 @@ public class ScheduleQueryController {
     }
 
     /**
-     * GET /api/schedule/query/export?periodId=X&axis=GROUP|EDUCATOR|AUDITORIUM[&entityId=Y]
+     * GET /api/schedule/query/export?periodId=X&amp;axis=GROUP|EDUCATOR|AUDITORIUM[&amp;entityId=Y]
      *
      * <p>Выгрузка расписания периода в Excel из {@code schedule_view} (то, что реально размещено).
      * Ось задаёт перспективу файла. С {@code entityId} — одна книга {@code .xlsx} по сущности; без

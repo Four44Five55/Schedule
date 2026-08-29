@@ -10,7 +10,7 @@ import ru.entity.write.LessonPlacement;
  *
  * <p>Используется в Command Side для конвертации размещений занятий в DTO для REST API.</p>
  *
- * <h3>Особенности маппинга:</h3>
+ * <h2>Особенности маппинга:</h2>
  * <ul>
  *   <li>SessionId извлекается из {@code entity.session.id}</li>
  *   <li>AssignmentId извлекается из {@code entity.assignment.id}</li>

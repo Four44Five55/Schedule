@@ -13,6 +13,7 @@ import ru.entity.write.ScheduleSession;
 import ru.enums.TimeSlotPair;
 import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
+import ru.exceptions.NotFoundException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.session.ScheduleSessionGate;
 import ru.services.solver.PlacementOption;
@@ -86,7 +87,7 @@ public class LessonMoveService {
         //    sessionId с фронта (schedule_view грузится без привязки к сессии, фронтовый
         //    sessionId может указывать на другую).
         LessonPlacement placement = placementRepo.findById(placementId)
-                .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
+                .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + placementId));
 
         // 2. Сессия — через единую дверь: сверка версии + подъём поколения на коммите.
         //    Раньше здесь была голая сверка getVersion(), а версия при этом не росла (менялся

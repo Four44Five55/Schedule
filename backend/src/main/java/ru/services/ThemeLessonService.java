@@ -123,7 +123,8 @@ public class ThemeLessonService {
         if (!themeLessonRepository.existsById(id)) {
             throw new NotFoundException("Тема с id=" + id + " не найдена.");
         }
-        // TODO: Добавить проверку, не используется ли тема в CurriculumSlot, перед удалением.
+        // Цена удаления не называется заранее (общий долг CRUD-слоя, см. FOLLOWUPS: «Удаление
+        // без предупреждения»). Образец решения — delete-impact у аудитории и назначения.
         themeLessonRepository.deleteById(id);
     }
 

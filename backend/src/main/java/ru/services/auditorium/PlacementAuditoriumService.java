@@ -14,11 +14,13 @@ import ru.entity.write.LessonPlacement;
 import ru.entity.write.ScheduleSession;
 import ru.events.PlacementChangedEvent;
 import ru.exceptions.LessonMoveConflictException;
+import ru.exceptions.NotFoundException;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.WorkspaceRecreationService;
 import ru.services.session.ScheduleSessionGate;
 import ru.services.solver.ScheduleWorkspace;
 import ru.services.solver.model.AuditoriumResource;
+import ru.services.workspace.WorkspaceProvider;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -54,6 +56,7 @@ import java.util.UUID;
 public class PlacementAuditoriumService {
 
     private final LessonPlacementRepository placementRepo;
+    private final WorkspaceProvider workspaceProvider;
     private final WorkspaceRecreationService workspaceRecreationService;
     private final ScheduleSessionGate sessionGate;
     private final ApplicationEventPublisher eventPublisher;
@@ -70,14 +73,7 @@ public class PlacementAuditoriumService {
     @Transactional(readOnly = true)
     public List<AuditoriumOptionDto> options(UUID placementId) {
         LessonPlacement placement = placementRepo.findById(placementId)
-                .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
-
-        var recreated = workspaceRecreationService.recreateWorkspaceFromSession(placement.getSession().getId());
-        ScheduleWorkspace workspace = recreated.workspace();
-        Lesson targetLesson = recreated.lessonByPlacementId().get(placementId);
-        if (targetLesson == null) {
-            throw new IllegalStateException("Не удалось восстановить занятие для размещения " + placementId);
-        }
+                .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + placementId));
 
         CellForLesson cell = new CellForLesson(placement.getScheduledDate(), placement.getScheduledSlot());
         int headcount = placement.getAssignment().getStudyStream().calculateTotalSize();
@@ -85,20 +81,36 @@ public class PlacementAuditoriumService {
                 .map(Auditorium::getId)
                 .collect(java.util.stream.Collectors.toSet());
 
-        List<AuditoriumOptionDto> options = new ArrayList<>();
-        for (AuditoriumResource room : workspace.getResourceManager().allAuditoriumResources()) {
-            options.add(describe(room, cell, targetLesson, headcount, currentIds.contains(room.getId())));
-        }
+        // Снимок берём через провайдер — как подбор ячеек и палитра раскладки. Это чтение, и
+        // пересоздавать ради него workspace (≈300 мс, ~70 SQL) незачем: диспетчер открывает выбор
+        // комнаты ровно в том же состоянии сессии, в котором только что смотрел «куда перенести».
+        // Наружу отдаём готовые DTO, а не сам workspace: снимок общий и изменяемый, поэтому
+        // провайдер одалживает его строго на время вызова.
+        return workspaceProvider.withWorkspaceOfPlacement(placementId, recreated -> {
+            ScheduleWorkspace workspace = recreated.workspace();
+            Lesson targetLesson = recreated.lessonByPlacementId().get(placementId);
+            if (targetLesson == null) {
+                // Размещение мы уже прочитали выше, значит оно есть, а занятия для него нет —
+                // это испорченное состояние, а не «комнат не нашлось». Пустой список тут был бы
+                // утверждением «выбирать не из чего», по которому человек принимает решение.
+                throw new IllegalStateException("Не удалось восстановить занятие для размещения " + placementId);
+            }
 
-        // Годные первыми, среди годных — куда влезают, потом меньшая из достаточных. Тот же
-        // порядок предпочтения, что у автоматического подбора: человеку и машине незачем
-        // расходиться в том, какая комната лучше.
-        options.sort(Comparator
-                .comparingInt((AuditoriumOptionDto o) -> o.status() == AuditoriumOptionDto.Status.FREE ? 0 : 1)
-                .thenComparingInt(AuditoriumOptionDto::shortfall)
-                .thenComparingInt(AuditoriumOptionDto::capacity)
-                .thenComparing(AuditoriumOptionDto::name, Comparator.nullsLast(String::compareTo)));
-        return options;
+            List<AuditoriumOptionDto> options = new ArrayList<>();
+            for (AuditoriumResource room : workspace.getResourceManager().allAuditoriumResources()) {
+                options.add(describe(room, cell, targetLesson, headcount, currentIds.contains(room.getId())));
+            }
+
+            // Годные первыми, среди годных — куда влезают, потом меньшая из достаточных. Тот же
+            // порядок предпочтения, что у автоматического подбора: человеку и машине незачем
+            // расходиться в том, какая комната лучше.
+            options.sort(Comparator
+                    .comparingInt((AuditoriumOptionDto o) -> o.status() == AuditoriumOptionDto.Status.FREE ? 0 : 1)
+                    .thenComparingInt(AuditoriumOptionDto::shortfall)
+                    .thenComparingInt(AuditoriumOptionDto::capacity)
+                    .thenComparing(AuditoriumOptionDto::name, Comparator.nullsLast(String::compareTo)));
+            return options;
+        });
     }
 
     /**
@@ -136,12 +148,16 @@ public class PlacementAuditoriumService {
         }
 
         LessonPlacement placement = placementRepo.findById(placementId)
-                .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
+                .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + placementId));
 
         // Единая дверь: сверка версии + подъём поколения на коммите. Смена комнаты — такая же
         // мутация расписания, как перенос: соседняя вкладка обязана о ней узнать.
         ScheduleSession session = sessionGate.forWriteOf(placement, expectedVersion);
 
+        // Здесь workspace строится ЗАНОВО, мимо провайдера, и это намеренно: смена комнаты —
+        // мутация, ей нужен свежий авторитетный снимок, который она к тому же необратимо меняет.
+        // Кэш такой путь не ускорил бы — он всё равно сбрасывает ключ поднятием версии сессии.
+        // Правило общее для мутаторов: перенос и ручная установка строят снимок так же.
         var recreated = workspaceRecreationService.recreateWorkspaceFromSession(session.getId());
         ScheduleWorkspace workspace = recreated.workspace();
         Lesson targetLesson = recreated.lessonByPlacementId().get(placementId);

@@ -69,3 +69,6 @@ RESTRICTORING*
 # Это артефакт сборки, а не исходник: в репозитории он молча устаревал, и Spring на :8080
 # продолжал раздавать давно собранный UI, из-за чего правки фронта «не появлялись».
 /backend/src/main/resources/static/
+/backend/src/test/resources/import-samples/911.html
+/backend/src/test/resources/import-samples/252-3.html
+/backend/src/test/resources/import-samples/ГоряиновР.И..html

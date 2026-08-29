@@ -10,6 +10,7 @@ import ru.entity.write.ScheduleSession;
 import ru.events.PlacementChangedEvent;
 import ru.repository.write.LessonPlacementRepository;
 import ru.services.session.ScheduleSessionGate;
+import ru.exceptions.NotFoundException;
 
 import java.util.List;
 import java.util.UUID;
@@ -57,7 +58,7 @@ public class LessonPinService {
     public ScheduleSession setLock(UUID placementId, boolean locked, String user,
                                     List<UUID> explicitPlacementIds, Long expectedVersion) {
         LessonPlacement anchor = placementRepo.findById(placementId)
-                .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + placementId));
+                .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + placementId));
         ScheduleSession session = sessionGate.forWriteOf(anchor, expectedVersion);
 
         List<LessonPlacement> fullChain = chainPlacements(anchor, session.getId());

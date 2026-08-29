@@ -398,7 +398,7 @@ public class ScheduleCommandController {
      * (сущность → дисциплина → занятие). Показывает и полностью размещённые/сгенерированные
      * сущности, в отличие от {@code /unplaced} (только очередь).
      *
-     * <p>GET /api/schedule/command/sessions/{sessionId}/placement-board?courseIds=1,2&axis=GROUP</p>
+     * <p>GET /api/schedule/command/sessions/{sessionId}/placement-board?courseIds=1,2&amp;axis=GROUP</p>
      *
      * @param axis ось группировки (GROUP по умолчанию | EDUCATOR)
      */

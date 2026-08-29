@@ -20,7 +20,7 @@ public class ConstraintsGrid {
     /**
      * Получает карту с ограничениями
      *
-     * @return Map<CellForLesson, ConstraintKindRef>
+     * @return {@code Map<CellForLesson, ConstraintKindRef>} — карта ячейка → вид ограничения
      */
     public Map<CellForLesson, ConstraintKindRef> getConstraintsGridMap() {
         return constraintsGridMap;

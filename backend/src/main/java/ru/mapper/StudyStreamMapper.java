@@ -16,8 +16,8 @@ public interface StudyStreamMapper {
 
     /**
      * Преобразует сущность StudyStream в StudyStreamDto.
-     * MapStruct автоматически преобразует Set<Group> в List<GroupBriefDto>,
-     * используя вспомогательный метод toBriefDto(Group group).
+     * MapStruct автоматически преобразует {@code Set<Group>} в {@code List<GroupBriefDto>},
+     * используя вспомогательный метод {@code toBriefDto(Group)}.
      */
     StudyStreamDto toDto(StudyStream studyStream);
 

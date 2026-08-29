@@ -27,6 +27,7 @@ import ru.services.reindex.ReorderRoomResolver;
 import ru.services.reindex.RoomSlot;
 import ru.services.reindex.TimedLesson;
 import ru.services.reindex.TrackReorderStrategy;
+import ru.exceptions.NotFoundException;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,7 +84,7 @@ public class TrackReorderService {
     @Transactional
     public ReorderResult resort(UUID anchorPlacementId, String user) {
         LessonPlacement anchor = placementRepo.findById(anchorPlacementId)
-                .orElseThrow(() -> new IllegalArgumentException("Размещение не найдено: " + anchorPlacementId));
+                .orElseThrow(() -> new NotFoundException("Размещение не найдено: " + anchorPlacementId));
         ScheduleSession session = anchor.getSession();
 
         Assignment anchorAssignment = anchor.getAssignment();

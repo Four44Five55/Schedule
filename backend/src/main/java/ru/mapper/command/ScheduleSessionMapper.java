@@ -10,7 +10,7 @@ import ru.entity.write.ScheduleSession;
  *
  * <p>Используется в Command Side для конвертации сущностей в DTO для REST API.</p>
  *
- * <h3>Особенности маппинга:</h3>
+ * <h2>Особенности маппинга:</h2>
  * <ul>
  *   <li>Status конвертируется через {@link #mapStatus(ru.enums.SessionStatus)}</li>
  *   <li>PlacementsCount вычисляется через {@link ScheduleSession#getPlacementsCount()}</li>
